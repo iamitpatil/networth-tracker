@@ -1,0 +1,109 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root,
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card-hover: #1e293b;
+  --border: #334155;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-secondary: #64748b;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --sidebar-bg: #1e293b;
+  --sidebar-border: #334155;
+  --hover-bg: rgba(255, 255, 255, 0.05);
+  --input-bg: #334155;
+  --input-border: #475569;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+}
+
+[data-theme="light"] {
+  --bg: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-secondary: #475569;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --green: #16a34a;
+  --red: #dc2626;
+  --amber: #d97706;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e2e8f0;
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --input-bg: #f1f5f9;
+  --input-border: #cbd5e1;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #e2e8f0;
+  --slate-800: #ffffff;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--text-secondary);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-secondary) transparent;
+}
+
+/* Layout utility classes */
+.sidebar-bg { background-color: var(--sidebar-bg); }
+.sidebar-border { border-color: var(--sidebar-border); }
+.sidebar-shadow { box-shadow: 1px 0 8px rgba(0,0,0,0.15); }
+.text-theme-muted { color: var(--text-muted); }
+.bg-card { background-color: var(--bg-card); }
+.bg-theme { background-color: var(--bg); }
+.border-theme { border-color: var(--border); }
+.text-theme { color: var(--text); }
+.text-theme-secondary { color: var(--text-secondary); }
+.input-bg { background-color: var(--input-bg); }
+.input-border { border-color: var(--input-border); }
+.hover-bg:hover { background-color: var(--hover-bg); }
+
+/* Override Tailwind utility classes for theming */
+.bg-slate-800 { background-color: var(--slate-800) !important; }
+.bg-slate-700 { background-color: var(--slate-700) !important; }
+.bg-slate-600 { background-color: var(--slate-600) !important; }
+.bg-slate-500 { background-color: var(--slate-500) !important; }
+.text-slate-200 { color: var(--text) !important; }
+.text-slate-300 { color: var(--text) !important; }
+.text-slate-400 { color: var(--text-muted) !important; }
+.text-slate-500 { color: var(--text-secondary) !important; }
+.text-slate-600 { color: var(--text-secondary) !important; }
+.border-slate-700 { border-color: var(--border) !important; }
+.border-slate-600 { border-color: var(--border) !important; }
+.border-slate-500 { border-color: var(--border) !important; }
+.hover\:bg-slate-700:hover { background-color: var(--hover-bg) !important; }
+.hover\:bg-slate-600:hover { background-color: var(--hover-bg) !important; }
+.hover\:bg-slate-500:hover { background-color: var(--hover-bg) !important; }
+.hover\:text-slate-200:hover { color: var(--text) !important; }

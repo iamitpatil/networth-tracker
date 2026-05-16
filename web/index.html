@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <style id="theme-init"></style>
+    <script>
+      (function(){
+        var colors = {
+          dark: { bg:'#0f172a', 'bg-card':'#1e293b', 'bg-card-hover':'#1e293b', border:'#334155', text:'#f1f5f9', 'text-muted':'#94a3b8', 'text-secondary':'#64748b', primary:'#3b82f6', 'primary-hover':'#2563eb', green:'#22c55e', red:'#ef4444', amber:'#f59e0b', 'sidebar-bg':'#1e293b', 'sidebar-border':'#334155', 'hover-bg':'rgba(255,255,255,0.05)', 'input-bg':'#334155', 'input-border':'#475569' },
+          light: { bg:'#f1f5f9', 'bg-card':'#ffffff', 'bg-card-hover':'#f8fafc', border:'#e2e8f0', text:'#0f172a', 'text-muted':'#64748b', 'text-secondary':'#475569', primary:'#3b82f6', 'primary-hover':'#2563eb', green:'#16a34a', red:'#dc2626', amber:'#d97706', 'sidebar-bg':'#ffffff', 'sidebar-border':'#e2e8f0', 'hover-bg':'rgba(0,0,0,0.04)', 'input-bg':'#f1f5f9', 'input-border':'#cbd5e1' }
+        };
+        var key, pal;
+        try {
+          var cached = localStorage.getItem('themeColors');
+          if (cached) { pal = JSON.parse(cached); key = 'custom'; }
+        } catch(e){}
+        if (!pal) { key = localStorage.getItem('themeFallback') || 'dark'; pal = colors[key]; }
+        document.documentElement.setAttribute('data-theme', key);
+        for (var k in pal) document.documentElement.style.setProperty('--' + k, pal[k]);
+        document.getElementById('theme-init').textContent =
+          'html, body { background-color: ' + pal.bg + '; color: ' + pal.text + '; }';
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAMklEQVR4nGOwbvpGEmIYNBqUjsYBET4N/5EARDUBDViNp7+n/6OCQR4PKBoIunuQ+wEAga/A0CA4gFwAAAAASUVORK5CYII=" />
+    <link rel="shortcut icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAMklEQVR4nGOwbvpGEmIYNBqUjsYBET4N/5EARDUBDViNp7+n/6OCQR4PKBoIunuQ+wEAga/A0CA4gFwAAAAASUVORK5CYII=" />
+    <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAMklEQVR4nGOwbvpGEmIYNBqUjsYBET4N/5EARDUBDViNp7+n/6OCQR4PKBoIunuQ+wEAga/A0CA4gFwAAAAASUVORK5CYII=" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#3b82f6" />
+    <meta name="description" content="Track your investments, manage your portfolio, and achieve your financial goals" />
+    <title>NetWorth Tracker</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
