@@ -33,4 +33,8 @@ public class HoldingResponse {
     private String dematAccountNumber;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Owner info (populated in family view for cross-member identification)
+    private String ownerId;
+    private String ownerName;
 }

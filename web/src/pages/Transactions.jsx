@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
-import { TrendingUp, TrendingDown, Repeat, DollarSign, Filter, Calendar, Search } from 'lucide-react'
+import { useFamilyView } from '../context/FamilyViewContext'
+import { TrendingUp, TrendingDown, Repeat, DollarSign, Filter, Calendar, Search, Users } from 'lucide-react'
 
 export default function Transactions() {
+  const { view: familyView } = useFamilyView()
+  const isFamilyView = familyView === 'family'
   const [transactions, setTransactions] = useState([])
   const [holdings, setHoldings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -166,7 +169,17 @@ export default function Transactions() {
               filtered.map((tx) => (
                 <tr key={tx.id} className="hover:bg-slate-700/30">
                   <td className="px-4 py-3 text-sm">{new Date(tx.transactionDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                  <td className="px-4 py-3 text-sm font-medium">{holdingsMap[tx.holdingId]?.symbol || tx.holdingId?.substring(0, 8)}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{holdingsMap[tx.holdingId]?.symbol || tx.holdingId?.substring(0, 8)}</span>
+                      {isFamilyView && tx.ownerName && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                          <Users className="w-2.5 h-2.5" />
+                          {tx.ownerName}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${typeColors[tx.transactionType] || 'text-slate-400 bg-slate-700'}`}>
                       {tx.transactionType}

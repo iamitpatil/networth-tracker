@@ -6,6 +6,7 @@ import com.networth.model.dto.HoldingRequest;
 import com.networth.model.dto.HoldingResponse;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
+import com.networth.model.enums.AssetType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
@@ -79,13 +80,41 @@ public class HoldingService {
         return holding;
     }
 
+    /**
+     * Asset types that REQUIRE a demat account (traded via broker).
+     * Other types (PPF, EPF, FD, Real Estate, Cash) don't have demat accounts.
+     */
+    private static final java.util.Set<AssetType> ASSET_TYPES_REQUIRING_DEMAT = java.util.EnumSet.of(
+            AssetType.EQUITY,
+            AssetType.ETF,
+            AssetType.MUTUAL_FUND
+    );
+
+    private boolean requiresDematAccount(AssetType assetType) {
+        return ASSET_TYPES_REQUIRING_DEMAT.contains(assetType);
+    }
+
     @Transactional
     public HoldingResponse createHolding(String userId, HoldingRequest request) {
         UUID uid = UUID.fromString(userId);
 
+        // Validate: demat account is REQUIRED for tradeable assets
+        if (requiresDematAccount(request.getAssetType())) {
+            if (request.getDematAccountId() == null || request.getDematAccountId().isBlank()) {
+                throw new IllegalArgumentException(
+                        "Demat account is required for " + request.getAssetType() +
+                        " holdings. Please select a demat account.");
+            }
+        }
+
         // Verify demat account ownership if provided
-        if (request.getDematAccountId() != null) {
-            UUID dematId = UUID.fromString(request.getDematAccountId());
+        if (request.getDematAccountId() != null && !request.getDematAccountId().isBlank()) {
+            UUID dematId;
+            try {
+                dematId = UUID.fromString(request.getDematAccountId());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid demat account ID format");
+            }
             DematAccount demat = dematAccountRepository.findById(dematId)
                     .orElseThrow(() -> new ResourceNotFoundException("DematAccount", request.getDematAccountId()));
             if (!demat.getUserId().equals(uid)) {

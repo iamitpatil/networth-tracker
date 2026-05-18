@@ -2,8 +2,9 @@ package com.networth.service;
 
 import com.networth.model.entity.Goal;
 import com.networth.model.entity.Liability;
-import com.networth.model.entity.Holding;
+import com.networth.model.entity.User;
 import com.networth.model.dto.*;
+import com.networth.repository.UserRepository;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.PortfolioSummaryService;
 import com.networth.service.portfolio.TransactionService;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,15 +31,40 @@ public class FamilyDataService {
     private final EMIService emiService;
     private final NetWorthService netWorthService;
     private final FamilyDashboardService familyDashboardService;
+    private final UserRepository userRepository;
+
+    /**
+     * Build a map of userId -> user name for all approved family members.
+     * Used to enrich responses with owner information.
+     */
+    private Map<UUID, String> buildMemberNameMap(List<UUID> memberIds) {
+        Map<UUID, String> map = new HashMap<>();
+        for (UUID id : memberIds) {
+            userRepository.findById(id).ifPresent(user ->
+                    map.put(id, user.getName() != null ? user.getName() : user.getEmail())
+            );
+        }
+        return map;
+    }
 
     public List<HoldingResponse> getHoldings(UUID userId, boolean familyView) {
         if (!familyView) {
             return holdingService.getUserHoldings(userId.toString());
         }
         List<UUID> memberIds = familyService.getApprovedMemberIds(userId);
+        Map<UUID, String> nameMap = buildMemberNameMap(memberIds);
+
         List<HoldingResponse> all = new ArrayList<>();
         for (UUID mid : memberIds) {
-            all.addAll(holdingService.getUserHoldings(mid.toString()));
+            List<HoldingResponse> memberHoldings = holdingService.getUserHoldings(mid.toString());
+            String memberName = nameMap.getOrDefault(mid, "Family member");
+            String memberIdStr = mid.toString();
+            // Enrich with owner info
+            for (HoldingResponse h : memberHoldings) {
+                h.setOwnerId(memberIdStr);
+                h.setOwnerName(memberName);
+            }
+            all.addAll(memberHoldings);
         }
         return all;
     }
@@ -47,9 +74,17 @@ public class FamilyDataService {
             return transactionService.getUserTransactions(userId.toString());
         }
         List<UUID> memberIds = familyService.getApprovedMemberIds(userId);
+        Map<UUID, String> nameMap = buildMemberNameMap(memberIds);
+
         List<TransactionResponse> all = new ArrayList<>();
         for (UUID mid : memberIds) {
-            all.addAll(transactionService.getUserTransactions(mid.toString()));
+            List<TransactionResponse> memberTxns = transactionService.getUserTransactions(mid.toString());
+            String memberName = nameMap.getOrDefault(mid, "Family member");
+            for (TransactionResponse t : memberTxns) {
+                t.setOwnerId(mid.toString());
+                t.setOwnerName(memberName);
+            }
+            all.addAll(memberTxns);
         }
         return all;
     }

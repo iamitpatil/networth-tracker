@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { toast } from 'sonner'
 import client from '../api/client'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye } from 'lucide-react'
+import { useFamilyView } from '../context/FamilyViewContext'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 
@@ -40,7 +42,12 @@ const ASSET_COLORS = {
   NPS: 'bg-pink-500/20 text-pink-400',
 }
 
+// Asset types that REQUIRE a demat account (must match backend)
+const ASSET_TYPES_REQUIRING_DEMAT = ['EQUITY', 'ETF', 'MUTUAL_FUND']
+
 export default function Holdings() {
+  const { view: familyView } = useFamilyView()
+  const isFamilyView = familyView === 'family'
   const [holdings, setHoldings] = useState([])
   const [symbols, setSymbols] = useState([])
   const [loading, setLoading] = useState(true)
@@ -247,6 +254,14 @@ export default function Holdings() {
     if (!assetType) return
     if (needsSymbol && !selectedSymbol) return
     if (!needsSymbol && !form.name) return
+
+    // Validate demat account required for tradeable assets
+    if (ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && !form.dematAccountId) {
+      toast.error('Demat account required', {
+        description: `Please select a demat account for ${assetType} holdings.`,
+      })
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -650,16 +665,48 @@ export default function Holdings() {
                   </div>
                 </div>
 
-                {/* Demat account selector (only for non-retirement assets) */}
-                {dematAccounts.length > 0 && assetType !== 'PPF' && assetType !== 'EPF' && assetType !== 'NPS' && (
+                {/* Demat account selector (required for tradeable assets) */}
+                {assetType !== 'PPF' && assetType !== 'EPF' && assetType !== 'NPS' && (
                   <div>
-                    <label className="block text-sm text-[var(--text-muted)] mb-1">Demat Account</label>
-                    <select value={form.dematAccountId} onChange={(e) => setForm({ ...form, dematAccountId: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                      <option value="">No account (general)</option>
-                      {dematAccounts.map((d) => (
-                        <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber.slice(-4)})` : ''}{d.isDefault ? ' ⭐' : ''}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm text-[var(--text-muted)] mb-1">
+                      Demat Account
+                      {ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && (
+                        <span className="text-red-400 ml-1">*</span>
+                      )}
+                    </label>
+                    {dematAccounts.length === 0 ? (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 text-sm text-amber-400">
+                        <p className="mb-1">⚠️ No demat accounts found.</p>
+                        <a href="/demat-accounts" className="underline text-amber-300 hover:text-amber-200">
+                          Add a demat account first →
+                        </a>
+                      </div>
+                    ) : (
+                      <select
+                        value={form.dematAccountId}
+                        onChange={(e) => setForm({ ...form, dematAccountId: e.target.value })}
+                        className={`w-full bg-[var(--input-bg)] border rounded-lg px-3 py-2.5 ${
+                          ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && !form.dematAccountId
+                            ? 'border-red-500/50'
+                            : 'border-[var(--border)]'
+                        }`}
+                        required={ASSET_TYPES_REQUIRING_DEMAT.includes(assetType)}
+                      >
+                        <option value="">
+                          {ASSET_TYPES_REQUIRING_DEMAT.includes(assetType)
+                            ? 'Select a demat account *'
+                            : 'No account (general)'}
+                        </option>
+                        {dematAccounts.map((d) => (
+                          <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber.slice(-4)})` : ''}{d.isDefault ? ' ⭐' : ''}</option>
+                        ))}
+                      </select>
+                    )}
+                    {ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && (
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        Required for tracking holdings across brokers
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -817,9 +864,17 @@ export default function Holdings() {
                 return (
                   <tr key={h.id} className="hover:bg-[var(--hover-bg)]">
                     <td className="px-4 py-3">
-                      {(h.assetType === 'EQUITY' || h.assetType === 'ETF' || h.assetType === 'MUTUAL_FUND')
-                        ? <button onClick={() => openChart(h, chartDays)} className="font-medium text-left hover:text-blue-400 transition">{h.symbol}</button>
-                        : <span className="font-medium">{h.symbol}</span>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {(h.assetType === 'EQUITY' || h.assetType === 'ETF' || h.assetType === 'MUTUAL_FUND')
+                          ? <button onClick={() => openChart(h, chartDays)} className="font-medium text-left hover:text-blue-400 transition">{h.symbol}</button>
+                          : <span className="font-medium">{h.symbol}</span>}
+                        {isFamilyView && h.ownerName && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                            <Users className="w-2.5 h-2.5" />
+                            {h.ownerName}
+                          </span>
+                        )}
+                      </div>
                       {h.name && <div className="text-xs text-[var(--text-secondary)]">{h.name}</div>}
                     </td>
                     <td className="px-4 py-3">
