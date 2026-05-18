@@ -146,7 +146,7 @@ export default function NetWorth() {
           </div>
         </Card>
 
-        {/* Health Score Card */}
+        {/* Health Score Card - grade left, breakdown right */}
         <Card>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-[var(--text-muted)] font-medium">Financial Health</p>
@@ -156,39 +156,56 @@ export default function NetWorth() {
               </div>
             </UITooltip>
           </div>
-          <div className="flex items-center justify-center my-6">
-            <div
-              className="w-24 h-24 rounded-full flex flex-col items-center justify-center font-bold border-4"
-              style={{
-                borderColor: gradeColors[healthScore?.grade] || '#94a3b8',
-                color: gradeColors[healthScore?.grade] || '#94a3b8',
-              }}
-            >
-              <span className="text-3xl">{healthScore?.grade || '—'}</span>
-              <span className="text-xs font-medium text-[var(--text-muted)]">
-                {(healthScore?.totalScore ?? healthScore?.score ?? 0).toFixed(0)}/100
-              </span>
+          <div className="flex items-center gap-4">
+            {/* Grade Circle - left side */}
+            <div className="flex-shrink-0 flex flex-col items-center">
+              <div
+                className="w-20 h-20 rounded-full flex flex-col items-center justify-center font-bold border-4"
+                style={{
+                  borderColor: gradeColors[healthScore?.grade] || '#94a3b8',
+                  color: gradeColors[healthScore?.grade] || '#94a3b8',
+                }}
+              >
+                <span className="text-2xl leading-none">{healthScore?.grade || '—'}</span>
+                <span className="text-[10px] font-medium text-[var(--text-muted)] mt-0.5">
+                  {(healthScore?.totalScore ?? healthScore?.score ?? 0).toFixed(0)}/100
+                </span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] mt-2 text-center">
+                {gradeLabels[healthScore?.grade] || 'Unrated'}
+              </p>
+            </div>
+            {/* Breakdown - right side */}
+            <div className="flex-1 min-w-0 space-y-2">
+              {healthScore?.breakdown ? (
+                Object.entries(healthScore.breakdown).map(([key, val]) => {
+                  const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())
+                  const statusColor = val.status === 'Healthy' ? 'text-green-400'
+                                      : val.status === 'Moderate' ? 'text-amber-400'
+                                      : 'text-red-400'
+                  const barColor = val.status === 'Healthy' ? 'bg-green-500'
+                                   : val.status === 'Moderate' ? 'bg-amber-500'
+                                   : 'bg-red-500'
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-[var(--text-muted)] truncate">{label}</span>
+                        <span className={`${statusColor} flex-shrink-0 ml-2`}>{val.score}/100</span>
+                      </div>
+                      <div className="w-full bg-[var(--input-bg)] rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                          style={{ width: `${val.score}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="text-xs text-[var(--text-muted)]">No breakdown available</p>
+              )}
             </div>
           </div>
-          <p className="text-center text-sm text-[var(--text-muted)]">
-            {gradeLabels[healthScore?.grade] || 'Unrated'}
-          </p>
-          {healthScore?.breakdown && (
-            <div className="mt-4 pt-4 border-t border-[var(--border)] space-y-2">
-              {Object.entries(healthScore.breakdown).map(([key, val]) => {
-                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())
-                const statusColor = val.status === 'Healthy' ? 'text-green-400'
-                                    : val.status === 'Moderate' ? 'text-amber-400'
-                                    : 'text-red-400'
-                return (
-                  <div key={key} className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--text-muted)]">{label}</span>
-                    <span className={statusColor}>{val.status} ({val.score}/100)</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </Card>
       </div>
 
