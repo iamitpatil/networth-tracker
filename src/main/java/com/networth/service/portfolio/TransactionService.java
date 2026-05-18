@@ -1,5 +1,7 @@
 package com.networth.service.portfolio;
 
+import com.networth.exception.AccessDeniedException;
+import com.networth.exception.ResourceNotFoundException;
 import com.networth.model.dto.TransactionRequest;
 import com.networth.model.dto.TransactionResponse;
 import com.networth.model.entity.Holding;
@@ -8,6 +10,7 @@ import com.networth.model.enums.TransactionType;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +20,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TransactionService {
 
     private final TransactionRepository transactionRepository;
@@ -24,7 +28,9 @@ public class TransactionService {
     private final CostBasisService costBasisService;
 
     @Transactional(readOnly = true)
-    public List<TransactionResponse> getHoldingTransactions(String holdingId) {
+    public List<TransactionResponse> getHoldingTransactions(String userId, String holdingId) {
+        // Verify holding ownership before returning transactions
+        verifyHoldingOwnership(userId, holdingId);
         return transactionRepository.findByHoldingIdOrderByTransactionDateDesc(UUID.fromString(holdingId))
                 .stream().map(this::toResponse).toList();
     }
@@ -37,8 +43,8 @@ public class TransactionService {
 
     @Transactional
     public TransactionResponse addTransaction(String userId, TransactionRequest request) {
-        Holding holding = holdingRepository.findById(UUID.fromString(request.getHoldingId()))
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found"));
+        // Verify holding belongs to user before adding transaction
+        Holding holding = verifyHoldingOwnership(userId, request.getHoldingId());
 
         BigDecimal amount = request.getAmount() != null
                 ? request.getAmount()
@@ -74,8 +80,46 @@ public class TransactionService {
     }
 
     @Transactional
-    public void deleteTransaction(String transactionId) {
-        transactionRepository.deleteById(UUID.fromString(transactionId));
+    public void deleteTransaction(String userId, String transactionId) {
+        UUID txnId;
+        UUID uid;
+        try {
+            txnId = UUID.fromString(transactionId);
+            uid = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("Transaction", transactionId);
+        }
+        Transaction transaction = transactionRepository.findById(txnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction", transactionId));
+        if (!transaction.getUserId().equals(uid)) {
+            log.warn("User {} attempted to delete transaction {} owned by {}", userId, transactionId, transaction.getUserId());
+            throw new AccessDeniedException("Transaction", transactionId);
+        }
+        transactionRepository.delete(transaction);
+    }
+
+    /**
+     * Verifies that the given holding belongs to the user.
+     * @return The Holding entity if ownership is valid.
+     * @throws ResourceNotFoundException if holding doesn't exist
+     * @throws AccessDeniedException if user doesn't own the holding
+     */
+    private Holding verifyHoldingOwnership(String userId, String holdingId) {
+        UUID hid;
+        UUID uid;
+        try {
+            hid = UUID.fromString(holdingId);
+            uid = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("Holding", holdingId);
+        }
+        Holding holding = holdingRepository.findById(hid)
+                .orElseThrow(() -> new ResourceNotFoundException("Holding", holdingId));
+        if (!holding.getUserId().equals(uid)) {
+            log.warn("User {} attempted to access holding {} owned by {}", userId, holdingId, holding.getUserId());
+            throw new AccessDeniedException("Holding", holdingId);
+        }
+        return holding;
     }
 
     private TransactionResponse toResponse(Transaction transaction) {

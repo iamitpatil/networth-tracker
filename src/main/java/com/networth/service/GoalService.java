@@ -1,11 +1,13 @@
 package com.networth.service;
 
-import com.networth.model.dto.HoldingResponse;
+import com.networth.exception.AccessDeniedException;
+import com.networth.exception.ResourceNotFoundException;
 import com.networth.model.entity.Goal;
 import com.networth.model.entity.Holding;
 import com.networth.repository.GoalRepository;
 import com.networth.repository.HoldingRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class GoalService {
 
     private final GoalRepository goalRepository;
@@ -28,9 +31,8 @@ public class GoalService {
     }
 
     @Transactional(readOnly = true)
-    public Goal getGoal(UUID goalId) {
-        return goalRepository.findById(goalId)
-                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+    public Goal getGoal(UUID userId, UUID goalId) {
+        return findOwnedGoal(userId, goalId);
     }
 
     @Transactional
@@ -49,9 +51,8 @@ public class GoalService {
     }
 
     @Transactional
-    public Goal updateGoal(UUID goalId, GoalRequest request) {
-        Goal goal = goalRepository.findById(goalId)
-                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+    public Goal updateGoal(UUID userId, UUID goalId, GoalRequest request) {
+        Goal goal = findOwnedGoal(userId, goalId);
 
         if (request.name() != null) goal.setName(request.name());
         if (request.targetAmount() != null) goal.setTargetAmount(request.targetAmount());
@@ -63,17 +64,22 @@ public class GoalService {
     }
 
     @Transactional
-    public void deleteGoal(UUID goalId) {
-        goalRepository.deleteById(goalId);
+    public void deleteGoal(UUID userId, UUID goalId) {
+        Goal goal = findOwnedGoal(userId, goalId);
+        goalRepository.delete(goal);
     }
 
     @Transactional
-    public void mapHoldingToGoal(UUID goalId, UUID holdingId, BigDecimal allocationPercentage) {
-        Goal goal = goalRepository.findById(goalId)
-                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+    public void mapHoldingToGoal(UUID userId, UUID goalId, UUID holdingId, BigDecimal allocationPercentage) {
+        // Verify both goal and holding belong to user
+        Goal goal = findOwnedGoal(userId, goalId);
 
         Holding holding = holdingRepository.findById(holdingId)
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Holding", holdingId.toString()));
+        if (!holding.getUserId().equals(userId)) {
+            log.warn("User {} attempted to map holding {} owned by {} to goal", userId, holdingId, holding.getUserId());
+            throw new AccessDeniedException("Holding", holdingId.toString());
+        }
 
         if (holding.getCurrentValue() != null) {
             BigDecimal contribution = holding.getCurrentValue()
@@ -85,9 +91,8 @@ public class GoalService {
     }
 
     @Transactional(readOnly = true)
-    public GoalProgress getGoalProgress(UUID goalId) {
-        Goal goal = goalRepository.findById(goalId)
-                .orElseThrow(() -> new IllegalArgumentException("Goal not found"));
+    public GoalProgress getGoalProgress(UUID userId, UUID goalId) {
+        Goal goal = findOwnedGoal(userId, goalId);
 
         BigDecimal progress = goal.getTargetAmount().compareTo(BigDecimal.ZERO) > 0
                 ? goal.getCurrentAmount()
@@ -100,9 +105,15 @@ public class GoalService {
                 ? java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), goal.getTargetDate())
                 : 0;
 
-        BigDecimal monthlyTarget = daysRemaining > 0
-                ? shortfall.divide(BigDecimal.valueOf(daysRemaining / 30), 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
+        // Fix integer division bug: handle daysRemaining < 30 case
+        BigDecimal monthlyTarget = BigDecimal.ZERO;
+        if (daysRemaining > 0) {
+            BigDecimal monthsRemaining = BigDecimal.valueOf(daysRemaining)
+                    .divide(BigDecimal.valueOf(30), 4, RoundingMode.HALF_UP);
+            if (monthsRemaining.compareTo(BigDecimal.ZERO) > 0) {
+                monthlyTarget = shortfall.divide(monthsRemaining, 2, RoundingMode.HALF_UP);
+            }
+        }
 
         return GoalProgress.builder()
                 .goalId(goalId.toString())
@@ -116,6 +127,19 @@ public class GoalService {
                 .isOnTrack(monthlyTarget.compareTo(BigDecimal.ZERO) <= 0 ||
                         shortfall.compareTo(BigDecimal.ZERO) <= 0)
                 .build();
+    }
+
+    /**
+     * Find a goal by ID ensuring it belongs to the given user.
+     */
+    private Goal findOwnedGoal(UUID userId, UUID goalId) {
+        Goal goal = goalRepository.findById(goalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Goal", goalId.toString()));
+        if (!goal.getUserId().equals(userId)) {
+            log.warn("User {} attempted to access goal {} owned by {}", userId, goalId, goal.getUserId());
+            throw new AccessDeniedException("Goal", goalId.toString());
+        }
+        return goal;
     }
 
     public record GoalRequest(

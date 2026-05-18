@@ -58,20 +58,25 @@ public class PortfolioController {
     }
 
     @GetMapping("/holdings/{id}")
-    public ResponseEntity<HoldingResponse> getHolding(@PathVariable String id) {
-        return ResponseEntity.ok(holdingService.getHolding(id));
+    public ResponseEntity<HoldingResponse> getHolding(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(holdingService.getHolding(userDetails.getUsername(), id));
     }
 
     @PutMapping("/holdings/{id}")
     public ResponseEntity<HoldingResponse> updateHolding(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @Valid @RequestBody HoldingRequest request) {
-        return ResponseEntity.ok(holdingService.updateHolding(id, request));
+        return ResponseEntity.ok(holdingService.updateHolding(userDetails.getUsername(), id, request));
     }
 
     @DeleteMapping("/holdings/{id}")
-    public ResponseEntity<Void> deleteHolding(@PathVariable String id) {
-        holdingService.deleteHolding(id);
+    public ResponseEntity<Void> deleteHolding(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        holdingService.deleteHolding(userDetails.getUsername(), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -90,8 +95,10 @@ public class PortfolioController {
     }
 
     @GetMapping("/holdings/{id}/transactions")
-    public ResponseEntity<List<TransactionResponse>> getTransactions(@PathVariable String id) {
-        return ResponseEntity.ok(transactionService.getHoldingTransactions(id));
+    public ResponseEntity<List<TransactionResponse>> getTransactions(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(transactionService.getHoldingTransactions(userDetails.getUsername(), id));
     }
 
     @PostMapping("/transactions")
@@ -112,9 +119,10 @@ public class PortfolioController {
 
     @GetMapping("/holdings/{id}/price-history")
     public ResponseEntity<List<Map<String, Object>>> getPriceHistory(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestParam(defaultValue = "90") int days) {
-        com.networth.model.dto.HoldingResponse holding = holdingService.getHolding(id);
+        com.networth.model.dto.HoldingResponse holding = holdingService.getHolding(userDetails.getUsername(), id);
         String symbol = holding.getSymbol();
         if (holding.getAssetType().name().equals("MUTUAL_FUND")) {
             String isin = holding.getIsin();

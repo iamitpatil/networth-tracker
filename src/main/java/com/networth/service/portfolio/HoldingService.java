@@ -1,5 +1,7 @@
 package com.networth.service.portfolio;
 
+import com.networth.exception.AccessDeniedException;
+import com.networth.exception.ResourceNotFoundException;
 import com.networth.model.dto.HoldingRequest;
 import com.networth.model.dto.HoldingResponse;
 import com.networth.model.entity.DematAccount;
@@ -14,8 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,7 +36,9 @@ public class HoldingService {
     public List<HoldingResponse> getUserHoldings(String userId) {
         UUID uid = UUID.fromString(userId);
         List<Holding> holdings = holdingRepository.findByUserId(uid);
-        return holdings.stream().map(this::toResponse).toList();
+        // Batch-fetch demat accounts to avoid N+1
+        Map<UUID, DematAccount> dematMap = batchFetchDematAccounts(holdings);
+        return holdings.stream().map(h -> toResponse(h, dematMap)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -39,18 +46,55 @@ public class HoldingService {
         return holdingRepository.findByUserIdAndSymbol(UUID.fromString(userId), symbol);
     }
 
+    /**
+     * Get a holding by ID, ensuring ownership.
+     * @throws ResourceNotFoundException if holding doesn't exist or user doesn't own it
+     */
     @Transactional(readOnly = true)
-    public HoldingResponse getHolding(String holdingId) {
-        UUID hid = UUID.fromString(holdingId);
+    public HoldingResponse getHolding(String userId, String holdingId) {
+        Holding holding = findOwnedHolding(userId, holdingId);
+        return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
+    }
+
+    /**
+     * Internal method to fetch a holding ensuring ownership.
+     * Used by other services that need to verify holding ownership.
+     */
+    @Transactional(readOnly = true)
+    public Holding findOwnedHolding(String userId, String holdingId) {
+        UUID hid;
+        UUID uid;
+        try {
+            hid = UUID.fromString(holdingId);
+            uid = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("Holding", holdingId);
+        }
         Holding holding = holdingRepository.findById(hid)
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found"));
-        return toResponse(holding);
+                .orElseThrow(() -> new ResourceNotFoundException("Holding", holdingId));
+        if (!holding.getUserId().equals(uid)) {
+            log.warn("User {} attempted to access holding {} owned by {}", userId, holdingId, holding.getUserId());
+            throw new AccessDeniedException("Holding", holdingId);
+        }
+        return holding;
     }
 
     @Transactional
     public HoldingResponse createHolding(String userId, HoldingRequest request) {
+        UUID uid = UUID.fromString(userId);
+
+        // Verify demat account ownership if provided
+        if (request.getDematAccountId() != null) {
+            UUID dematId = UUID.fromString(request.getDematAccountId());
+            DematAccount demat = dematAccountRepository.findById(dematId)
+                    .orElseThrow(() -> new ResourceNotFoundException("DematAccount", request.getDematAccountId()));
+            if (!demat.getUserId().equals(uid)) {
+                throw new AccessDeniedException("DematAccount", request.getDematAccountId());
+            }
+        }
+
         Holding holding = Holding.builder()
-                .userId(UUID.fromString(userId))
+                .userId(uid)
                 .assetType(request.getAssetType())
                 .symbol(request.getSymbol())
                 .name(request.getName())
@@ -74,14 +118,12 @@ public class HoldingService {
         priceService.refreshPrice(holding.getSymbol(), holding.getAssetType());
         updateHoldingPrice(holding);
 
-        return toResponse(holding);
+        return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
     }
 
     @Transactional
-    public HoldingResponse updateHolding(String holdingId, HoldingRequest request) {
-        UUID hid = UUID.fromString(holdingId);
-        Holding holding = holdingRepository.findById(hid)
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found"));
+    public HoldingResponse updateHolding(String userId, String holdingId, HoldingRequest request) {
+        Holding holding = findOwnedHolding(userId, holdingId);
 
         if (request.getName() != null) holding.setName(request.getName());
         if (request.getSector() != null) holding.setSector(request.getSector());
@@ -90,12 +132,13 @@ public class HoldingService {
         if (request.getMetadata() != null) holding.setMetadata(request.getMetadata());
 
         holding = holdingRepository.save(holding);
-        return toResponse(holding);
+        return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
     }
 
     @Transactional
-    public void deleteHolding(String holdingId) {
-        holdingRepository.deleteById(UUID.fromString(holdingId));
+    public void deleteHolding(String userId, String holdingId) {
+        Holding holding = findOwnedHolding(userId, holdingId);
+        holdingRepository.delete(holding);
     }
 
     @Transactional
@@ -127,11 +170,25 @@ public class HoldingService {
         }
     }
 
-    private HoldingResponse toResponse(Holding holding) {
+    /**
+     * Batch-fetch demat accounts for multiple holdings to avoid N+1 queries.
+     */
+    private Map<UUID, DematAccount> batchFetchDematAccounts(List<Holding> holdings) {
+        List<UUID> dematIds = holdings.stream()
+                .map(Holding::getDematAccountId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (dematIds.isEmpty()) return new HashMap<>();
+        return dematAccountRepository.findAllById(dematIds).stream()
+                .collect(Collectors.toMap(DematAccount::getId, da -> da));
+    }
+
+    private HoldingResponse toResponse(Holding holding, Map<UUID, DematAccount> dematMap) {
         String dematBroker = null;
         String dematAccountNumber = null;
         if (holding.getDematAccountId() != null) {
-            DematAccount da = dematAccountRepository.findById(holding.getDematAccountId()).orElse(null);
+            DematAccount da = dematMap.get(holding.getDematAccountId());
             if (da != null) {
                 dematBroker = da.getBrokerName();
                 dematAccountNumber = da.getAccountNumber();

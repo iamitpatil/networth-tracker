@@ -44,35 +44,63 @@ public class GoalController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Goal> getGoal(@PathVariable String id) {
-        return ResponseEntity.ok(goalService.getGoal(UUID.fromString(id)));
+    public ResponseEntity<Goal> getGoal(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(goalService.getGoal(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id)));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<Goal> updateGoal(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @Valid @RequestBody GoalRequest request) {
-        return ResponseEntity.ok(goalService.updateGoal(UUID.fromString(id), request));
+        return ResponseEntity.ok(goalService.updateGoal(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id),
+                request));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteGoal(@PathVariable String id) {
-        goalService.deleteGoal(UUID.fromString(id));
+    public ResponseEntity<Void> deleteGoal(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        goalService.deleteGoal(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id));
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/map-holding")
     public ResponseEntity<Void> mapHoldingToGoal(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestBody Map<String, Object> request) {
         String holdingId = (String) request.get("holdingId");
-        BigDecimal allocation = new BigDecimal(request.get("allocationPercentage").toString());
-        goalService.mapHoldingToGoal(UUID.fromString(id), UUID.fromString(holdingId), allocation);
+        if (holdingId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Object allocObj = request.get("allocationPercentage");
+        if (allocObj == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        BigDecimal allocation = new BigDecimal(allocObj.toString());
+        goalService.mapHoldingToGoal(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id),
+                UUID.fromString(holdingId),
+                allocation);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/progress")
-    public ResponseEntity<GoalProgress> getGoalProgress(@PathVariable String id) {
-        return ResponseEntity.ok(goalService.getGoalProgress(UUID.fromString(id)));
+    public ResponseEntity<GoalProgress> getGoalProgress(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(goalService.getGoalProgress(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id)));
     }
 }
