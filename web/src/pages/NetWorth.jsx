@@ -64,8 +64,23 @@ export default function NetWorth() {
 
   if (loading) return <PageSkeleton />
 
-  const isPositiveChange = (changeData?.changePercent ?? 0) >= 0
-  const maxAsset = breakdown?.assets?.reduce((max, a) => Math.max(max, a.value || 0), 0) || 1
+  // Backend returns change as { change, changePercentage, startValue, endValue } - normalize keys
+  const changePct = changeData?.changePercentage ?? changeData?.changePercent ?? 0
+  const changeAmt = changeData?.change ?? changeData?.changeAmount ?? 0
+  const isPositiveChange = changePct >= 0
+
+  // Backend returns breakdown as flat object: { equityValue, goldValue, ... }
+  // Transform to array for rendering
+  const assetBreakdown = breakdown ? [
+    { type: 'EQUITY', label: 'Equity', value: breakdown.equityValue || 0 },
+    { type: 'MUTUAL_FUND', label: 'Mutual Funds / Debt', value: breakdown.debtValue || 0 },
+    { type: 'GOLD', label: 'Gold', value: breakdown.goldValue || 0 },
+    { type: 'REAL_ESTATE', label: 'Real Estate', value: breakdown.realEstateValue || 0 },
+    { type: 'CASH', label: 'Cash & Bank', value: breakdown.cashValue || 0 },
+    { type: 'CRYPTO', label: 'Crypto', value: breakdown.cryptoValue || 0 },
+  ].filter(a => a.value > 0) : []
+
+  const maxAsset = assetBreakdown.reduce((max, a) => Math.max(max, a.value), 0) || 1
 
   return (
     <div className="space-y-6">
@@ -93,10 +108,10 @@ export default function NetWorth() {
                 variant={isPositiveChange ? 'green' : 'red'}
                 icon={isPositiveChange ? TrendingUp : TrendingDown}
               >
-                {formatPercent(changeData.changePercent)}
+                {formatPercent(changePct)}
               </Badge>
               <span className="text-sm text-[var(--text-muted)]">
-                {formatINR(Math.abs(changeData.changeAmount || 0), { compact: true })} in 30 days
+                {formatINR(Math.abs(changeAmt), { compact: true })} in 30 days
               </span>
             </div>
           )}
@@ -136,17 +151,27 @@ export default function NetWorth() {
             >
               <span className="text-3xl">{healthScore?.grade || '—'}</span>
               <span className="text-xs font-medium text-[var(--text-muted)]">
-                {healthScore?.score?.toFixed(0) || 0}/100
+                {(healthScore?.totalScore ?? healthScore?.score ?? 0).toFixed(0)}/100
               </span>
             </div>
           </div>
           <p className="text-center text-sm text-[var(--text-muted)]">
             {gradeLabels[healthScore?.grade] || 'Unrated'}
           </p>
-          {healthScore?.recommendations?.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-[var(--border)]">
-              <p className="text-xs font-medium text-[var(--text-muted)] mb-1">Top Recommendation</p>
-              <p className="text-xs text-[var(--text)]">{healthScore.recommendations[0]}</p>
+          {healthScore?.breakdown && (
+            <div className="mt-4 pt-4 border-t border-[var(--border)] space-y-2">
+              {Object.entries(healthScore.breakdown).map(([key, val]) => {
+                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())
+                const statusColor = val.status === 'Healthy' ? 'text-green-400'
+                                    : val.status === 'Moderate' ? 'text-amber-400'
+                                    : 'text-red-400'
+                return (
+                  <div key={key} className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--text-muted)]">{label}</span>
+                    <span className={statusColor}>{val.status} ({val.score}/100)</span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </Card>
@@ -216,20 +241,26 @@ export default function NetWorth() {
             <PiggyBank className="w-4 h-4 text-green-400" />
             Asset Breakdown
           </h2>
-          {!breakdown?.assets?.length ? (
+          {assetBreakdown.length === 0 ? (
             <p className="text-sm text-[var(--text-muted)] py-4">No assets to display</p>
           ) : (
             <div className="space-y-3">
-              {breakdown.assets.filter(a => a.value > 0).map((asset) => {
+              {assetBreakdown.map((asset) => {
                 const pct = (asset.value / maxAsset) * 100
+                const totalPct = breakdown?.totalAssets > 0 ? (asset.value / breakdown.totalAssets) * 100 : 0
                 const color = ASSET_COLORS[asset.type] || '#3b82f6'
                 return (
                   <div key={asset.type}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm font-medium">{asset.label || asset.type}</span>
-                      <span className="text-sm text-[var(--text-muted)]">
-                        {formatINR(asset.value, { compact: true })}
-                      </span>
+                      <span className="text-sm font-medium">{asset.label}</span>
+                      <div className="text-right">
+                        <span className="text-sm font-medium">
+                          {formatINR(asset.value, { compact: true })}
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)] ml-2">
+                          {totalPct.toFixed(1)}%
+                        </span>
+                      </div>
                     </div>
                     <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden">
                       <div
