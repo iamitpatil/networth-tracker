@@ -58,24 +58,24 @@ dump.rdb
 *.rdb
 
 ### Flutter ###
-mobile/flutter_networth/.dart_tool/
-mobile/flutter_networth/.flutter-plugins
-mobile/flutter_networth/.flutter-plugins-dependencies
-mobile/flutter_networth/.packages
-mobile/flutter_networth/.pub-cache/
-mobile/flutter_networth/.pub/
-mobile/flutter_networth/build/
-mobile/flutter_networth/ios/Pods/
-mobile/flutter_networth/ios/.symlinks/
-mobile/flutter_networth/ios/Flutter/Flutter.framework
-mobile/flutter_networth/ios/Flutter/Flutter.podspec
-mobile/flutter_networth/android/.gradle/
-mobile/flutter_networth/android/captures/
-mobile/flutter_networth/android/gradlew
-mobile/flutter_networth/android/gradlew.bat
-mobile/flutter_networth/android/local.properties
-mobile/flutter_networth/android/**/GeneratedPluginRegistrant.java
-mobile/flutter_networth/coverage/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+mobile/android/.gradle/
+mobile/android/captures/
+mobile/android/gradlew
+mobile/android/gradlew.bat
+mobile/android/local.properties
+mobile/android/**/GeneratedPluginRegistrant.java
+mobile/coverage/
 
 ### Node ###
 node_modules/
