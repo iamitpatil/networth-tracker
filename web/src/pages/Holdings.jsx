@@ -791,7 +791,7 @@ export default function Holdings() {
                             <FileText className="w-4 h-4" />
                           </button>
                         )}
-                        <button onClick={() => handleDelete(h.id)} className="text-[var(--text-secondary)] hover:text-red-400 transition p-1"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(h.id)} aria-label="Delete holding" className="text-[var(--text-secondary)] hover:text-red-400 transition p-1"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </tr>
@@ -845,7 +845,7 @@ export default function Holdings() {
                       <button onClick={() => handleInvoiceDownload(doc)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition" title="Download">
                         <Download className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleInvoiceDelete(doc.id)} className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition" title="Delete">
+                      <button onClick={() => handleInvoiceDelete(doc.id)} aria-label="Delete invoice" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition" title="Delete">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>

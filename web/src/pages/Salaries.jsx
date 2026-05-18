@@ -279,7 +279,7 @@ export default function Salaries() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
                       <button onClick={() => openEdit(s)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleDelete(s.id)} className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDelete(s.id)} aria-label="Delete salary" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>

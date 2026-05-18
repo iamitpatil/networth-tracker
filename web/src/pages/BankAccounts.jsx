@@ -202,7 +202,7 @@ export default function BankAccounts() {
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(a)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition"><Pencil className="w-4 h-4" /></button>
-                    <button onClick={() => handleDelete(a.id)} className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => handleDelete(a.id)} aria-label="Delete bank account" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
