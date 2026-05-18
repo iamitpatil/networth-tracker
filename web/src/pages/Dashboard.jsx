@@ -1,448 +1,359 @@
 import { useState, useEffect } from 'react'
-import axios from '../api/client'
+import client from '../api/client'
 import {
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  Heart,
-  Target,
-  Activity,
-  Lightbulb,
-  Wallet,
-  PieChart as PieChartIcon,
-  ArrowUpRight,
-  ArrowDownRight,
-  Coins,
-  Landmark,
-  Gem,
-  Building2,
-  Bitcoin,
+  TrendingUp, TrendingDown, Target, Activity, Lightbulb, Wallet,
+  PieChart as PieChartIcon, ArrowUpRight, Coins, Landmark, Gem,
+  Building2, Bitcoin, Receipt, AlertCircle, Sparkles,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
+import { formatINR, formatPercent } from '../utils/format'
+import { CHART_PALETTE, ASSET_COLORS } from '../utils/colors'
+import { Card, StatCard, PageHeader, PageSkeleton, EmptyState, Badge, Tooltip as UITooltip } from '../components/ui'
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
-const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+const ASSET_ICONS = {
+  EQUITY: Landmark,
+  MUTUAL_FUND: PieChartIcon,
+  GOLD: Gem,
+  CRYPTO: Bitcoin,
+  REAL_ESTATE: Building2,
+  CASH: Wallet,
+  FD: Receipt,
+  PPF: Receipt,
+  EPF: Receipt,
+  NPS: Receipt,
+  BOND: Receipt,
+  ETF: Landmark,
+}
 
 export default function Dashboard() {
   const [breakdown, setBreakdown] = useState(null)
   const [healthScore, setHealthScore] = useState(null)
   const [holdings, setHoldings] = useState([])
-  const [liabilities, setLiabilities] = useState([])
   const [xirr, setXirr] = useState(null)
   const [goals, setGoals] = useState([])
   const [insights, setInsights] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [breakdownRes, healthRes, holdingsRes, liabilitiesRes, xirrRes, goalsRes, insightsRes] =
-          await Promise.all([
-            axios.get('/net-worth/breakdown'),
-            axios.get('/net-worth/health-score'),
-            axios.get('/portfolio/holdings'),
-            axios.get('/liabilities'),
-            axios.get('/analytics/xirr'),
-            axios.get('/goals'),
-            axios.get('/insights'),
-          ])
-
-        setBreakdown(breakdownRes.data)
-        setHealthScore(healthRes.data)
-        setHoldings(holdingsRes.data || [])
-        setLiabilities(liabilitiesRes.data || [])
-        setXirr(xirrRes.data)
-        setGoals(goalsRes.data || [])
-        setInsights(insightsRes.data || [])
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchData()
   }, [])
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount || 0)
+  async function fetchData() {
+    try {
+      const [breakdownRes, healthRes, holdingsRes, xirrRes, goalsRes, insightsRes] =
+        await Promise.all([
+          client.get('/net-worth/breakdown'),
+          client.get('/net-worth/health-score').catch(() => ({ data: null })),
+          client.get('/portfolio/holdings'),
+          client.get('/analytics/xirr').catch(() => ({ data: null })),
+          client.get('/goals').catch(() => ({ data: [] })),
+          client.get('/insights').catch(() => ({ data: [] })),
+        ])
+      setBreakdown(breakdownRes.data)
+      setHealthScore(healthRes.data)
+      setHoldings(holdingsRes.data || [])
+      setXirr(xirrRes.data)
+      setGoals(goalsRes.data || [])
+      setInsights(insightsRes.data || [])
+    } catch (e) {
+      // toast handled
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const getAssetAllocation = () => {
-    if (!breakdown) return []
-    return [
-      { name: 'Liquid Assets', value: breakdown.liquidAssets || 0 },
-      { name: 'Equity', value: breakdown.equityValue || 0 },
-      { name: 'Gold', value: breakdown.goldValue || 0 },
-      { name: 'Real Estate', value: breakdown.realEstateValue || 0 },
-      { name: 'Cash', value: breakdown.cashValue || 0 },
-      { name: 'Crypto', value: breakdown.cryptoValue || 0 },
-    ].filter((item) => item.value > 0)
-  }
+  if (loading) return <PageSkeleton />
 
-  const getTopHoldings = () => {
-    return [...holdings]
-      .sort((a, b) => (b.currentValue || 0) - (a.currentValue || 0))
-      .slice(0, 5)
-  }
+  const netWorth = breakdown?.netWorth || 0
+  const totalAssets = breakdown?.totalAssets || 0
+  const totalLiabilities = breakdown?.totalLiabilities || 0
+  const totalInvested = holdings.reduce((sum, h) => sum + (h.quantity * h.averageBuyPrice || 0), 0)
+  const currentValue = holdings.reduce((sum, h) => sum + (h.currentValue || 0), 0)
+  const totalPnL = currentValue - totalInvested
+  const pnlPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
 
-  const getSipCount = () => {
-    return holdings.filter((h) => h.isSip || h.sipAmount > 0).length
-  }
+  // Asset allocation for pie chart
+  const allocation = breakdown ? [
+    { name: 'Equity', value: breakdown.equityValue || 0, key: 'EQUITY' },
+    { name: 'Mutual Funds', value: breakdown.mutualFundValue || 0, key: 'MUTUAL_FUND' },
+    { name: 'Gold', value: breakdown.goldValue || 0, key: 'GOLD' },
+    { name: 'Real Estate', value: breakdown.realEstateValue || 0, key: 'REAL_ESTATE' },
+    { name: 'Cash', value: breakdown.cashValue || 0, key: 'CASH' },
+    { name: 'Crypto', value: breakdown.cryptoValue || 0, key: 'CRYPTO' },
+  ].filter(a => a.value > 0) : []
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading dashboard...</div>
-    )
-  }
-
-  const assetAllocation = getAssetAllocation()
-  const topHoldings = getTopHoldings()
-  const sipCount = getSipCount()
+  // Top 5 holdings
+  const topHoldings = [...holdings]
+    .sort((a, b) => (b.currentValue || 0) - (a.currentValue || 0))
+    .slice(0, 5)
 
   return (
-    <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[var(--text)]">Dashboard</h1>
-          <p className="text-[var(--text-muted)] mt-1">Your financial overview at a glance</p>
-        </div>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <PageHeader
+        title="Dashboard"
+        subtitle="Your financial command center"
+      />
 
-        {/* Top Row - Main Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#3b82f6]/20 rounded-lg">
-                <Wallet className="w-6 h-6 text-[#3b82f6]" />
-              </div>
-              <span className="text-[#10b981] flex items-center text-sm">
-                <ArrowUpRight className="w-4 h-4 mr-1" />
-                Net Worth
-              </span>
+      {/* Top Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card hover className="bg-gradient-to-br from-blue-500/10 via-transparent to-transparent">
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-sm text-[var(--text-muted)] font-medium">Net Worth</p>
+            <div className="p-2 rounded-lg bg-blue-500/20">
+              <Wallet className="w-5 h-5 text-blue-400" />
             </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">
-              {formatCurrency(breakdown?.netWorth)}
-            </div>
-            <p className="text-[var(--text-muted)] text-sm">Total Net Worth</p>
           </div>
+          <p className="text-2xl font-bold mb-1">{formatINR(netWorth, { compact: true })}</p>
+          <p className="text-xs text-[var(--text-muted)]">
+            Assets {formatINR(totalAssets, { compact: true })} - Liabilities {formatINR(totalLiabilities, { compact: true })}
+          </p>
+        </Card>
 
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#10b981]/20 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-[#10b981]" />
-              </div>
-              <span className="text-[#10b981] flex items-center text-sm">
-                <ArrowUpRight className="w-4 h-4 mr-1" />
-                Assets
-              </span>
+        <Card hover>
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-sm text-[var(--text-muted)] font-medium">Portfolio Value</p>
+            <div className="p-2 rounded-lg bg-green-500/20">
+              <Activity className="w-5 h-5 text-green-400" />
             </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">
-              {formatCurrency(breakdown?.totalAssets)}
-            </div>
-            <p className="text-[var(--text-muted)] text-sm">Total Assets</p>
           </div>
-
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#ef4444]/20 rounded-lg">
-                <TrendingDown className="w-6 h-6 text-[#ef4444]" />
-              </div>
-              <span className="text-[#ef4444] flex items-center text-sm">
-                <ArrowDownRight className="w-4 h-4 mr-1" />
-                Liabilities
-              </span>
-            </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">
-              {formatCurrency(breakdown?.totalLiabilities)}
-            </div>
-            <p className="text-[var(--text-muted)] text-sm">Total Liabilities</p>
+          <p className="text-2xl font-bold mb-1">{formatINR(currentValue, { compact: true })}</p>
+          <div className={`text-xs flex items-center gap-1 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {totalPnL >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {formatINR(Math.abs(totalPnL), { compact: true })} ({formatPercent(pnlPercent)})
           </div>
+        </Card>
 
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#8b5cf6]/20 rounded-lg">
-                <Heart className="w-6 h-6 text-[#8b5cf6]" />
-              </div>
-              <span className="text-[#8b5cf6] flex items-center text-sm">
-                <Activity className="w-4 h-4 mr-1" />
-                Health
-              </span>
+        <Card hover>
+          <div className="flex items-start justify-between mb-3">
+            <UITooltip content="Extended Internal Rate of Return - annualized return considering all cash flows">
+              <p className="text-sm text-[var(--text-muted)] font-medium cursor-help">XIRR</p>
+            </UITooltip>
+            <div className="p-2 rounded-lg bg-purple-500/20">
+              <TrendingUp className="w-5 h-5 text-purple-400" />
             </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">
-              {healthScore?.score || 0}%
-            </div>
-            <p className="text-[var(--text-muted)] text-sm">Financial Health Score</p>
           </div>
-        </div>
+          <p className="text-2xl font-bold text-purple-400 mb-1">
+            {xirr?.xirr != null ? `${(xirr.xirr * 100).toFixed(2)}%` : '—'}
+          </p>
+          <p className="text-xs text-[var(--text-muted)]">Annualized return</p>
+        </Card>
 
-        {/* Second Row - Secondary Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#f59e0b]/20 rounded-lg">
-                <Activity className="w-6 h-6 text-[#f59e0b]" />
-              </div>
-              <span className="text-[var(--text-muted)] text-sm">Annual Return</span>
+        <Card hover>
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-sm text-[var(--text-muted)] font-medium">Health Score</p>
+            <div className="p-2 rounded-lg bg-amber-500/20">
+              <Sparkles className="w-5 h-5 text-amber-400" />
             </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">
-              {(xirr?.xirr || 0).toFixed(2)}%
-            </div>
-            <p className="text-[var(--text-muted)] text-sm">XIRR Returns</p>
           </div>
+          <p className="text-2xl font-bold text-amber-400 mb-1">
+            {healthScore?.grade || '—'}
+          </p>
+          <p className="text-xs text-[var(--text-muted)]">
+            {healthScore?.score ? `${healthScore.score.toFixed(0)}/100` : 'Not calculated'}
+          </p>
+        </Card>
+      </div>
 
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#ec4899]/20 rounded-lg">
-                <Target className="w-6 h-6 text-[#ec4899]" />
-              </div>
-              <span className="text-[var(--text-muted)] text-sm">Active Goals</span>
-            </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">{goals.length}</div>
-            <p className="text-[var(--text-muted)] text-sm">Financial Goals</p>
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Asset Allocation Pie */}
+        <Card className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <PieChartIcon className="w-4 h-4 text-blue-400" />
+              Asset Allocation
+            </h2>
+            <Link to="/net-worth" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              Details <ArrowUpRight className="w-3 h-3" />
+            </Link>
           </div>
-
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-[#10b981]/20 rounded-lg">
-                <Coins className="w-6 h-6 text-[#10b981]" />
+          {allocation.length === 0 ? (
+            <EmptyState
+              icon={PieChartIcon}
+              title="No assets yet"
+              description="Add your first holding to see allocation."
+              action={<Link to="/holdings" className="text-blue-400 hover:text-blue-300 text-sm">Add Holding →</Link>}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div style={{ height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={allocation}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {allocation.map((entry, idx) => (
+                        <Cell key={idx} fill={ASSET_COLORS[entry.key] || CHART_PALETTE[idx % CHART_PALETTE.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                      }}
+                      formatter={(v) => formatINR(v)}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-              <span className="text-[var(--text-muted)] text-sm">Recurring</span>
-            </div>
-            <div className="text-3xl font-bold text-[var(--text)] mb-1">{sipCount}</div>
-            <p className="text-[var(--text-muted)] text-sm">SIP / Investments</p>
-          </div>
-        </div>
-
-        {/* Middle Row - Charts and Insights */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Asset Allocation Pie Chart */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-[var(--text)]">Asset Allocation</h2>
-              <PieChartIcon className="w-5 h-5 text-[var(--text-muted)]" />
-            </div>
-            {assetAllocation.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={assetAllocation}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
-                    }
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {assetAllocation.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => formatCurrency(value)}
-                    contentStyle={{
-                      backgroundColor: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'var(--text)',
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-[var(--text-muted)]">
-                No asset data available
-              </div>
-            )}
-          </div>
-
-          {/* AI Insights Section */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-[var(--text)]">AI Insights</h2>
-              <Lightbulb className="w-5 h-5 text-[var(--text-muted)]" />
-            </div>
-            <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
-              {insights.length > 0 ? (
-                insights.map((insight, index) => (
-                  <div
-                    key={index}
-                    className="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-4 hover:border-[#3b82f6] transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-[#3b82f6]/20 rounded-lg flex-shrink-0">
-                        <Lightbulb className="w-4 h-4 text-[#3b82f6]" />
+              <div className="space-y-2">
+                {allocation.map((item, idx) => {
+                  const pct = totalAssets > 0 ? (item.value / totalAssets) * 100 : 0
+                  return (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--input-bg)]/50 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: ASSET_COLORS[item.key] || CHART_PALETTE[idx % CHART_PALETTE.length] }}
+                        />
+                        <span className="text-sm truncate">{item.name}</span>
                       </div>
-                      <div>
-                        <p className="text-[var(--text)] text-sm">{insight.message || insight.text || insight}</p>
-                        {insight.type && (
-                          <span className="inline-block mt-2 text-xs px-2 py-1 rounded-full bg-[#3b82f6]/20 text-[#3b82f6]">
-                            {insight.type}
-                          </span>
-                        )}
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-medium">{formatINR(item.value, { compact: true })}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{pct.toFixed(1)}%</p>
                       </div>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-center justify-center h-[200px] text-[var(--text-muted)]">
-                  No insights available
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Row - Recent Holdings */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-[var(--text)]">Top Holdings</h2>
-            <div className="flex gap-2">
-              <Landmark className="w-5 h-5 text-[var(--text-muted)]" />
-            </div>
-          </div>
-          {topHoldings.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-[var(--border)]">
-                    <th className="text-left text-[var(--text-muted)] text-sm font-medium pb-3">Asset</th>
-                    <th className="text-left text-[var(--text-muted)] text-sm font-medium pb-3">Type</th>
-                    <th className="text-right text-[var(--text-muted)] text-sm font-medium pb-3">Quantity</th>
-                    <th className="text-right text-[var(--text-muted)] text-sm font-medium pb-3">Buy Price</th>
-                    <th className="text-right text-[var(--text-muted)] text-sm font-medium pb-3">Current Price</th>
-                    <th className="text-right text-[var(--text-muted)] text-sm font-medium pb-3">Value</th>
-                    <th className="text-right text-[var(--text-muted)] text-sm font-medium pb-3">P&L</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topHoldings.map((holding, index) => {
-                    const value = holding.currentValue || (holding.quantity * holding.currentPrice) || 0
-                    const cost = holding.buyPrice * holding.quantity || 0
-                    const pl = value - cost
-                    const plPercent = cost > 0 ? ((pl / cost) * 100).toFixed(2) : 0
-                    const isPositive = pl >= 0
-
-                    return (
-                      <tr
-                        key={index}
-                        className="border-b border-[var(--border)]/50 hover:bg-[var(--bg)]/50 transition-colors"
-                      >
-                        <td className="py-4 text-[var(--text)] font-medium">{holding.name || holding.symbol}</td>
-                        <td className="py-4 text-[var(--text-muted)] text-sm">{holding.type || 'Equity'}</td>
-                        <td className="py-4 text-right text-[var(--text)] text-sm">
-                          {holding.quantity?.toLocaleString('en-IN') || '-'}
-                        </td>
-                        <td className="py-4 text-right text-[var(--text)] text-sm">
-                          {formatCurrency(holding.buyPrice)}
-                        </td>
-                        <td className="py-4 text-right text-[var(--text)] text-sm">
-                          {formatCurrency(holding.currentPrice)}
-                        </td>
-                        <td className="py-4 text-right text-[var(--text)] font-medium">
-                          {formatCurrency(value)}
-                        </td>
-                        <td className="py-4 text-right">
-                          <span
-                            className={`inline-flex items-center gap-1 text-sm font-medium ${
-                              isPositive ? 'text-[#10b981]' : 'text-[#ef4444]'
-                            }`}
-                          >
-                            {isPositive ? (
-                              <ArrowUpRight className="w-3 h-3" />
-                            ) : (
-                              <ArrowDownRight className="w-3 h-3" />
-                            )}
-                            {isPositive ? '+' : ''}
-                            {plPercent}%
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-[200px] text-[var(--text-muted)]">
-              No holdings available
+                  )
+                })}
+              </div>
             </div>
           )}
-        </div>
+        </Card>
 
-        {/* Asset Breakdown Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-6">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Coins className="w-4 h-4 text-[#3b82f6]" />
-              <span className="text-[var(--text-muted)] text-xs">Liquid</span>
-            </div>
-            <div className="text-[var(--text)] font-semibold text-sm">
-              {formatCurrency(breakdown?.liquidAssets)}
-            </div>
+        {/* AI Insights */}
+        <Card className="bg-gradient-to-br from-purple-500/5 via-transparent to-blue-500/5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-purple-400" />
+              AI Insights
+            </h2>
+            <Link to="/ai-chat" className="text-xs text-blue-400 hover:text-blue-300">
+              Chat →
+            </Link>
           </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-4 h-4 text-[#10b981]" />
-              <span className="text-[var(--text-muted)] text-xs">Equity</span>
+          {insights.length === 0 ? (
+            <div className="text-center py-8">
+              <Lightbulb className="w-10 h-10 text-[var(--text-muted)] mx-auto mb-2" />
+              <p className="text-sm text-[var(--text-muted)]">No insights yet</p>
             </div>
-            <div className="text-[var(--text)] font-semibold text-sm">
-              {formatCurrency(breakdown?.equityValue)}
+          ) : (
+            <div className="space-y-3">
+              {insights.slice(0, 4).map((insight, idx) => {
+                const text = typeof insight === 'string' ? insight : insight.message || insight.text || JSON.stringify(insight)
+                return (
+                  <div key={idx} className="flex items-start gap-2 p-3 rounded-lg bg-[var(--input-bg)]/50">
+                    <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-[var(--text)]">{text}</p>
+                  </div>
+                )
+              })}
             </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Bottom Row: Top Holdings + Goals */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-green-400" />
+              Top Holdings
+            </h2>
+            <Link to="/holdings" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              View all <ArrowUpRight className="w-3 h-3" />
+            </Link>
           </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Gem className="w-4 h-4 text-[#f59e0b]" />
-              <span className="text-[var(--text-muted)] text-xs">Gold</span>
+          {topHoldings.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              title="No holdings"
+              description="Add your first investment to track its performance."
+            />
+          ) : (
+            <div className="space-y-2">
+              {topHoldings.map((h) => {
+                const Icon = ASSET_ICONS[h.assetType] || Coins
+                const pnl = h.unrealizedPnl || 0
+                const pnlPct = h.averageBuyPrice && h.currentPrice
+                  ? ((h.currentPrice - h.averageBuyPrice) / h.averageBuyPrice) * 100
+                  : 0
+                return (
+                  <div key={h.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-[var(--input-bg)]/50 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2 rounded-lg bg-blue-500/10 flex-shrink-0">
+                        <Icon className="w-4 h-4 text-blue-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{h.symbol}</p>
+                        <p className="text-xs text-[var(--text-muted)] truncate">{h.name || h.assetType}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-semibold">{formatINR(h.currentValue, { compact: true })}</p>
+                      <p className={`text-xs ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatPercent(pnlPct)}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <div className="text-[var(--text)] font-semibold text-sm">
-              {formatCurrency(breakdown?.goldValue)}
-            </div>
+          )}
+        </Card>
+
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Target className="w-4 h-4 text-blue-400" />
+              Goals Progress
+            </h2>
+            <Link to="/goals" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              View all <ArrowUpRight className="w-3 h-3" />
+            </Link>
           </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Building2 className="w-4 h-4 text-[#ef4444]" />
-              <span className="text-[var(--text-muted)] text-xs">Real Estate</span>
+          {goals.length === 0 ? (
+            <EmptyState
+              icon={Target}
+              title="No goals"
+              description="Set financial goals to track your progress."
+            />
+          ) : (
+            <div className="space-y-3">
+              {goals.slice(0, 4).map((goal) => {
+                const progress = goal.targetAmount > 0
+                  ? Math.min((goal.currentAmount / goal.targetAmount) * 100, 100)
+                  : 0
+                return (
+                  <div key={goal.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium truncate">{goal.name}</span>
+                      <span className="text-xs text-[var(--text-muted)]">{progress.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full bg-[var(--input-bg)] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <div className="text-[var(--text)] font-semibold text-sm">
-              {formatCurrency(breakdown?.realEstateValue)}
-            </div>
-          </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-4 h-4 text-[#8b5cf6]" />
-              <span className="text-[var(--text-muted)] text-xs">Cash</span>
-            </div>
-            <div className="text-[var(--text)] font-semibold text-sm">
-              {formatCurrency(breakdown?.cashValue)}
-            </div>
-          </div>
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Bitcoin className="w-4 h-4 text-[#ec4899]" />
-              <span className="text-[var(--text-muted)] text-xs">Crypto</span>
-            </div>
-            <div className="text-[var(--text)] font-semibold text-sm">
-              {formatCurrency(breakdown?.cryptoValue)}
-            </div>
-          </div>
-        </div>
+          )}
+        </Card>
+      </div>
     </div>
   )
 }

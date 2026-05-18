@@ -730,8 +730,9 @@ export default function Holdings() {
             </button>
           ))}
         </div>
-        <table className="w-full">
-          <thead className="bg-[var(--bg)]/50 text-left">
+        <div className="overflow-x-auto -mx-4 sm:mx-0">
+        <table className="w-full min-w-[800px]">
+          <thead className="bg-[var(--bg)]/50 text-left sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Name</th>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Demat</th>
@@ -799,6 +800,7 @@ export default function Holdings() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {invoiceHolding && (

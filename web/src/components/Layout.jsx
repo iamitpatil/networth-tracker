@@ -80,7 +80,7 @@ export default function Layout() {
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sidebar-bg sidebar-border border-r sidebar-shadow transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sidebar-bg sidebar-border border-r sidebar-shadow transform transition-transform duration-200 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex items-center justify-between h-16 px-6 sidebar-border border-b bg-gradient-to-r from-blue-500/5 to-transparent">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
@@ -93,7 +93,7 @@ export default function Layout() {
           </button>
         </div>
 
-        <nav className="p-4 space-y-5 overflow-y-auto h-[calc(100vh-16rem)]">
+        <nav className="p-4 space-y-5 overflow-y-auto flex-1 min-h-0">
           {sections.map((section) => (
             <div key={section.label}>
               <button
@@ -125,7 +125,7 @@ export default function Layout() {
             ))}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 sidebar-border border-t sidebar-bg bg-gradient-to-t from-blue-500/[0.02] to-transparent">
+        <div className="p-4 sidebar-border border-t sidebar-bg bg-gradient-to-t from-blue-500/[0.02] to-transparent flex-shrink-0">
           <div className="flex items-center gap-1 mb-2 px-1">
             <button
               onClick={() => setView('self')}
