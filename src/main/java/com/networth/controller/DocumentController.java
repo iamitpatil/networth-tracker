@@ -34,6 +34,17 @@ public class DocumentController {
                 documentService.getUserDocuments(UUID.fromString(userDetails.getUsername())));
     }
 
+    /**
+     * Get all user's documents grouped by source section.
+     * Returns: {"Tax Documents": [...], "Salary Documents": [...], ...}
+     */
+    @GetMapping("/grouped")
+    public ResponseEntity<java.util.Map<String, List<Document>>> getGroupedDocuments(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(documentService.getGroupedDocuments(
+                UUID.fromString(userDetails.getUsername())));
+    }
+
     @GetMapping("/demat/{dematAccountId}")
     public ResponseEntity<List<Document>> getDematDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
@@ -60,11 +71,16 @@ public class DocumentController {
             @RequestParam(required = false) String description,
             @RequestParam(required = false) String dematAccountId,
             @RequestParam(required = false) String holdingId,
-            @RequestParam(required = false) String salaryId) {
+            @RequestParam(required = false) String salaryId,
+            @RequestParam(required = false) String form16Id,
+            @RequestParam(required = false) String itrFilingId,
+            @RequestParam(required = false) String bankAccountId) {
         try {
             Document doc = documentService.uploadDocument(
                     UUID.fromString(userDetails.getUsername()),
-                    file, category, description, dematAccountId, holdingId, salaryId);
+                    file, category, description,
+                    dematAccountId, holdingId, salaryId,
+                    form16Id, itrFilingId, bankAccountId);
             return ResponseEntity.status(HttpStatus.CREATED).body(doc);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();

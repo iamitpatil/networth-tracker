@@ -32,6 +32,15 @@ public class Document {
     @Column(name = "salary_id")
     private UUID salaryId;
 
+    @Column(name = "form16_id")
+    private UUID form16Id;
+
+    @Column(name = "itr_filing_id")
+    private UUID itrFilingId;
+
+    @Column(name = "bank_account_id")
+    private UUID bankAccountId;
+
     @Column(name = "original_filename", nullable = false)
     private String originalFilename;
 

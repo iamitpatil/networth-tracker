@@ -30,7 +30,8 @@ public class DocumentService {
 
     @Transactional
     public Document uploadDocument(UUID userId, MultipartFile file, String category, String description,
-                                    String dematAccountId, String holdingId, String salaryId) throws IOException {
+                                    String dematAccountId, String holdingId, String salaryId,
+                                    String form16Id, String itrFilingId, String bankAccountId) throws IOException {
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null) originalFilename = "unnamed";
 
@@ -44,6 +45,9 @@ public class DocumentService {
                 .dematAccountId(dematAccountId != null && !dematAccountId.isBlank() ? UUID.fromString(dematAccountId) : null)
                 .holdingId(holdingId != null && !holdingId.isBlank() ? UUID.fromString(holdingId) : null)
                 .salaryId(salaryId != null && !salaryId.isBlank() ? UUID.fromString(salaryId) : null)
+                .form16Id(form16Id != null && !form16Id.isBlank() ? UUID.fromString(form16Id) : null)
+                .itrFilingId(itrFilingId != null && !itrFilingId.isBlank() ? UUID.fromString(itrFilingId) : null)
+                .bankAccountId(bankAccountId != null && !bankAccountId.isBlank() ? UUID.fromString(bankAccountId) : null)
                 .originalFilename(originalFilename)
                 .storedFilename(storedFilename)
                 .contentType(file.getContentType())
@@ -53,6 +57,59 @@ public class DocumentService {
                 .build();
 
         return documentRepository.save(doc);
+    }
+
+    /**
+     * Backward-compatible overload for existing callers.
+     */
+    @Transactional
+    public Document uploadDocument(UUID userId, MultipartFile file, String category, String description,
+                                    String dematAccountId, String holdingId, String salaryId) throws IOException {
+        return uploadDocument(userId, file, category, description,
+                dematAccountId, holdingId, salaryId, null, null, null);
+    }
+
+    /**
+     * Group all user's documents by their source section.
+     * Returns: { "Tax Documents": [...], "Salary Documents": [...], etc. }
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, java.util.List<Document>> getGroupedDocuments(UUID userId) {
+        java.util.List<Document> all = documentRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        java.util.Map<String, java.util.List<Document>> groups = new java.util.LinkedHashMap<>();
+
+        // Initialize groups in priority order
+        groups.put("Tax Documents", new java.util.ArrayList<>());
+        groups.put("Salary Documents", new java.util.ArrayList<>());
+        groups.put("Demat Statements", new java.util.ArrayList<>());
+        groups.put("Holding Documents", new java.util.ArrayList<>());
+        groups.put("Bank Statements", new java.util.ArrayList<>());
+        groups.put("Other Documents", new java.util.ArrayList<>());
+
+        for (Document doc : all) {
+            String category = doc.getCategory() != null ? doc.getCategory().toUpperCase() : "OTHER";
+
+            if (doc.getForm16Id() != null || doc.getItrFilingId() != null
+                    || "FORM_16".equals(category) || "ITR".equals(category)
+                    || "TAX_RETURN".equals(category)) {
+                groups.get("Tax Documents").add(doc);
+            } else if (doc.getSalaryId() != null || "PAYSLIP".equals(category) || "SALARY".equals(category)) {
+                groups.get("Salary Documents").add(doc);
+            } else if (doc.getDematAccountId() != null || "DEMAT_STATEMENT".equals(category)) {
+                groups.get("Demat Statements").add(doc);
+            } else if (doc.getHoldingId() != null) {
+                groups.get("Holding Documents").add(doc);
+            } else if (doc.getBankAccountId() != null || "BANK_STATEMENT".equals(category)) {
+                groups.get("Bank Statements").add(doc);
+            } else {
+                groups.get("Other Documents").add(doc);
+            }
+        }
+
+        // Remove empty groups to keep response clean
+        groups.entrySet().removeIf(e -> e.getValue().isEmpty());
+
+        return groups;
     }
 
     @Transactional(readOnly = true)

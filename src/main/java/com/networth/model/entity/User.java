@@ -1,5 +1,6 @@
 package com.networth.model.entity;
 
+import com.networth.model.enums.TaxRegime;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -56,4 +57,9 @@ public class User {
 
     @Column(name = "active_theme_id")
     private UUID activeThemeId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tax_regime", length = 10)
+    @Builder.Default
+    private TaxRegime taxRegime = TaxRegime.NEW;
 }
