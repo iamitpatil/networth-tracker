@@ -1,8 +1,11 @@
 package com.networth.service;
 
+import com.networth.exception.AccessDeniedException;
+import com.networth.exception.ResourceNotFoundException;
 import com.networth.model.entity.Salary;
 import com.networth.repository.SalaryRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +17,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SalaryService {
 
     private final SalaryRepository repository;
@@ -39,10 +43,7 @@ public class SalaryService {
 
     @Transactional
     public Salary updateSalary(UUID userId, UUID salaryId, SalaryRequest req) {
-        Salary salary = repository.findById(salaryId)
-                .orElseThrow(() -> new IllegalArgumentException("Salary record not found"));
-        if (!salary.getUserId().equals(userId))
-            throw new IllegalArgumentException("Access denied");
+        Salary salary = findOwnedSalary(userId, salaryId);
         if (req.employerName() != null) salary.setEmployerName(req.employerName());
         if (req.amount() != null) salary.setAmount(req.amount());
         if (req.bankAccountId() != null) salary.setBankAccountId(req.bankAccountId());
@@ -53,11 +54,21 @@ public class SalaryService {
 
     @Transactional
     public void deleteSalary(UUID userId, UUID salaryId) {
-        Salary salary = repository.findById(salaryId)
-                .orElseThrow(() -> new IllegalArgumentException("Salary record not found"));
-        if (!salary.getUserId().equals(userId))
-            throw new IllegalArgumentException("Access denied");
+        Salary salary = findOwnedSalary(userId, salaryId);
         repository.delete(salary);
+    }
+
+    /**
+     * Find a salary ensuring it belongs to the given user.
+     */
+    private Salary findOwnedSalary(UUID userId, UUID salaryId) {
+        Salary salary = repository.findById(salaryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Salary", salaryId.toString()));
+        if (!salary.getUserId().equals(userId)) {
+            log.warn("User {} attempted to access salary {} owned by {}", userId, salaryId, salary.getUserId());
+            throw new AccessDeniedException("Salary", salaryId.toString());
+        }
+        return salary;
     }
 
     @Transactional(readOnly = true)
@@ -71,9 +82,8 @@ public class SalaryService {
     }
 
     @Transactional(readOnly = true)
-    public Salary getSalary(UUID salaryId) {
-        return repository.findById(salaryId)
-                .orElseThrow(() -> new IllegalArgumentException("Salary not found"));
+    public Salary getSalary(UUID userId, UUID salaryId) {
+        return findOwnedSalary(userId, salaryId);
     }
 
     public record SalaryRequest(

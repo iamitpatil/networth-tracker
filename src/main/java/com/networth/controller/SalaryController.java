@@ -58,7 +58,8 @@ public class SalaryController {
         UUID userId = UUID.fromString(userDetails.getUsername());
         Salary salary = salaryService.createSalary(userId, request);
         if (request.documentId() != null) {
-            documentService.linkDocumentToSalary(UUID.fromString(request.documentId()), salary.getId());
+            // Now verifies document ownership before linking
+            documentService.linkDocumentToSalary(userId, UUID.fromString(request.documentId()), salary.getId());
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(salary);
     }
@@ -84,9 +85,9 @@ public class SalaryController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable UUID id) {
         UUID userId = UUID.fromString(userDetails.getUsername());
-        Salary salary = salaryService.getSalary(id);
-        if (!salary.getUserId().equals(userId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        List<Document> docs = documentService.getSalaryDocuments(id);
+        // Both methods now verify ownership internally - throws AccessDeniedException if not owner
+        salaryService.getSalary(userId, id);
+        List<Document> docs = documentService.getSalaryDocuments(userId, id);
         if (docs.isEmpty()) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(docs.get(0));
     }

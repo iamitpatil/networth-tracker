@@ -44,24 +44,39 @@ public class LiabilityController {
     }
 
     @GetMapping("/{id}/emi-schedule")
-    public ResponseEntity<List<EMIScheduleEntry>> getEMISchedule(@PathVariable String id) {
-        return ResponseEntity.ok(emiService.generateEMISchedule(UUID.fromString(id)));
+    public ResponseEntity<List<EMIScheduleEntry>> getEMISchedule(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(emiService.generateEMISchedule(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id)));
     }
 
     @PostMapping("/{id}/emi-pay")
     public ResponseEntity<Liability> markEMIPaid(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestBody Map<String, Object> request) {
-        LocalDate paymentDate = LocalDate.parse(request.get("paymentDate").toString());
+        LocalDate paymentDate = request.get("paymentDate") != null
+                ? LocalDate.parse(request.get("paymentDate").toString())
+                : LocalDate.now();
         BigDecimal amount = request.get("amount") != null
                 ? new BigDecimal(request.get("amount").toString())
                 : null;
-        return ResponseEntity.ok(emiService.markEMIPaid(UUID.fromString(id), paymentDate, amount));
+        return ResponseEntity.ok(emiService.markEMIPaid(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id),
+                paymentDate,
+                amount));
     }
 
     @GetMapping("/{id}/summary")
-    public ResponseEntity<Map<String, Object>> getLoanSummary(@PathVariable String id) {
-        return ResponseEntity.ok(emiService.getLoanSummary(UUID.fromString(id)));
+    public ResponseEntity<Map<String, Object>> getLoanSummary(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(emiService.getLoanSummary(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id)));
     }
 
     @DeleteMapping("/{id}")

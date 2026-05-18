@@ -35,15 +35,21 @@ public class DocumentController {
     }
 
     @GetMapping("/demat/{dematAccountId}")
-    public ResponseEntity<List<Document>> getDematDocuments(@PathVariable String dematAccountId) {
-        return ResponseEntity.ok(
-                documentService.getDematAccountDocuments(UUID.fromString(dematAccountId)));
+    public ResponseEntity<List<Document>> getDematDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String dematAccountId) {
+        return ResponseEntity.ok(documentService.getDematAccountDocuments(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(dematAccountId)));
     }
 
     @GetMapping("/holding/{holdingId}")
-    public ResponseEntity<List<Document>> getHoldingDocuments(@PathVariable String holdingId) {
-        return ResponseEntity.ok(
-                documentService.getHoldingDocuments(UUID.fromString(holdingId)));
+    public ResponseEntity<List<Document>> getHoldingDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String holdingId) {
+        return ResponseEntity.ok(documentService.getHoldingDocuments(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(holdingId)));
     }
 
     @PostMapping("/upload")
@@ -69,12 +75,20 @@ public class DocumentController {
     public ResponseEntity<Resource> downloadDocument(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id) throws IOException {
-        UUID userId = UUID.fromString(userDetails.getUsername());
-        Document doc = documentService.getDocument(UUID.fromString(id));
+        return serveDocument(userDetails, id, "attachment");
+    }
 
-        if (!doc.getUserId().equals(userId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
+    @GetMapping("/{id}/view")
+    public ResponseEntity<Resource> viewDocument(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) throws IOException {
+        return serveDocument(userDetails, id, "inline");
+    }
+
+    private ResponseEntity<Resource> serveDocument(UserDetails userDetails, String id, String disposition) throws IOException {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        // getDocument now verifies ownership; throws AccessDeniedException if not owner
+        Document doc = documentService.getDocument(userId, UUID.fromString(id));
 
         Path filePath = documentService.getDocumentPath(doc);
         if (!Files.exists(filePath)) {
@@ -90,7 +104,7 @@ public class DocumentController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .contentLength(doc.getFileSize())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + doc.getOriginalFilename() + "\"")
+                        disposition + "; filename=\"" + doc.getOriginalFilename() + "\"")
                 .body(resource);
     }
 

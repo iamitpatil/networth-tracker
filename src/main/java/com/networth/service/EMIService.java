@@ -1,12 +1,16 @@
 package com.networth.service;
 
+import com.networth.exception.AccessDeniedException;
+import com.networth.exception.ResourceNotFoundException;
 import com.networth.model.entity.Liability;
 import com.networth.repository.LiabilityRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -17,7 +21,12 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EMIService {
+
+    private static final MathContext MC = new MathContext(10, RoundingMode.HALF_UP);
+    private static final BigDecimal TWELVE = BigDecimal.valueOf(12);
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final LiabilityRepository liabilityRepository;
 
@@ -49,31 +58,35 @@ public class EMIService {
     }
 
     @Transactional(readOnly = true)
-    public List<EMIScheduleEntry> generateEMISchedule(UUID liabilityId) {
-        Liability liability = liabilityRepository.findById(liabilityId)
-                .orElseThrow(() -> new IllegalArgumentException("Liability not found"));
+    public List<EMIScheduleEntry> generateEMISchedule(UUID userId, UUID liabilityId) {
+        Liability liability = findOwnedLiability(userId, liabilityId);
 
         long totalMonths = java.time.temporal.ChronoUnit.MONTHS.between(liability.getStartDate(), liability.getEndDate());
-        double monthlyRate = liability.getInterestRate().doubleValue() / 12 / 100;
-        double outstanding = liability.getOriginalAmount().doubleValue();
+        // Monthly rate: annualRate / 12 / 100 (using BigDecimal precision)
+        BigDecimal monthlyRate = liability.getInterestRate()
+                .divide(TWELVE, MC)
+                .divide(HUNDRED, MC);
+        BigDecimal outstanding = liability.getOriginalAmount();
 
         List<EMIScheduleEntry> schedule = new ArrayList<>();
         LocalDate currentDate = liability.getStartDate().plusMonths(1);
 
         for (int month = 1; month <= totalMonths; month++) {
-            double interestComponent = outstanding * monthlyRate;
-            double principalComponent = liability.getMonthlyEmi().doubleValue() - interestComponent;
-            outstanding -= principalComponent;
+            BigDecimal interestComponent = outstanding.multiply(monthlyRate, MC);
+            BigDecimal principalComponent = liability.getMonthlyEmi().subtract(interestComponent);
+            outstanding = outstanding.subtract(principalComponent);
 
-            if (outstanding < 0) outstanding = 0;
+            if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
+                outstanding = BigDecimal.ZERO;
+            }
 
             schedule.add(EMIScheduleEntry.builder()
                     .emiNumber(month)
                     .dueDate(currentDate)
                     .emiAmount(liability.getMonthlyEmi())
-                    .principalComponent(BigDecimal.valueOf(principalComponent).setScale(2, RoundingMode.HALF_UP))
-                    .interestComponent(BigDecimal.valueOf(interestComponent).setScale(2, RoundingMode.HALF_UP))
-                    .outstandingBalance(BigDecimal.valueOf(outstanding).setScale(2, RoundingMode.HALF_UP))
+                    .principalComponent(principalComponent.setScale(2, RoundingMode.HALF_UP))
+                    .interestComponent(interestComponent.setScale(2, RoundingMode.HALF_UP))
+                    .outstandingBalance(outstanding.setScale(2, RoundingMode.HALF_UP))
                     .isPaid(false)
                     .build());
 
@@ -84,43 +97,41 @@ public class EMIService {
     }
 
     @Transactional
-    public Liability markEMIPaid(UUID liabilityId, LocalDate paymentDate, BigDecimal amount) {
-        Liability liability = liabilityRepository.findById(liabilityId)
-                .orElseThrow(() -> new IllegalArgumentException("Liability not found"));
+    public Liability markEMIPaid(UUID userId, UUID liabilityId, LocalDate paymentDate, BigDecimal amount) {
+        Liability liability = findOwnedLiability(userId, liabilityId);
 
         BigDecimal deductAmount = amount != null ? amount : liability.getMonthlyEmi();
         BigDecimal newOutstanding = liability.getOutstandingAmount().subtract(deductAmount);
         liability.setOutstandingAmount(newOutstanding.max(BigDecimal.ZERO));
-        liability.setNextEmiDate(liability.getNextEmiDate().plusMonths(1));
-        liability.setUpdatedAt(java.time.LocalDateTime.now());
+        if (liability.getNextEmiDate() != null) {
+            liability.setNextEmiDate(liability.getNextEmiDate().plusMonths(1));
+        }
 
         return liabilityRepository.save(liability);
     }
 
     @Transactional
     public void deleteLiability(UUID userId, UUID liabilityId) {
-        Liability liability = liabilityRepository.findById(liabilityId)
-                .orElseThrow(() -> new IllegalArgumentException("Liability not found"));
-        if (!liability.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("Not authorized to delete this liability");
-        }
-        liabilityRepository.deleteById(liabilityId);
+        Liability liability = findOwnedLiability(userId, liabilityId);
+        liabilityRepository.delete(liability);
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> getLoanSummary(UUID liabilityId) {
-        Liability liability = liabilityRepository.findById(liabilityId)
-                .orElseThrow(() -> new IllegalArgumentException("Liability not found"));
+    public Map<String, Object> getLoanSummary(UUID userId, UUID liabilityId) {
+        Liability liability = findOwnedLiability(userId, liabilityId);
 
         long totalMonths = java.time.temporal.ChronoUnit.MONTHS.between(liability.getStartDate(), liability.getEndDate());
         long elapsedMonths = java.time.temporal.ChronoUnit.MONTHS.between(liability.getStartDate(), LocalDate.now());
-        long remainingMonths = totalMonths - elapsedMonths;
+        long remainingMonths = Math.max(0, totalMonths - elapsedMonths);
 
         BigDecimal totalPayable = liability.getMonthlyEmi().multiply(BigDecimal.valueOf(totalMonths));
         BigDecimal totalInterest = totalPayable.subtract(liability.getOriginalAmount());
         BigDecimal paidAmount = liability.getOriginalAmount().subtract(liability.getOutstandingAmount());
-        BigDecimal paidInterest = totalInterest.multiply(
-                BigDecimal.valueOf(elapsedMonths).divide(BigDecimal.valueOf(totalMonths), 4, RoundingMode.HALF_UP));
+        BigDecimal paidInterest = BigDecimal.ZERO;
+        if (totalMonths > 0) {
+            paidInterest = totalInterest.multiply(
+                    BigDecimal.valueOf(elapsedMonths).divide(BigDecimal.valueOf(totalMonths), 4, RoundingMode.HALF_UP));
+        }
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("originalAmount", liability.getOriginalAmount());
@@ -131,20 +142,62 @@ public class EMIService {
         summary.put("totalInterest", totalInterest);
         summary.put("paidAmount", paidAmount);
         summary.put("paidInterest", paidInterest);
-        summary.put("progressPercentage", paidAmount.divide(liability.getOriginalAmount(), 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
+
+        BigDecimal progressPct = BigDecimal.ZERO;
+        if (liability.getOriginalAmount().compareTo(BigDecimal.ZERO) > 0) {
+            progressPct = paidAmount.divide(liability.getOriginalAmount(), 4, RoundingMode.HALF_UP)
+                    .multiply(HUNDRED).setScale(2, RoundingMode.HALF_UP);
+        }
+        summary.put("progressPercentage", progressPct);
         summary.put("remainingMonths", remainingMonths);
         summary.put("nextEmiDate", liability.getNextEmiDate());
         return summary;
     }
 
+    /**
+     * Calculate EMI using BigDecimal precision (no double float errors).
+     * Formula: EMI = P * r * (1+r)^n / ((1+r)^n - 1)
+     * Where: P = principal, r = monthly rate, n = number of months
+     */
     public BigDecimal calculateEMI(BigDecimal principal, BigDecimal annualRate, long tenureMonths) {
-        double monthlyRate = annualRate.doubleValue() / 12 / 100;
-        double emi = principal.doubleValue() * monthlyRate *
-                Math.pow(1 + monthlyRate, tenureMonths) /
-                (Math.pow(1 + monthlyRate, tenureMonths) - 1);
+        if (tenureMonths <= 0) {
+            throw new IllegalArgumentException("Tenure must be positive");
+        }
+        if (principal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Principal must be positive");
+        }
+        if (annualRate.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Interest rate cannot be negative");
+        }
 
-        return BigDecimal.valueOf(emi).setScale(2, RoundingMode.HALF_UP);
+        // Handle zero interest case
+        if (annualRate.compareTo(BigDecimal.ZERO) == 0) {
+            return principal.divide(BigDecimal.valueOf(tenureMonths), 2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal monthlyRate = annualRate.divide(TWELVE, MC).divide(HUNDRED, MC);
+        BigDecimal onePlusR = BigDecimal.ONE.add(monthlyRate);
+        // (1+r)^n
+        BigDecimal onePlusRPowerN = onePlusR.pow((int) tenureMonths, MC);
+        // P * r * (1+r)^n
+        BigDecimal numerator = principal.multiply(monthlyRate, MC).multiply(onePlusRPowerN, MC);
+        // (1+r)^n - 1
+        BigDecimal denominator = onePlusRPowerN.subtract(BigDecimal.ONE);
+
+        return numerator.divide(denominator, 2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Find a liability ensuring it belongs to the given user.
+     */
+    private Liability findOwnedLiability(UUID userId, UUID liabilityId) {
+        Liability liability = liabilityRepository.findById(liabilityId)
+                .orElseThrow(() -> new ResourceNotFoundException("Liability", liabilityId.toString()));
+        if (!liability.getUserId().equals(userId)) {
+            log.warn("User {} attempted to access liability {} owned by {}", userId, liabilityId, liability.getUserId());
+            throw new AccessDeniedException("Liability", liabilityId.toString());
+        }
+        return liability;
     }
 
     @lombok.Builder
