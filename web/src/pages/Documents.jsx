@@ -24,10 +24,12 @@ function formatDate(dateStr) {
 
 export default function Documents() {
   const [documents, setDocuments] = useState([])
+  const [groupedDocs, setGroupedDocs] = useState({})
   const [dematAccounts, setDematAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+  const [viewMode, setViewMode] = useState('grouped') // 'grouped' or 'flat'
   const [category, setCategory] = useState('OTHER')
   const [description, setDescription] = useState('')
   const [dematAccountId, setDematAccountId] = useState('')
@@ -35,14 +37,20 @@ export default function Documents() {
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
 
-  useEffect(() => {
+  const loadDocuments = () => {
     Promise.all([
       client.get('/documents'),
+      client.get('/documents/grouped'),
       client.get('/demat-accounts'),
-    ]).then(([docRes, dematRes]) => {
+    ]).then(([docRes, groupRes, dematRes]) => {
       setDocuments(docRes.data || [])
+      setGroupedDocs(groupRes.data || {})
       setDematAccounts(dematRes.data || [])
     }).catch(console.error).finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadDocuments()
   }, [])
 
   const dematMap = {}
@@ -85,6 +93,20 @@ export default function Documents() {
     }
   }
 
+  async function handleView(doc) {
+    try {
+      const { data } = await client.get(`/documents/${doc.id}/view`, {
+        responseType: 'blob',
+      })
+      const blob = new Blob([data], { type: doc.contentType || 'application/octet-stream' })
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000)
+    } catch (err) {
+      console.error('View failed', err)
+    }
+  }
+
   async function handleDownload(doc) {
     try {
       const { data, headers } = await client.get(`/documents/${doc.id}/download`, {
@@ -119,12 +141,28 @@ export default function Documents() {
           <h1 className="text-2xl font-bold">Documents</h1>
           <p className="text-slate-400 text-sm mt-1">Store invoices, ID proofs, statements and more</p>
         </div>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showUpload ? 'bg-slate-600 hover:bg-slate-500' : 'bg-blue-500 hover:bg-blue-600'}`}
-        >
-          <Upload className="w-4 h-4" /> {showUpload ? 'Cancel' : 'Upload'}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-700 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('grouped')}
+              className={`px-3 py-1 rounded text-sm transition ${viewMode === 'grouped' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Grouped
+            </button>
+            <button
+              onClick={() => setViewMode('flat')}
+              className={`px-3 py-1 rounded text-sm transition ${viewMode === 'flat' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              All
+            </button>
+          </div>
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showUpload ? 'bg-slate-600 hover:bg-slate-500' : 'bg-blue-500 hover:bg-blue-600'}`}
+          >
+            <Upload className="w-4 h-4" /> {showUpload ? 'Cancel' : 'Upload'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -223,7 +261,55 @@ export default function Documents() {
         </div>
       )}
 
-      {documents.length > 0 ? (
+      {documents.length === 0 ? (
+        <div className="bg-slate-800 rounded-xl p-12 border border-slate-700 text-center">
+          <FolderOpen className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400 mb-2">No documents uploaded yet</p>
+          <p className="text-slate-500 text-sm">Upload invoices, ID proofs, or account statements here</p>
+        </div>
+      ) : viewMode === 'grouped' ? (
+        <div className="space-y-4">
+          {Object.entries(groupedDocs).map(([groupName, docs]) => (
+            <div key={groupName} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+              <div className="px-4 py-3 bg-slate-700/30 border-b border-slate-700 flex items-center justify-between">
+                <h3 className="font-semibold text-sm">{groupName}</h3>
+                <span className="text-xs text-slate-400">{docs.length} {docs.length === 1 ? 'document' : 'documents'}</span>
+              </div>
+              <div className="divide-y divide-slate-700">
+                {docs.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between px-4 py-3 hover:bg-slate-700/30">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <FileText className="w-5 h-5 text-slate-500 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">{doc.originalFilename}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${CATEGORY_COLORS[doc.category] || CATEGORY_COLORS['OTHER']}`}>
+                            {doc.category.replace('_', ' ')}
+                          </span>
+                          <span className="text-xs text-slate-500">{formatSize(doc.fileSize)}</span>
+                          <span className="text-xs text-slate-500">•</span>
+                          <span className="text-xs text-slate-500">{formatDate(doc.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 ml-3">
+                      <button onClick={() => handleView(doc)} className="text-slate-500 hover:text-green-400 transition" title="View">
+                        <FileText className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDownload(doc)} className="text-slate-500 hover:text-blue-400 transition" title="Download">
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDelete(doc.id)} className="text-slate-500 hover:text-red-400 transition" title="Delete">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
         <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
           <table className="w-full">
             <thead className="bg-slate-700/50 text-left">
@@ -267,6 +353,9 @@ export default function Documents() {
                   <td className="px-4 py-3 text-sm text-slate-400">{formatDate(doc.createdAt)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
+                      <button onClick={() => handleView(doc)} className="text-slate-500 hover:text-green-400 transition" title="View">
+                        <FileText className="w-4 h-4" />
+                      </button>
                       <button onClick={() => handleDownload(doc)} className="text-slate-500 hover:text-blue-400 transition" title="Download">
                         <Download className="w-4 h-4" />
                       </button>
@@ -279,12 +368,6 @@ export default function Documents() {
               ))}
             </tbody>
           </table>
-        </div>
-      ) : (
-        <div className="bg-slate-800 rounded-xl p-12 border border-slate-700 text-center">
-          <FolderOpen className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400 mb-2">No documents uploaded yet</p>
-          <p className="text-slate-500 text-sm">Upload invoices, ID proofs, or account statements here</p>
         </div>
       )}
     </div>

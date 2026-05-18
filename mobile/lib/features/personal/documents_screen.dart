@@ -14,7 +14,9 @@ class DocumentsScreen extends StatefulWidget {
 
 class _DocumentsScreenState extends State<DocumentsScreen> {
   List<Map<String, dynamic>> _documents = [];
+  Map<String, List<Map<String, dynamic>>> _groupedDocs = {};
   bool _isLoading = true;
+  bool _groupedView = true;
 
   @override
   void initState() {
@@ -25,8 +27,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   Future<void> _loadDocuments() async {
     setState(() => _isLoading = true);
     try {
-      final response = await ApiClient.get('/documents');
-      if (response is List) _documents = List<Map<String, dynamic>>.from(response);
+      final results = await Future.wait([
+        ApiClient.get('/documents'),
+        ApiClient.get('/documents/grouped').catchError((e) => {}),
+      ]);
+      if (results[0] is List) {
+        _documents = List<Map<String, dynamic>>.from(results[0] as List);
+      }
+      if (results[1] is Map) {
+        final groupedMap = results[1] as Map;
+        _groupedDocs = {};
+        groupedMap.forEach((key, value) {
+          if (value is List) {
+            _groupedDocs[key.toString()] = List<Map<String, dynamic>>.from(value);
+          }
+        });
+      }
     } catch (e) {
       // Handle error
     } finally {
@@ -266,7 +282,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final totalSize = _documents.fold<int>(0, (sum, d) => sum + ((d['fileSize'] ?? 0) as int));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Documents')),
+      appBar: AppBar(
+        title: const Text('Documents'),
+        actions: [
+          IconButton(
+            icon: Icon(_groupedView ? Icons.list : Icons.folder_open),
+            tooltip: _groupedView ? 'Show flat list' : 'Show grouped',
+            onPressed: () => setState(() => _groupedView = !_groupedView),
+          ),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -299,6 +324,17 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         ),
                       ),
                     )
+                  else if (_groupedView && _groupedDocs.isNotEmpty)
+                    ..._groupedDocs.entries.expand((entry) => [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8, bottom: 4),
+                        child: Text(
+                          entry.key,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                      ...entry.value.map((doc) => _buildDocCard(doc)),
+                    ])
                   else
                     ..._documents.map((doc) {
                       final category = doc['category']?.toString() ?? 'OTHER';
@@ -386,6 +422,70 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDocCard(Map<String, dynamic> doc) {
+    final category = doc['category']?.toString() ?? 'OTHER';
+    final color = _getCategoryColor(category);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        onTap: () => _viewDocument(doc),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: color.withOpacity(0.1),
+                child: Icon(_getFileIcon(doc['originalFilename']), color: color, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doc['originalFilename']?.toString() ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          category,
+                          style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_formatBytes((doc['fileSize'] ?? 0) as int), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.visibility, color: Colors.green, size: 18),
+                tooltip: 'View',
+                onPressed: () => _viewDocument(doc),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+                tooltip: 'Delete',
+                onPressed: () => _deleteDocument(doc['id']?.toString() ?? ''),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
         ),
       ),
     );

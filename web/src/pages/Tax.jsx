@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, TrendingDown, TrendingUp, DollarSign, Shield, Lightbulb, FileText, ChevronDown, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Calendar, TrendingDown, TrendingUp, DollarSign, Shield, Lightbulb, FileText, ChevronDown, ArrowRight, Upload, Loader2, Trash2, CheckCircle2, X } from 'lucide-react';
 import client from '../api/client';
 
 const FINANCIAL_YEARS = ['2024-2025', '2023-2024', '2022-2023', '2021-2022', '2020-2021'];
@@ -19,6 +19,15 @@ export default function Tax() {
   const [util80C, setUtil80C] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [taxRegime, setTaxRegime] = useState('NEW');
+  const [form16s, setForm16s] = useState([]);
+  const [itrFilings, setItrFilings] = useState([]);
+  const [uploadingForm16, setUploadingForm16] = useState(false);
+  const [uploadingITR, setUploadingITR] = useState(false);
+  const [showRegimeCompare, setShowRegimeCompare] = useState(false);
+  const [comparison, setComparison] = useState(null);
+  const form16InputRef = useRef(null);
+  const itrInputRef = useRef(null);
 
   useEffect(() => {
     fetchTaxData();
@@ -27,19 +36,108 @@ export default function Tax() {
   const fetchTaxData = async () => {
     setLoading(true);
     try {
-      const [summaryRes, harvestingRes, util80CRes] = await Promise.all([
+      const [summaryRes, harvestingRes, util80CRes, regimeRes, form16Res, itrRes] = await Promise.all([
         client.get(`/tax/summary/${selectedFY}`),
         client.get('/tax/harvesting-opportunities'),
         client.get('/tax/80c-utilization'),
+        client.get('/tax/regime'),
+        client.get('/tax/form16'),
+        client.get('/tax/itr'),
       ]);
 
       setSummary(summaryRes.data);
       setHarvestingOpps(harvestingRes.data || []);
       setUtil80C(util80CRes.data);
+      setTaxRegime(regimeRes.data?.regime || 'NEW');
+      setForm16s(form16Res.data || []);
+      setItrFilings(itrRes.data || []);
     } catch (error) {
       console.error('Error fetching tax data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateRegime = async (newRegime) => {
+    try {
+      await client.put('/tax/regime', { regime: newRegime });
+      setTaxRegime(newRegime);
+    } catch (e) {
+      console.error('Failed to update regime', e);
+    }
+  };
+
+  const compareRegimes = async () => {
+    try {
+      const gross = (summary?.equity?.ltcg || 0) + (summary?.equity?.stcg || 0) + 1500000; // Demo input
+      const { data } = await client.post('/tax/regime/compare', {
+        grossSalary: gross,
+        totalDeductions: util80C?.utilized || 0,
+        hraExemption: 0,
+      });
+      setComparison(data);
+      setShowRegimeCompare(true);
+    } catch (e) {
+      console.error('Compare failed', e);
+    }
+  };
+
+  const uploadForm16 = async (file) => {
+    if (!file) return;
+    setUploadingForm16(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('financialYear', selectedFY);
+      const { data } = await client.post('/tax/form16/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      alert(`Form 16 uploaded with ${data.parseConfidence}% confidence. Please review and verify.`);
+      await fetchTaxData();
+    } catch (e) {
+      alert('Failed to upload Form 16: ' + (e?.response?.data?.error || e?.message || 'Unknown error'));
+    } finally {
+      setUploadingForm16(false);
+    }
+  };
+
+  const uploadITR = async (file) => {
+    if (!file) return;
+    setUploadingITR(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('financialYear', selectedFY);
+      formData.append('filingType', 'ORIGINAL');
+      const { data } = await client.post('/tax/itr/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      alert('ITR uploaded. Please complete the form details.');
+      await fetchTaxData();
+    } catch (e) {
+      alert('Failed to upload ITR: ' + (e?.response?.data?.error || e?.message || 'Unknown error'));
+    } finally {
+      setUploadingITR(false);
+    }
+  };
+
+  const deleteForm16 = async (id) => {
+    if (!confirm('Delete this Form 16?')) return;
+    try {
+      await client.delete(`/tax/form16/${id}`);
+      await fetchTaxData();
+    } catch (e) {
+      console.error('Delete failed', e);
+    }
+  };
+
+  const deleteItr = async (id) => {
+    if (!confirm('Delete this ITR record?')) return;
+    try {
+      await client.delete(`/tax/itr/${id}`);
+      await fetchTaxData();
+    } catch (e) {
+      console.error('Delete failed', e);
     }
   };
 
@@ -124,6 +222,137 @@ export default function Tax() {
               <p className="text-slate-400 text-sm">80C Utilized</p>
               <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(util80C?.utilized)}</p>
             </div>
+          </div>
+
+          {/* Tax Regime Selector */}
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Shield className="w-5 h-5 text-purple-400" />
+                Tax Regime
+              </h2>
+              <button onClick={compareRegimes} className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                Compare Both →
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => updateRegime('NEW')}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'NEW' ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-slate-500'}`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold">NEW Regime</span>
+                  {taxRegime === 'NEW' && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
+                </div>
+                <p className="text-xs text-slate-400 text-left">Lower slabs, no 80C/HRA. Default for FY 2023-24+</p>
+                <p className="text-xs text-slate-500 mt-1 text-left">Std Deduction: ₹75,000</p>
+              </button>
+              <button
+                onClick={() => updateRegime('OLD')}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'OLD' ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-slate-500'}`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold">OLD Regime</span>
+                  {taxRegime === 'OLD' && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
+                </div>
+                <p className="text-xs text-slate-400 text-left">Higher slabs but 80C, HRA, etc. allowed</p>
+                <p className="text-xs text-slate-500 mt-1 text-left">Std Deduction: ₹50,000</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Form 16 Section */}
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <FileText className="w-5 h-5 text-green-400" />
+                Form 16 (TDS Certificate)
+              </h2>
+              <button
+                onClick={() => form16InputRef.current?.click()}
+                disabled={uploadingForm16}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors text-sm"
+              >
+                {uploadingForm16 ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploadingForm16 ? 'Parsing...' : 'Upload Form 16'}
+              </button>
+              <input
+                ref={form16InputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => uploadForm16(e.target.files[0])}
+              />
+            </div>
+            {form16s.length === 0 ? (
+              <p className="text-slate-500 text-sm">No Form 16 uploaded yet. Upload your employer's TDS certificate to auto-fill tax details.</p>
+            ) : (
+              <div className="space-y-2">
+                {form16s.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
+                    <div>
+                      <p className="font-medium">{f.employerName || 'Unknown Employer'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        FY {f.financialYear} • Gross: {formatCurrency(f.grossSalary)} • TDS: {formatCurrency(f.tdsTotal)}
+                        {f.parseConfidence != null && ` • Confidence: ${f.parseConfidence}%`}
+                      </p>
+                    </div>
+                    <button onClick={() => deleteForm16(f.id)} className="text-red-400 hover:text-red-300">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ITR Filings */}
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-400" />
+                ITR Filings
+              </h2>
+              <button
+                onClick={() => itrInputRef.current?.click()}
+                disabled={uploadingITR}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors text-sm"
+              >
+                {uploadingITR ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploadingITR ? 'Uploading...' : 'Upload ITR'}
+              </button>
+              <input
+                ref={itrInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => uploadITR(e.target.files[0])}
+              />
+            </div>
+            {itrFilings.length === 0 ? (
+              <p className="text-slate-500 text-sm">No ITR filings yet. Upload your ITR-V acknowledgement after filing.</p>
+            ) : (
+              <div className="space-y-2">
+                {itrFilings.map((itr) => (
+                  <div key={itr.id} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
+                    <div>
+                      <p className="font-medium">
+                        {itr.itrFormType || 'ITR'} • FY {itr.financialYear}
+                        {itr.filingType !== 'ORIGINAL' && <span className="text-xs text-amber-400 ml-2">({itr.filingType})</span>}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {itr.acknowledgementNumber && `Ack: ${itr.acknowledgementNumber}`}
+                        {itr.filingDate && ` • Filed: ${itr.filingDate}`}
+                        {itr.eVerified && <span className="text-green-400 ml-2">✓ Verified</span>}
+                      </p>
+                    </div>
+                    <button onClick={() => deleteItr(itr.id)} className="text-red-400 hover:text-red-300">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 80C Utilization */}
@@ -258,6 +487,42 @@ export default function Tax() {
             </table>
           </div>
         </>
+      )}
+
+      {/* Regime Compare Modal */}
+      {showRegimeCompare && comparison && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowRegimeCompare(false)}>
+          <div className="bg-slate-800 rounded-xl max-w-2xl w-full mx-4 border border-slate-700" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-700">
+              <h3 className="text-lg font-semibold">Tax Regime Comparison</h3>
+              <button onClick={() => setShowRegimeCompare(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'OLD' ? 'border-green-500 bg-green-500/10' : 'border-slate-600'}`}>
+                  <p className="text-sm text-slate-400 mb-2">OLD Regime</p>
+                  <p className="text-2xl font-bold">{formatCurrency(comparison.oldRegime?.totalTax)}</p>
+                  <p className="text-xs text-slate-400 mt-1">Taxable: {formatCurrency(comparison.oldRegime?.taxableIncome)}</p>
+                  {comparison.recommended === 'OLD' && <p className="text-xs text-green-400 mt-2">✓ Recommended</p>}
+                </div>
+                <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'NEW' ? 'border-green-500 bg-green-500/10' : 'border-slate-600'}`}>
+                  <p className="text-sm text-slate-400 mb-2">NEW Regime</p>
+                  <p className="text-2xl font-bold">{formatCurrency(comparison.newRegime?.totalTax)}</p>
+                  <p className="text-xs text-slate-400 mt-1">Taxable: {formatCurrency(comparison.newRegime?.taxableIncome)}</p>
+                  {comparison.recommended === 'NEW' && <p className="text-xs text-green-400 mt-2">✓ Recommended</p>}
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                <p className="text-sm">
+                  💡 The <span className="font-semibold text-blue-400">{comparison.recommended} Regime</span> saves you
+                  <span className="font-semibold text-green-400"> {formatCurrency(comparison.savings)}</span> in this scenario.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

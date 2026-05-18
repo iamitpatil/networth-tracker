@@ -13,6 +13,9 @@ class _TaxScreenState extends State<TaxScreen> {
   Map<String, dynamic>? _summary;
   Map<String, dynamic>? _util80C;
   List<dynamic> _harvestingOpps = [];
+  List<dynamic> _form16s = [];
+  List<dynamic> _itrFilings = [];
+  String _taxRegime = 'NEW';
   bool _isLoading = true;
   String? _error;
   String _selectedFY = '2024-2025';
@@ -36,15 +39,36 @@ class _TaxScreenState extends State<TaxScreen> {
         ApiClient.get('/tax/summary/$_selectedFY').catchError((e) => null),
         ApiClient.get('/tax/80c-utilization').catchError((e) => null),
         ApiClient.get('/tax/harvesting-opportunities').catchError((e) => []),
+        ApiClient.get('/tax/regime').catchError((e) => null),
+        ApiClient.get('/tax/form16').catchError((e) => []),
+        ApiClient.get('/tax/itr').catchError((e) => []),
       ]);
 
       _summary = results[0] is Map ? Map<String, dynamic>.from(results[0] as Map) : null;
       _util80C = results[1] is Map ? Map<String, dynamic>.from(results[1] as Map) : null;
       _harvestingOpps = results[2] is List ? results[2] as List : [];
+      if (results[3] is Map) {
+        _taxRegime = (results[3] as Map)['regime']?.toString() ?? 'NEW';
+      }
+      _form16s = results[4] is List ? results[4] as List : [];
+      _itrFilings = results[5] is List ? results[5] as List : [];
     } catch (e) {
       _error = e.toString();
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updateRegime(String regime) async {
+    try {
+      await ApiClient.put('/tax/regime', body: {'regime': regime});
+      setState(() => _taxRegime = regime);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update regime: $e')),
+        );
+      }
     }
   }
 
@@ -125,6 +149,14 @@ class _TaxScreenState extends State<TaxScreen> {
           children: [
             // Financial Year Selector
             _buildFYSelector(),
+            const SizedBox(height: 16),
+
+            // Tax Regime Card
+            _buildTaxRegimeCard(),
+            const SizedBox(height: 16),
+
+            // Form 16 & ITR Section
+            _buildTaxDocumentsSection(),
             const SizedBox(height: 16),
 
             // Summary Cards
@@ -518,6 +550,178 @@ class _TaxScreenState extends State<TaxScreen> {
             child: Text(notes, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTaxRegimeCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.shield, color: Colors.purple[600]),
+                const SizedBox(width: 8),
+                const Text('Tax Regime', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: _regimeButton('NEW', 'Lower slabs, no 80C')),
+                const SizedBox(width: 8),
+                Expanded(child: _regimeButton('OLD', 'Higher slabs, 80C allowed')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _regimeButton(String regime, String subtitle) {
+    final selected = _taxRegime == regime;
+    return InkWell(
+      onTap: () => _updateRegime(regime),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.blue.withOpacity(0.1) : Colors.transparent,
+          border: Border.all(color: selected ? Colors.blue : Colors.grey[300]!, width: selected ? 2 : 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('$regime Regime', style: TextStyle(fontWeight: FontWeight.bold, color: selected ? Colors.blue : null)),
+                if (selected) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.check_circle, size: 16, color: Colors.blue),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(subtitle, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaxDocumentsSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.description, color: Colors.green[600]),
+                const SizedBox(width: 8),
+                const Text('Tax Documents', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Form 16 summary
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.assignment, size: 16, color: Colors.green[700]),
+                            const SizedBox(width: 6),
+                            const Text('Form 16', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text('${_form16s.length} uploaded', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        const Text('Upload via web app', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.cyan.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.cyan.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.receipt_long, size: 16, color: Colors.cyan[700]),
+                            const SizedBox(width: 6),
+                            const Text('ITR Filed', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text('${_itrFilings.length}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        const Text('Returns recorded', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_form16s.isNotEmpty || _itrFilings.isNotEmpty) ...[
+              const Divider(height: 24),
+              // Show list of items
+              if (_form16s.isNotEmpty) ...[
+                const Text('Form 16s:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                ..._form16s.take(3).map((f) {
+                  final employer = f['employerName']?.toString() ?? 'Unknown';
+                  final fy = f['financialYear']?.toString() ?? '';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text('• $employer (FY $fy)', style: const TextStyle(fontSize: 12)),
+                  );
+                }),
+              ],
+              if (_itrFilings.isNotEmpty) ...[
+                if (_form16s.isNotEmpty) const SizedBox(height: 8),
+                const Text('ITR Filings:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                ..._itrFilings.take(3).map((itr) {
+                  final type = itr['itrFormType']?.toString() ?? 'ITR';
+                  final fy = itr['financialYear']?.toString() ?? '';
+                  final ack = itr['acknowledgementNumber']?.toString();
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text(
+                      '• $type FY $fy${ack != null ? " - Ack: $ack" : ""}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                }),
+              ],
+            ],
+          ],
+        ),
       ),
     );
   }
