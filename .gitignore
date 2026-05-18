@@ -57,6 +57,11 @@ models/
 dump.rdb
 *.rdb
 
+### OpenCode/AI session files ###
+session-*.md
+session-trading.md
+*.session.md
+
 ### Flutter ###
 mobile/.dart_tool/
 mobile/.flutter-plugins

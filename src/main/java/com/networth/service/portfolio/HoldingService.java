@@ -156,20 +156,32 @@ public class HoldingService {
 
     private void updateHoldingPrice(Holding holding) {
         BigDecimal currentPrice = priceService.getCurrentPrice(holding.getSymbol(), holding.getAssetType());
-        if (currentPrice != null) {
-            holding.setCurrentPrice(currentPrice);
-            holding.setCurrentValue(holding.getQuantity().multiply(currentPrice));
+
+        // Use fetched price if available, otherwise keep stored price (don't reset to 0)
+        BigDecimal priceToUse = currentPrice != null ? currentPrice : holding.getCurrentPrice();
+
+        if (priceToUse != null && priceToUse.compareTo(BigDecimal.ZERO) > 0) {
+            holding.setCurrentPrice(priceToUse);
+            // Always recompute currentValue from quantity × price
+            // Fixes stale data where currentPrice exists but currentValue is 0
+            holding.setCurrentValue(holding.getQuantity().multiply(priceToUse));
+
             BigDecimal costBasis = holding.getQuantity().multiply(holding.getAverageBuyPrice());
             holding.setUnrealizedPnl(holding.getCurrentValue().subtract(costBasis));
 
-            BigDecimal prevClose = priceService.getPreviousClose(holding.getSymbol(), holding.getAssetType());
-            if (prevClose != null && prevClose.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal change = currentPrice.subtract(prevClose);
-                holding.setDayChange(change);
-                holding.setDayChangePct(change.divide(prevClose, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal("100")));
+            // Only update day change if we successfully fetched a new price
+            if (currentPrice != null) {
+                BigDecimal prevClose = priceService.getPreviousClose(holding.getSymbol(), holding.getAssetType());
+                if (prevClose != null && prevClose.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal change = currentPrice.subtract(prevClose);
+                    holding.setDayChange(change);
+                    holding.setDayChangePct(change.divide(prevClose, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal("100")));
+                }
             }
 
             holdingRepository.save(holding);
+        } else {
+            log.debug("Skipping price update for {} - no valid price available", holding.getSymbol());
         }
     }
 
@@ -197,6 +209,23 @@ public class HoldingService {
                 dematAccountNumber = da.getAccountNumber();
             }
         }
+
+        // Compute currentValue and PnL on-the-fly to handle stale stored values
+        BigDecimal currentPrice = holding.getCurrentPrice();
+        BigDecimal currentValue = holding.getCurrentValue();
+        BigDecimal unrealizedPnl = holding.getUnrealizedPnl();
+
+        if (currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal computedValue = holding.getQuantity().multiply(currentPrice);
+            if (currentValue == null || currentValue.compareTo(BigDecimal.ZERO) <= 0) {
+                currentValue = computedValue;
+            }
+            if (unrealizedPnl == null && holding.getAverageBuyPrice() != null) {
+                BigDecimal costBasis = holding.getQuantity().multiply(holding.getAverageBuyPrice());
+                unrealizedPnl = currentValue.subtract(costBasis);
+            }
+        }
+
         return HoldingResponse.builder()
                 .id(holding.getId().toString())
                 .assetType(holding.getAssetType())
@@ -204,10 +233,10 @@ public class HoldingService {
                 .name(holding.getName())
                 .quantity(holding.getQuantity())
                 .averageBuyPrice(holding.getAverageBuyPrice())
-                .currentPrice(holding.getCurrentPrice())
-                .currentValue(holding.getCurrentValue())
+                .currentPrice(currentPrice)
+                .currentValue(currentValue)
                 .realizedPnl(holding.getRealizedPnl())
-                .unrealizedPnl(holding.getUnrealizedPnl())
+                .unrealizedPnl(unrealizedPnl)
                 .dayChange(holding.getDayChange())
                 .dayChangePct(holding.getDayChangePct())
                 .currency(holding.getCurrency())

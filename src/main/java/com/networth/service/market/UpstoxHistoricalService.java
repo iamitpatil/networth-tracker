@@ -129,18 +129,30 @@ public class UpstoxHistoricalService {
                 .map(StockPriceHistory::getClose);
     }
 
+    /**
+     * Daily backfill at 3 AM. Looks back 7 days for missed updates.
+     */
     @Scheduled(cron = "0 0 3 * * ?")
     public void scheduledDailyBackfill() {
         if (accessToken == null || accessToken.isBlank()) return;
         log.info("Running daily price history backfill...");
         try {
             LocalDate to = LocalDate.now();
-            LocalDate from = to.minusDays(5);
+            LocalDate from = to.minusDays(7);
             int count = backfillAll(from, to);
             log.info("Daily backfill complete: {} records added", count);
         } catch (Exception e) {
             log.error("Daily backfill failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Backfill from a specific date until today.
+     * Used by StartupBackfillService when gaps are detected.
+     */
+    @Transactional
+    public int backfillFromDate(LocalDate fromDate) {
+        return backfillAll(fromDate, LocalDate.now());
     }
 
     private BigDecimal toBigDecimal(Object value) {

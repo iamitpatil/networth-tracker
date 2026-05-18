@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 public class PriceService {
 
     private final UpstoxPriceFetcher upstoxPriceFetcher;
+    private final UpstoxMfFetcher upstoxMfFetcher;
     private final YahooPriceFetcher yahooPriceFetcher;
     private final AlphaVantagePriceFetcher alphaVantagePriceFetcher;
     private final GoldPriceFetcher goldPriceFetcher;
@@ -71,7 +72,17 @@ public class PriceService {
 
     private BigDecimal fetchFromSource(String symbol, AssetType assetType) {
         return switch (assetType) {
-            case MUTUAL_FUND -> amfiNavFetcher.fetchNav(symbol);
+            case MUTUAL_FUND -> {
+                // Try Upstox first (single in-memory file, all 12k+ MFs)
+                BigDecimal upstoxNav = upstoxMfFetcher.getNav(symbol);
+                if (upstoxNav != null) {
+                    log.debug("MF NAV from Upstox for {}: {}", symbol, upstoxNav);
+                    yield upstoxNav;
+                }
+                // Fallback to AMFI
+                log.debug("MF NAV from AMFI for {} (Upstox unavailable)", symbol);
+                yield amfiNavFetcher.fetchNav(symbol);
+            }
             case EQUITY, ETF -> {
                 BigDecimal upstox = upstoxPriceFetcher.fetchIndianStockPrice(symbol);
                 if (upstox != null) {
@@ -86,7 +97,7 @@ public class PriceService {
 
     private String getSource(AssetType assetType) {
         return switch (assetType) {
-            case MUTUAL_FUND -> "AMFI";
+            case MUTUAL_FUND -> upstoxMfFetcher.isAvailable() ? "UPSTOX_MF" : "AMFI";
             case EQUITY, ETF -> "UPSTOX";
             default -> "YAHOO";
         };
