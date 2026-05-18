@@ -52,3 +52,41 @@ models/
 ### Vim ###
 *.swp
 *.swo
+
+### Redis ###
+dump.rdb
+*.rdb
+
+### Flutter ###
+mobile/flutter_networth/.dart_tool/
+mobile/flutter_networth/.flutter-plugins
+mobile/flutter_networth/.flutter-plugins-dependencies
+mobile/flutter_networth/.packages
+mobile/flutter_networth/.pub-cache/
+mobile/flutter_networth/.pub/
+mobile/flutter_networth/build/
+mobile/flutter_networth/ios/Pods/
+mobile/flutter_networth/ios/.symlinks/
+mobile/flutter_networth/ios/Flutter/Flutter.framework
+mobile/flutter_networth/ios/Flutter/Flutter.podspec
+mobile/flutter_networth/android/.gradle/
+mobile/flutter_networth/android/captures/
+mobile/flutter_networth/android/gradlew
+mobile/flutter_networth/android/gradlew.bat
+mobile/flutter_networth/android/local.properties
+mobile/flutter_networth/android/**/GeneratedPluginRegistrant.java
+mobile/flutter_networth/coverage/
+
+### Node ###
+node_modules/
+npm-debug.log
+yarn-error.log
+
+### Build artifacts ###
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+### Database ###
+*.db
+*.sqlite
+*.sqlite3
