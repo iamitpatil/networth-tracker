@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { FamilyViewProvider } from './context/FamilyViewContext'
@@ -62,6 +63,20 @@ createRoot(document.getElementById('root')).render(
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
+        <Toaster
+          position="top-right"
+          theme="dark"
+          richColors
+          closeButton
+          duration={4000}
+          toastOptions={{
+            style: {
+              background: 'var(--bg-card)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+            },
+          }}
+        />
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>

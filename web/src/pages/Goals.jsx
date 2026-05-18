@@ -1,17 +1,23 @@
 import { useState, useEffect } from 'react'
-import { Target, Plus, Trash2, TrendingUp, DollarSign, Calendar, BarChart3, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { Target, Plus, Trash2, TrendingUp, Calendar, BarChart3, CheckCircle, AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import client from '../api/client'
+import { formatINR, formatPercent, formatDate } from '../utils/format'
+import { Button, Card, Modal, ConfirmDialog, Input, Select, EmptyState, Badge, PageHeader, PageSkeleton } from '../components/ui'
 
 const GOAL_TYPES = [
-  { value: 'retirement', label: 'Retirement' },
-  { value: 'house', label: 'House' },
-  { value: 'education', label: 'Education' },
-  { value: 'emergency', label: 'Emergency Fund' },
-  { value: 'fire', label: 'FIRE' },
-  { value: 'vehicle', label: 'Vehicle' },
-  { value: 'travel', label: 'Travel' },
-  { value: 'wedding', label: 'Wedding' },
+  { value: 'retirement', label: 'Retirement', emoji: '🏖️' },
+  { value: 'house', label: 'House', emoji: '🏠' },
+  { value: 'education', label: 'Education', emoji: '🎓' },
+  { value: 'emergency', label: 'Emergency Fund', emoji: '🚨' },
+  { value: 'fire', label: 'FIRE', emoji: '🔥' },
+  { value: 'vehicle', label: 'Vehicle', emoji: '🚗' },
+  { value: 'travel', label: 'Travel', emoji: '✈️' },
+  { value: 'wedding', label: 'Wedding', emoji: '💒' },
+  { value: 'other', label: 'Other', emoji: '🎯' },
 ]
+
+const GOAL_TYPE_MAP = Object.fromEntries(GOAL_TYPES.map(t => [t.value, t]))
 
 const RISK_PROFILES = [
   { value: 'conservative', label: 'Conservative' },
@@ -19,18 +25,17 @@ const RISK_PROFILES = [
   { value: 'aggressive', label: 'Aggressive' },
 ]
 
-function Goals() {
+export default function Goals() {
   const [goals, setGoals] = useState([])
   const [progressMap, setProgressMap] = useState({})
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const [form, setForm] = useState({
     name: '',
     type: 'retirement',
     targetAmount: '',
-    currentAmount: '',
     targetDate: '',
     riskProfile: 'moderate',
   })
@@ -41,15 +46,13 @@ function Goals() {
 
   async function fetchGoals() {
     setLoading(true)
-    setError(null)
     try {
       const res = await client.get('/goals')
       const goalsData = res.data || []
       setGoals(goalsData)
       await fetchProgressForGoals(goalsData)
-    } catch (err) {
-      setError('Failed to load goals')
-      console.error(err)
+    } catch {
+      // toast handled by interceptor
     } finally {
       setLoading(false)
     }
@@ -72,308 +75,285 @@ function Goals() {
 
   async function handleAddGoal(e) {
     e.preventDefault()
+    if (!form.name.trim()) {
+      toast.error('Please enter a goal name')
+      return
+    }
+    if (!form.targetAmount || parseFloat(form.targetAmount) <= 0) {
+      toast.error('Please enter a valid target amount')
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await client.post('/goals', {
         name: form.name,
         goalType: form.type,
         targetAmount: parseFloat(form.targetAmount),
-        targetDate: form.targetDate ? form.targetDate : null,
+        targetDate: form.targetDate || null,
         riskProfile: form.riskProfile,
       })
-      setGoals([...goals, res.data])
-      await fetchProgressForGoals([...goals, res.data])
+      toast.success('Goal created successfully')
+      const updated = [...goals, res.data]
+      setGoals(updated)
+      fetchProgressForGoals(updated)
       setShowModal(false)
-      setForm({ name: '', type: 'retirement', targetAmount: '', currentAmount: '', targetDate: '', riskProfile: 'moderate' })
-    } catch (err) {
-      console.error('Failed to add goal:', err)
+      setForm({ name: '', type: 'retirement', targetAmount: '', targetDate: '', riskProfile: 'moderate' })
+    } catch {
+      // toast handled by interceptor
     } finally {
       setSubmitting(false)
     }
   }
 
-  async function handleDeleteGoal(id) {
-    if (!confirm('Are you sure you want to delete this goal?')) return
+  async function performDelete() {
+    if (!confirmDelete) return
     try {
-      await client.delete(`/goals/${id}`)
-      setGoals(goals.filter((g) => g.id !== id))
+      await client.delete(`/goals/${confirmDelete.id}`)
+      setGoals(goals.filter((g) => g.id !== confirmDelete.id))
       const newProgress = { ...progressMap }
-      delete newProgress[id]
+      delete newProgress[confirmDelete.id]
       setProgressMap(newProgress)
-    } catch (err) {
-      console.error('Failed to delete goal:', err)
+      toast.success('Goal deleted')
+    } catch {
+      // toast handled by interceptor
+    } finally {
+      setConfirmDelete(null)
     }
   }
 
+  if (loading) return <PageSkeleton />
+
+  // Aggregate stats
   const totalTarget = goals.reduce((sum, g) => sum + (g.targetAmount || 0), 0)
-  const totalCurrent = goals.reduce((sum, g) => sum + (g.currentAmount || 0), 0)
-  const overallProgress = totalTarget > 0 ? (totalCurrent / totalTarget) * 100 : 0
-
-  const getProgressPercent = (goal) => {
-    if (!goal.targetAmount) return 0
-    return Math.min((goal.currentAmount / goal.targetAmount) * 100, 100)
-  }
-
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(val || 0)
-  }
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '64px 0' }}>
-        <div style={{ color: 'var(--text-muted)', fontSize: 18 }}>Loading goals...</div>
-      </div>
-    )
-  }
+  const totalCurrent = goals.reduce((sum, g) => {
+    const p = progressMap[g.id]
+    return sum + (p?.currentAmount || g.currentAmount || 0)
+  }, 0)
+  const onTrack = goals.filter(g => progressMap[g.id]?.isOnTrack).length
 
   return (
-    <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-          <div>
-            <h1 style={{ color: 'var(--text)', fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Financial Goals</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Track and manage your financial goals</p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '10px 20px', borderRadius: 8, border: 'none',
-              backgroundColor: '#3b82f6', color: '#fff', fontSize: 14, fontWeight: 600,
-              cursor: 'pointer', transition: 'all 0.2s',
-            }}
-          >
-            <Plus size={18} /> Add Goal
-          </button>
+    <div className="space-y-6">
+      <PageHeader
+        title="Financial Goals"
+        subtitle="Plan and track progress toward your financial aspirations"
+        actions={
+          <Button icon={Plus} onClick={() => setShowModal(true)}>
+            Add Goal
+          </Button>
+        }
+      />
+
+      {/* Summary Cards */}
+      {goals.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="p-5">
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-sm text-[var(--text-muted)]">Total Goals</p>
+              <Target className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className="text-2xl font-bold">{goals.length}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              {onTrack} on track
+            </p>
+          </Card>
+          <Card className="p-5">
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-sm text-[var(--text-muted)]">Total Saved</p>
+              <TrendingUp className="w-5 h-5 text-green-400" />
+            </div>
+            <p className="text-2xl font-bold text-green-400">{formatINR(totalCurrent, { compact: true })}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              {totalTarget > 0 ? formatPercent((totalCurrent / totalTarget) * 100, { signed: false }) : '0%'} of target
+            </p>
+          </Card>
+          <Card className="p-5">
+            <div className="flex items-start justify-between mb-2">
+              <p className="text-sm text-[var(--text-muted)]">Total Target</p>
+              <BarChart3 className="w-5 h-5 text-amber-400" />
+            </div>
+            <p className="text-2xl font-bold text-amber-400">{formatINR(totalTarget, { compact: true })}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Across all goals
+            </p>
+          </Card>
         </div>
+      )}
 
-        {error && (
-          <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid #ef4444', borderRadius: 8, padding: 12, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AlertCircle size={18} color="#ef4444" />
-            <span style={{ color: '#ef4444' }}>{error}</span>
-          </div>
-        )}
+      {/* Goals Grid */}
+      {goals.length === 0 ? (
+        <EmptyState
+          icon={Target}
+          title="No goals yet"
+          description="Start by adding your first financial goal. Whether it's saving for a house, retirement, or that dream vacation."
+          action={<Button icon={Plus} onClick={() => setShowModal(true)}>Add Your First Goal</Button>}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {goals.map((goal) => {
+            const progress = progressMap[goal.id]
+            const currentAmount = progress?.currentAmount || goal.currentAmount || 0
+            const progressPct = progress?.progressPercentage ||
+              (goal.targetAmount > 0 ? (currentAmount / goal.targetAmount) * 100 : 0)
+            const isOnTrack = progress?.isOnTrack
+            const remainingDays = progress?.daysRemaining
+            const typeInfo = GOAL_TYPE_MAP[goal.goalType] || GOAL_TYPE_MAP.other
+            const barColor = progressPct >= 100 ? 'bg-green-500' :
+                            isOnTrack === false ? 'bg-red-500' :
+                            progressPct >= 75 ? 'bg-green-500' :
+                            progressPct >= 50 ? 'bg-blue-500' :
+                            'bg-amber-500'
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 24, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ color: 'var(--text-muted)', fontSize: 14, fontWeight: 500 }}>Total Goals</span>
-              <Target size={20} color="#3b82f6" />
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>{goals.length}</div>
-          </div>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 24, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ color: 'var(--text-muted)', fontSize: 14, fontWeight: 500 }}>Total Target</span>
-              <DollarSign size={20} color="#22c55e" />
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>{formatCurrency(totalTarget)}</div>
-          </div>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 24, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ color: 'var(--text-muted)', fontSize: 14, fontWeight: 500 }}>Overall Progress</span>
-              <BarChart3 size={20} color="#f59e0b" />
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)' }}>{overallProgress.toFixed(1)}%</div>
-            <div style={{ width: '100%', height: 6, backgroundColor: 'var(--border)', borderRadius: 3, marginTop: 8, overflow: 'hidden' }}>
-              <div style={{ width: `${overallProgress}%`, height: '100%', backgroundColor: '#22c55e', borderRadius: 3, transition: 'width 0.3s' }} />
-            </div>
-          </div>
-        </div>
-
-        {goals.length === 0 ? (
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 60, border: '1px solid var(--border)', textAlign: 'center' }}>
-            <Target size={48} color="var(--border)" style={{ marginBottom: 16 }} />
-            <p style={{ color: 'var(--text-muted)', fontSize: 18 }}>No goals yet. Add your first financial goal!</p>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
-            {goals.map((goal) => {
-              const progress = getProgressPercent(goal)
-              const goalProgress = progressMap[goal.id]
-              return (
-                <div key={goal.id} style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 24, border: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                    <div>
-                      <h3 style={{ color: 'var(--text)', fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{goal.name}</h3>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, backgroundColor: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}>
-                        {GOAL_TYPES.find((t) => t.value === goal.type)?.label || goal.type}
-                      </span>
+            return (
+              <Card key={goal.id} hover className="flex flex-col">
+                {/* Header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                      <span className="text-lg">{typeInfo.emoji}</span>
                     </div>
-                    <button
-                      onClick={() => handleDeleteGoal(goal.id)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 4, transition: 'color 0.2s' }}
-                      onMouseEnter={(e) => (e.target.style.color = '#ef4444')}
-                      onMouseLeave={(e) => (e.target.style.color = 'var(--text-muted)')}
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-base truncate">{goal.name}</h3>
+                      <Badge variant="blue" size="sm">{typeInfo.label}</Badge>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setConfirmDelete(goal)}
+                    aria-label={`Delete ${goal.name}`}
+                    className="text-[var(--text-muted)] hover:text-red-400 transition-colors p-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Progress */}
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm text-[var(--text-muted)]">Progress</span>
+                    <span className="text-sm font-medium">{progressPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                      style={{ width: `${Math.min(progressPct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Amounts */}
+                <div className="flex items-baseline justify-between mb-3 text-sm">
+                  <span className="text-green-400 font-medium">{formatINR(currentAmount, { compact: true })}</span>
+                  <span className="text-[var(--text-muted)]">/ {formatINR(goal.targetAmount, { compact: true })}</span>
+                </div>
+
+                {/* Footer */}
+                <div className="mt-auto pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
+                  {goal.targetDate ? (
+                    <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                      <Calendar className="w-3 h-3" />
+                      {formatDate(goal.targetDate)}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-muted)]">No deadline</span>
+                  )}
+                  {isOnTrack != null && (
+                    <Badge
+                      variant={isOnTrack ? 'green' : 'red'}
+                      icon={isOnTrack ? CheckCircle : AlertCircle}
+                      size="sm"
                     >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Progress</span>
-                      <span style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>{progress.toFixed(1)}%</span>
-                    </div>
-                    <div style={{ width: '100%', height: 8, backgroundColor: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          width: `${progress}%`,
-                          height: '100%',
-                          backgroundColor: progress >= 100 ? '#22c55e' : '#3b82f6',
-                          borderRadius: 4,
-                          transition: 'width 0.3s',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                    <div>
-                      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 2 }}>Current</p>
-                      <p style={{ color: '#22c55e', fontSize: 14, fontWeight: 600 }}>{formatCurrency(goal.currentAmount)}</p>
-                    </div>
-                    <div>
-                      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 2 }}>Target</p>
-                      <p style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>{formatCurrency(goal.targetAmount)}</p>
-                    </div>
-                  </div>
-
-                  {goal.targetDate && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <Calendar size={14} color="var(--text-muted)" />
-                      <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                        Target: {new Date(goal.targetDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
-                      </span>
-                    </div>
-                  )}
-
-                  {goal.riskProfile && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <TrendingUp size={14} color="var(--text-muted)" />
-                      <span style={{ color: 'var(--text-muted)', fontSize: 13, textTransform: 'capitalize' }}>{goal.riskProfile}</span>
-                    </div>
-                  )}
-
-                  {goalProgress && (
-                    <div style={{ marginTop: 12, padding: 12, backgroundColor: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                        <CheckCircle size={14} color="#22c55e" />
-                        <span style={{ color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>Progress Details</span>
-                      </div>
-                      {goalProgress.monthlyRequired && (
-                        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Monthly Required: <span style={{ color: 'var(--text)' }}>{formatCurrency(goalProgress.monthlyRequired)}</span></p>
-                      )}
-                      {goalProgress.projectedDate && (
-                        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Projected: <span style={{ color: 'var(--text)' }}>{new Date(goalProgress.projectedDate).toLocaleDateString('en-IN')}</span></p>
-                      )}
-                    </div>
+                      {isOnTrack ? 'On track' : 'Behind'}
+                    </Badge>
                   )}
                 </div>
-              )
-            })}
-          </div>
-        )}
+                {remainingDays != null && remainingDays > 0 && (
+                  <p className="text-xs text-[var(--text-muted)] mt-2">
+                    {remainingDays} days remaining
+                  </p>
+                )}
+              </Card>
+            )
+          })}
+        </div>
+      )}
 
-        {showModal && (
-          <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center',
-            zIndex: 1000,
-          }}>
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 32, border: '1px solid var(--border)', width: '100%', maxWidth: 500 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <h2 style={{ color: 'var(--text)', fontSize: 22, fontWeight: 700 }}>Add New Goal</h2>
-                <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                  <X size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleAddGoal}>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ color: 'var(--text-muted)', fontSize: 13, display: 'block', marginBottom: 6 }}>Goal Name</label>
-                  <input
-                    type="text" required value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: 14 }}
-                    placeholder="e.g., Retirement Fund"
-                  />
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ color: 'var(--text-muted)', fontSize: 13, display: 'block', marginBottom: 6 }}>Goal Type</label>
-                  <select
-                    value={form.type}
-                    onChange={(e) => setForm({ ...form, type: e.target.value })}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: 14 }}
-                  >
-                    {GOAL_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <div>
-                    <label style={{ color: 'var(--text-muted)', fontSize: 13, display: 'block', marginBottom: 6 }}>Target Amount</label>
-                    <input
-                      type="number" required value={form.targetAmount}
-                      onChange={(e) => setForm({ ...form, targetAmount: e.target.value })}
-                      style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: 14 }}
-                      placeholder="1000000"
-                    />
-                  </div>
-                  <div>
-                    <label style={{ color: 'var(--text-muted)', fontSize: 13, display: 'block', marginBottom: 6 }}>Current Amount</label>
-                    <input
-                      type="number" value={form.currentAmount}
-                      onChange={(e) => setForm({ ...form, currentAmount: e.target.value })}
-                      style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: 14 }}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ color: 'var(--text-muted)', fontSize: 13, display: 'block', marginBottom: 6 }}>Target Date</label>
-                  <input
-                    type="date" required value={form.targetDate}
-                    onChange={(e) => setForm({ ...form, targetDate: e.target.value })}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: 14 }}
-                  />
-                </div>
-                <div style={{ marginBottom: 24 }}>
-                  <label style={{ color: 'var(--text-muted)', fontSize: 13, display: 'block', marginBottom: 6 }}>Risk Profile</label>
-                  <select
-                    value={form.riskProfile}
-                    onChange={(e) => setForm({ ...form, riskProfile: e.target.value })}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)', fontSize: 14 }}
-                  >
-                    {RISK_PROFILES.map((r) => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <button
-                    type="button" onClick={() => setShowModal(false)}
-                    style={{ flex: 1, padding: '10px 20px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-muted)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit" disabled={submitting}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', backgroundColor: '#3b82f6', color: '#fff', fontSize: 14, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1 }}
-                  >
-                    {submitting ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={16} />}
-                    Add Goal
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Add Goal Modal */}
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title="Add New Goal"
+        description="Set a target and track your progress over time."
+        size="md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowModal(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddGoal} loading={submitting}>
+              Create Goal
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleAddGoal} className="space-y-4">
+          <Input
+            label="Goal Name"
+            placeholder="e.g., Buy a house"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            required
+            autoFocus
+          />
+
+          <Select
+            label="Goal Type"
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value })}
+          >
+            {GOAL_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.emoji} {t.label}</option>
+            ))}
+          </Select>
+
+          <Input
+            label="Target Amount (₹)"
+            type="number"
+            placeholder="500000"
+            value={form.targetAmount}
+            onChange={(e) => setForm({ ...form, targetAmount: e.target.value })}
+            required
+            hint={form.targetAmount ? formatINR(parseFloat(form.targetAmount)) : 'Enter your target amount'}
+          />
+
+          <Input
+            label="Target Date"
+            type="date"
+            value={form.targetDate}
+            onChange={(e) => setForm({ ...form, targetDate: e.target.value })}
+            hint="Optional - when do you want to achieve this?"
+          />
+
+          <Select
+            label="Risk Profile"
+            value={form.riskProfile}
+            onChange={(e) => setForm({ ...form, riskProfile: e.target.value })}
+            hint="Used to suggest appropriate investments"
+          >
+            {RISK_PROFILES.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </Select>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={performDelete}
+        title={`Delete "${confirmDelete?.name}"?`}
+        description="This will permanently delete this goal and its progress history. This action cannot be undone."
+        confirmText="Delete Goal"
+      />
+    </div>
   )
 }
-
-export default Goals

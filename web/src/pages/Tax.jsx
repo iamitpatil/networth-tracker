@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, TrendingDown, TrendingUp, DollarSign, Shield, Lightbulb, FileText, ChevronDown, ArrowRight, Upload, Loader2, Trash2, CheckCircle2, X } from 'lucide-react';
+import { toast } from 'sonner';
 import client from '../api/client';
+import { ConfirmDialog } from '../components/ui';
 
 const FINANCIAL_YEARS = ['2024-2025', '2023-2024', '2022-2023', '2021-2022', '2020-2021'];
 
@@ -92,10 +94,14 @@ export default function Tax() {
       const { data } = await client.post('/tax/form16/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      alert(`Form 16 uploaded with ${data.parseConfidence}% confidence. Please review and verify.`);
+      toast.success('Form 16 uploaded', {
+        description: `Parsed with ${data.parseConfidence}% confidence. Please review and verify.`,
+      });
       await fetchTaxData();
     } catch (e) {
-      alert('Failed to upload Form 16: ' + (e?.response?.data?.error || e?.message || 'Unknown error'));
+      toast.error('Failed to upload Form 16', {
+        description: e?.response?.data?.error || e?.message || 'Unknown error',
+      });
     } finally {
       setUploadingForm16(false);
     }
@@ -112,32 +118,48 @@ export default function Tax() {
       const { data } = await client.post('/tax/itr/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      alert('ITR uploaded. Please complete the form details.');
+      toast.success('ITR uploaded', { description: 'Please complete the form details.' });
       await fetchTaxData();
     } catch (e) {
-      alert('Failed to upload ITR: ' + (e?.response?.data?.error || e?.message || 'Unknown error'));
+      toast.error('Failed to upload ITR', {
+        description: e?.response?.data?.error || e?.message || 'Unknown error',
+      });
     } finally {
       setUploadingITR(false);
     }
   };
 
-  const deleteForm16 = async (id) => {
-    if (!confirm('Delete this Form 16?')) return;
-    try {
-      await client.delete(`/tax/form16/${id}`);
-      await fetchTaxData();
-    } catch (e) {
-      console.error('Delete failed', e);
-    }
+  const [confirmAction, setConfirmAction] = useState(null);
+
+  const requestDeleteForm16 = (id) => {
+    setConfirmAction({
+      type: 'form16',
+      id,
+      title: 'Delete Form 16?',
+      description: 'This will permanently delete this Form 16 record.',
+    });
   };
 
-  const deleteItr = async (id) => {
-    if (!confirm('Delete this ITR record?')) return;
+  const requestDeleteItr = (id) => {
+    setConfirmAction({
+      type: 'itr',
+      id,
+      title: 'Delete ITR record?',
+      description: 'This will permanently delete this ITR filing record.',
+    });
+  };
+
+  const performDelete = async () => {
+    if (!confirmAction) return;
     try {
-      await client.delete(`/tax/itr/${id}`);
+      const endpoint = confirmAction.type === 'form16' ? 'form16' : 'itr';
+      await client.delete(`/tax/${endpoint}/${confirmAction.id}`);
+      toast.success(`${confirmAction.type === 'form16' ? 'Form 16' : 'ITR record'} deleted`);
       await fetchTaxData();
     } catch (e) {
-      console.error('Delete failed', e);
+      // toast handled by interceptor
+    } finally {
+      setConfirmAction(null);
     }
   };
 
@@ -297,7 +319,7 @@ export default function Tax() {
                         {f.parseConfidence != null && ` • Confidence: ${f.parseConfidence}%`}
                       </p>
                     </div>
-                    <button onClick={() => deleteForm16(f.id)} className="text-red-400 hover:text-red-300">
+                    <button onClick={() => requestDeleteForm16(f.id)} className="text-red-400 hover:text-red-300" aria-label="Delete Form 16">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -346,7 +368,7 @@ export default function Tax() {
                         {itr.eVerified && <span className="text-green-400 ml-2">✓ Verified</span>}
                       </p>
                     </div>
-                    <button onClick={() => deleteItr(itr.id)} className="text-red-400 hover:text-red-300">
+                    <button onClick={() => requestDeleteItr(itr.id)} className="text-red-400 hover:text-red-300" aria-label="Delete ITR record">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -488,6 +510,15 @@ export default function Tax() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={performDelete}
+        title={confirmAction?.title}
+        description={confirmAction?.description}
+        confirmText="Delete"
+      />
 
       {/* Regime Compare Modal */}
       {showRegimeCompare && comparison && (

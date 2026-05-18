@@ -1,183 +1,200 @@
-import React, { useState, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, CreditCard, Home, Car, Shield, AlertTriangle, IndianRupee } from 'lucide-react';
-import client from '../api/client';
+import { useState, useEffect } from 'react'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, CreditCard, Home, Car, Shield, AlertTriangle, GraduationCap, Briefcase } from 'lucide-react'
+import client from '../api/client'
+import { formatINR, formatPercent, formatDate } from '../utils/format'
+import { ASSET_COLORS } from '../utils/colors'
+import { Card, PageHeader, PageSkeleton, EmptyState, Badge, Tooltip as UITooltip } from '../components/ui'
 
 const gradeColors = {
-  'A+': '#22c55e',
-  'A': '#22c55e',
-  'B+': '#84cc16',
-  'B': '#eab308',
-  'C': '#f59e0b',
-  'D': '#ef4444'
-};
+  'A+': '#22c55e', 'A': '#22c55e',
+  'B+': '#84cc16', 'B': '#eab308',
+  'C': '#f59e0b', 'D': '#ef4444',
+}
 
-function NetWorth() {
-  const [netWorthData, setNetWorthData] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [changeData, setChangeData] = useState(null);
-  const [breakdown, setBreakdown] = useState(null);
-  const [healthScore, setHealthScore] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+const gradeLabels = {
+  'A+': 'Excellent', 'A': 'Very Good',
+  'B+': 'Good', 'B': 'Fair',
+  'C': 'Needs Work', 'D': 'Poor',
+}
+
+const LIABILITY_ICONS = {
+  HOME_LOAN: Home,
+  CAR_LOAN: Car,
+  CAR: Car,
+  EDUCATION_LOAN: GraduationCap,
+  PERSONAL_LOAN: Briefcase,
+  CREDIT_CARD: CreditCard,
+}
+
+export default function NetWorth() {
+  const [netWorthData, setNetWorthData] = useState(null)
+  const [history, setHistory] = useState([])
+  const [changeData, setChangeData] = useState(null)
+  const [breakdown, setBreakdown] = useState(null)
+  const [healthScore, setHealthScore] = useState(null)
+  const [liabilities, setLiabilities] = useState([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function fetchAll() {
-      try {
-        setLoading(true);
-        const [nw, hist, change, bd, hs] = await Promise.all([
-          client.get('/net-worth'),
-          client.get('/net-worth/history?days=90'),
-          client.get('/net-worth/change?days=30'),
-          client.get('/net-worth/breakdown'),
-          client.get('/net-worth/health-score')
-        ]);
-        setNetWorthData(nw.data);
-        setHistory(hist.data);
-        setChangeData(change.data);
-        setBreakdown(bd.data);
-        setHealthScore(hs.data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
+    fetchAll()
+  }, [])
+
+  async function fetchAll() {
+    try {
+      setLoading(true)
+      const [nw, hist, change, bd, hs, libs] = await Promise.all([
+        client.get('/net-worth'),
+        client.get('/net-worth/history?days=90'),
+        client.get('/net-worth/change?days=30'),
+        client.get('/net-worth/breakdown'),
+        client.get('/net-worth/health-score'),
+        client.get('/liabilities').catch(() => ({ data: [] })),
+      ])
+      setNetWorthData(nw.data)
+      setHistory(hist.data || [])
+      setChangeData(change.data)
+      setBreakdown(bd.data)
+      setHealthScore(hs.data)
+      setLiabilities(libs.data || [])
+    } finally {
+      setLoading(false)
     }
-    fetchAll();
-  }, []);
-
-  const formatCurrency = (val) => {
-    if (val == null) return 'Rs. 0';
-    const num = typeof val === 'number' ? val : parseFloat(val) || 0;
-    return `Rs. ${num.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-  };
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 0' }}>
-        <div>Loading...</div>
-      </div>
-    );
   }
 
-  if (error) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 0' }}>
-        <div style={{ color: '#ef4444' }}>Error: {error}</div>
-      </div>
-    );
-  }
+  if (loading) return <PageSkeleton />
 
-  const isPositiveChange = changeData?.changePercent >= 0;
-  const maxAsset = breakdown?.assets?.reduce((max, a) => a.value > max ? a.value : max, 0) || 1;
+  const isPositiveChange = (changeData?.changePercent ?? 0) >= 0
+  const maxAsset = breakdown?.assets?.reduce((max, a) => Math.max(max, a.value || 0), 0) || 1
 
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        {/* Header */}
-        <div style={{ marginBottom: '32px' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px' }}>Net Worth</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Track your financial position over time</p>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Net Worth"
+        subtitle="Track your financial position over time"
+      />
 
-        {/* Main Net Worth Display */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px', marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <div style={{ background: '#3b82f6', padding: '10px', borderRadius: '8px' }}>
-              <IndianRupee size={24} color="#fff" />
-            </div>
-            <div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '4px' }}>Total Net Worth</p>
-              <h2 style={{ fontSize: '36px', fontWeight: 'bold' }}>
-                {formatCurrency(netWorthData?.netWorth)}
-              </h2>
+      {/* Main Stats Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Net Worth Hero Card */}
+        <Card className="lg:col-span-2 bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm text-[var(--text-muted)] font-medium">Total Net Worth</p>
+            <div className="p-2 rounded-lg bg-blue-500/20">
+              <Wallet className="w-5 h-5 text-blue-400" />
             </div>
           </div>
+          <p className="text-3xl sm:text-4xl font-bold text-[var(--text)]">
+            {formatINR(netWorthData?.netWorth)}
+          </p>
           {changeData && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                background: isPositiveChange ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                padding: '4px 12px',
-                borderRadius: '20px'
-              }}>
-                {isPositiveChange ? <TrendingUp size={16} color="#22c55e" /> : <TrendingDown size={16} color="#ef4444" />}
-                <span style={{ color: isPositiveChange ? '#22c55e' : '#ef4444', fontSize: '14px', fontWeight: '600' }}>
-                  {isPositiveChange ? '+' : ''}{changeData.changePercent?.toFixed(2)}%
-                </span>
-              </div>
-              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>vs last 30 days</span>
+            <div className="flex items-center gap-2 mt-3">
+              <Badge
+                variant={isPositiveChange ? 'green' : 'red'}
+                icon={isPositiveChange ? TrendingUp : TrendingDown}
+              >
+                {formatPercent(changeData.changePercent)}
+              </Badge>
+              <span className="text-sm text-[var(--text-muted)]">
+                {formatINR(Math.abs(changeData.changeAmount || 0), { compact: true })} in 30 days
+              </span>
             </div>
           )}
-        </div>
+          <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-[var(--border)]">
+            <div>
+              <p className="text-xs text-[var(--text-muted)] mb-1">Total Assets</p>
+              <p className="text-lg font-semibold text-green-400">
+                {formatINR(netWorthData?.totalAssets, { compact: true })}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[var(--text-muted)] mb-1">Total Liabilities</p>
+              <p className="text-lg font-semibold text-red-400">
+                {formatINR(netWorthData?.totalLiabilities, { compact: true })}
+              </p>
+            </div>
+          </div>
+        </Card>
 
-        {/* Assets and Liabilities Summary Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ background: 'rgba(34,197,94,0.15)', padding: '8px', borderRadius: '8px' }}>
-                <Wallet size={20} color="#22c55e" />
+        {/* Health Score Card */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-[var(--text-muted)] font-medium">Financial Health</p>
+            <UITooltip content="Score based on emergency fund, debt ratio, savings rate, and diversification">
+              <div className="p-2 rounded-lg bg-purple-500/20 cursor-help">
+                <Shield className="w-5 h-5 text-purple-400" />
               </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Total Assets</p>
-            </div>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#22c55e' }}>
-              {formatCurrency(netWorthData?.totalAssets)}
-            </p>
+            </UITooltip>
           </div>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ background: 'rgba(239,68,68,0.15)', padding: '8px', borderRadius: '8px' }}>
-                <CreditCard size={20} color="#ef4444" />
-              </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Total Liabilities</p>
+          <div className="flex items-center justify-center my-6">
+            <div
+              className="w-24 h-24 rounded-full flex flex-col items-center justify-center font-bold border-4"
+              style={{
+                borderColor: gradeColors[healthScore?.grade] || '#94a3b8',
+                color: gradeColors[healthScore?.grade] || '#94a3b8',
+              }}
+            >
+              <span className="text-3xl">{healthScore?.grade || '—'}</span>
+              <span className="text-xs font-medium text-[var(--text-muted)]">
+                {healthScore?.score?.toFixed(0) || 0}/100
+              </span>
             </div>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#ef4444' }}>
-              {formatCurrency(netWorthData?.totalLiabilities)}
-            </p>
           </div>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ background: 'rgba(59,130,246,0.15)', padding: '8px', borderRadius: '8px' }}>
-                <PiggyBank size={20} color="#3b82f6" />
-              </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Net Worth</p>
+          <p className="text-center text-sm text-[var(--text-muted)]">
+            {gradeLabels[healthScore?.grade] || 'Unrated'}
+          </p>
+          {healthScore?.recommendations?.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-[var(--border)]">
+              <p className="text-xs font-medium text-[var(--text-muted)] mb-1">Top Recommendation</p>
+              <p className="text-xs text-[var(--text)]">{healthScore.recommendations[0]}</p>
             </div>
-            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>
-              {formatCurrency(netWorthData?.netWorth)}
-            </p>
-          </div>
-        </div>
+          )}
+        </Card>
+      </div>
 
-        {/* Grid for Chart and Health Score */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px', marginBottom: '24px' }}>
-          {/* Net Worth History Chart */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Net Worth History (90 Days)</h3>
-            <ResponsiveContainer width="100%" height={300}>
+      {/* Net Worth History Chart */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold">Net Worth History</h2>
+          <Badge variant="default">Last 90 days</Badge>
+        </div>
+        {history.length === 0 ? (
+          <EmptyState
+            icon={TrendingUp}
+            title="No history yet"
+            description="Your net worth history will appear here as data accumulates."
+          />
+        ) : (
+          <div style={{ height: 320 }}>
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={history}>
                 <defs>
                   <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="date"
                   stroke="var(--text-muted)"
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(d) => formatDate(d).split(' ').slice(0, 2).join(' ')}
                 />
                 <YAxis
                   stroke="var(--text-muted)"
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(val) => `Rs ${(val / 100000).toFixed(0)}L`}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => formatINR(v, { compact: true })}
                 />
                 <Tooltip
-                  contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text)' }}
-                  formatter={(val) => [formatCurrency(val), 'Net Worth']}
-                  labelFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  contentStyle={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    color: 'var(--text)',
+                  }}
+                  formatter={(v) => [formatINR(v), 'Net Worth']}
+                  labelFormatter={formatDate}
                 />
                 <Area
                   type="monotone"
@@ -189,111 +206,91 @@ function NetWorth() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+        )}
+      </Card>
 
-          {/* Health Score Card */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-              <div style={{ background: 'rgba(59,130,246,0.15)', padding: '8px', borderRadius: '8px' }}>
-                <Shield size={20} color="#3b82f6" />
-              </div>
-              <h3 style={{ fontSize: '18px', fontWeight: '600' }}>Health Score</h3>
-            </div>
-            {healthScore && (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{
-                  width: '120px',
-                  height: '120px',
-                  borderRadius: '50%',
-                  border: `8px solid ${gradeColors[healthScore.grade] || '#3b82f6'}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 16px'
-                }}>
-                  <span style={{ fontSize: '32px', fontWeight: 'bold' }}>{healthScore.score}</span>
-                  <span style={{ fontSize: '20px', fontWeight: 'bold', color: gradeColors[healthScore.grade] }}>
-                    {healthScore.grade}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                  {healthScore.score >= 80 ? (
-                    <Shield size={16} color="#22c55e" />
-                  ) : healthScore.score >= 60 ? (
-                    <Shield size={16} color="#eab308" />
-                  ) : (
-                    <AlertTriangle size={16} color="#ef4444" />
-                  )}
-                  <span style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
-                    {healthScore.score >= 80 ? 'Excellent' : healthScore.score >= 60 ? 'Good' : 'Needs Improvement'}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Asset Breakdown and Liabilities */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-          {/* Asset Breakdown */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-              <div style={{ background: 'rgba(34,197,94,0.15)', padding: '8px', borderRadius: '8px' }}>
-                <Home size={20} color="#22c55e" />
-              </div>
-              <h3 style={{ fontSize: '18px', fontWeight: '600' }}>Asset Breakdown</h3>
-            </div>
-            {breakdown?.assets?.map((asset, idx) => (
-              <div key={idx} style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '14px', color: 'var(--text)' }}>{asset.category}</span>
-                  <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>{formatCurrency(asset.value)}</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${(asset.value / maxAsset) * 100}%`,
-                    height: '100%',
-                    background: '#3b82f6',
-                    borderRadius: '4px',
-                    transition: 'width 0.3s ease'
-                  }} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Liabilities Summary */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-              <div style={{ background: 'rgba(239,68,68,0.15)', padding: '8px', borderRadius: '8px' }}>
-                <CreditCard size={20} color="#ef4444" />
-              </div>
-              <h3 style={{ fontSize: '18px', fontWeight: '600' }}>Liabilities</h3>
-            </div>
-            {breakdown?.liabilities?.map((liability, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Car size={18} color="var(--text-muted)" />
-                  <div>
-                    <p style={{ fontSize: '14px', color: 'var(--text)' }}>{liability.category}</p>
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{liability.count || 1} item(s)</p>
+      {/* Asset Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+            <PiggyBank className="w-4 h-4 text-green-400" />
+            Asset Breakdown
+          </h2>
+          {!breakdown?.assets?.length ? (
+            <p className="text-sm text-[var(--text-muted)] py-4">No assets to display</p>
+          ) : (
+            <div className="space-y-3">
+              {breakdown.assets.filter(a => a.value > 0).map((asset) => {
+                const pct = (asset.value / maxAsset) * 100
+                const color = ASSET_COLORS[asset.type] || '#3b82f6'
+                return (
+                  <div key={asset.type}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium">{asset.label || asset.type}</span>
+                      <span className="text-sm text-[var(--text-muted)]">
+                        {formatINR(asset.value, { compact: true })}
+                      </span>
+                    </div>
+                    <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, backgroundColor: color }}
+                      />
+                    </div>
                   </div>
-                </div>
-                <span style={{ fontSize: '14px', color: '#ef4444', fontWeight: '600' }}>
-                  -{formatCurrency(liability.value)}
-                </span>
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 0 0', borderTop: '1px solid var(--border)', marginTop: '12px' }}>
-              <span style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text)' }}>Total</span>
-              <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#ef4444' }}>
-                {formatCurrency(netWorthData?.totalLiabilities)}
-              </span>
+                )
+              })}
             </div>
-          </div>
-        </div>
-      </div>
-  );
-}
+          )}
+        </Card>
 
-export default NetWorth;
+        <Card>
+          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-red-400" />
+            Liabilities
+          </h2>
+          {liabilities.length === 0 ? (
+            <div className="text-center py-8">
+              <Shield className="w-10 h-10 text-green-400 mx-auto mb-2" />
+              <p className="text-sm font-medium">Debt Free!</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">No outstanding liabilities</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {liabilities.map((liability) => {
+                const Icon = LIABILITY_ICONS[liability.liabilityType] || CreditCard
+                const progress = liability.originalAmount > 0
+                  ? ((liability.originalAmount - liability.outstandingAmount) / liability.originalAmount) * 100
+                  : 0
+                return (
+                  <div key={liability.id} className="p-3 rounded-lg bg-[var(--input-bg)]">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Icon className="w-4 h-4 text-red-400" />
+                        <span className="font-medium text-sm">
+                          {liability.lender || liability.liabilityType?.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <span className="text-sm font-semibold text-red-400">
+                        {formatINR(liability.outstandingAmount, { compact: true })}
+                      </span>
+                    </div>
+                    <div className="w-full bg-[var(--bg)] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-full bg-green-500 rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      {progress.toFixed(0)}% paid off
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  )
+}

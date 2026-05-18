@@ -5,8 +5,9 @@
 [data-theme="dark"] {
   --bg: #0f172a;
   --bg-card: #1e293b;
-  --bg-card-hover: #1e293b;
+  --bg-card-hover: #243349;
   --border: #334155;
+  --border-strong: #475569;
   --text: #f1f5f9;
   --text-muted: #94a3b8;
   --text-secondary: #64748b;
@@ -89,6 +90,31 @@ body {
 .input-bg { background-color: var(--input-bg); }
 .input-border { border-color: var(--input-border); }
 .hover-bg:hover { background-color: var(--hover-bg); }
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes zoomIn95 {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-in { animation-fill-mode: both; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+.fade-in { animation-name: fadeIn; }
+.zoom-in-95 { animation-name: zoomIn95; }
+.slide-in-up { animation-name: slideInUp; }
+.duration-150 { animation-duration: 150ms; }
+.duration-200 { animation-duration: 200ms; }
+.duration-300 { animation-duration: 300ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in { animation-duration: 0.01ms !important; }
+}
 
 /* Override Tailwind utility classes for theming */
 .bg-slate-800 { background-color: var(--slate-800) !important; }
