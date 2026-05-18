@@ -43,18 +43,33 @@ export default function NetWorth() {
   async function fetchAll() {
     try {
       setLoading(true)
+      // Fetch each independently so one failure doesn't break others
+      const safeGet = (url) => client.get(url).catch(err => {
+        console.error(`Failed to fetch ${url}:`, err)
+        return { data: null }
+      })
+
       const [nw, hist, change, bd, hs, libs] = await Promise.all([
-        client.get('/net-worth'),
-        client.get('/net-worth/history?days=90'),
-        client.get('/net-worth/change?days=30'),
-        client.get('/net-worth/breakdown'),
-        client.get('/net-worth/health-score'),
-        client.get('/liabilities').catch(() => ({ data: [] })),
+        safeGet('/net-worth'),
+        safeGet('/net-worth/history?days=90'),
+        safeGet('/net-worth/change?days=30'),
+        safeGet('/net-worth/breakdown'),
+        safeGet('/net-worth/health-score'),
+        safeGet('/liabilities'),
       ])
-      setNetWorthData(nw.data)
+
+      console.log('NetWorth API responses:', {
+        netWorth: nw.data,
+        breakdown: bd.data,
+        change: change.data,
+        healthScore: hs.data,
+      })
+
+      // Use breakdown response as primary source (has all the fields)
+      setNetWorthData(nw.data || bd.data)
       setHistory(hist.data || [])
       setChangeData(change.data)
-      setBreakdown(bd.data)
+      setBreakdown(bd.data || nw.data)
       setHealthScore(hs.data)
       setLiabilities(libs.data || [])
     } finally {
@@ -100,7 +115,7 @@ export default function NetWorth() {
             </div>
           </div>
           <p className="text-3xl sm:text-4xl font-bold text-[var(--text)]">
-            {formatINR(netWorthData?.netWorth)}
+            {formatINR(netWorthData?.netWorth ?? breakdown?.netWorth)}
           </p>
           {changeData && (
             <div className="flex items-center gap-2 mt-3">
@@ -119,13 +134,13 @@ export default function NetWorth() {
             <div>
               <p className="text-xs text-[var(--text-muted)] mb-1">Total Assets</p>
               <p className="text-lg font-semibold text-green-400">
-                {formatINR(netWorthData?.totalAssets, { compact: true })}
+                {formatINR(netWorthData?.totalAssets ?? breakdown?.totalAssets, { compact: true })}
               </p>
             </div>
             <div>
               <p className="text-xs text-[var(--text-muted)] mb-1">Total Liabilities</p>
               <p className="text-lg font-semibold text-red-400">
-                {formatINR(netWorthData?.totalLiabilities, { compact: true })}
+                {formatINR(netWorthData?.totalLiabilities ?? breakdown?.totalLiabilities, { compact: true })}
               </p>
             </div>
           </div>
