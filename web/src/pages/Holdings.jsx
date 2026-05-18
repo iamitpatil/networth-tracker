@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 
@@ -116,6 +116,79 @@ export default function Holdings() {
     if (filter === 'all') return holdings
     return holdings.filter((h) => h.assetType === filter)
   }, [holdings, filter])
+
+  // Group holdings by symbol+name (for family view consolidation)
+  // Returns array of groups; each group has { symbol, name, assetType, isGroup, holdings[], totals }
+  const groupedHoldings = useMemo(() => {
+    if (!isFamilyView) {
+      // Not family view - just return holdings as single-item groups
+      return filteredHoldings.map(h => ({
+        key: h.id,
+        symbol: h.symbol,
+        name: h.name,
+        assetType: h.assetType,
+        isGroup: false,
+        holdings: [h],
+        owners: h.ownerName ? [h.ownerName] : [],
+        totalQuantity: h.quantity || 0,
+        totalValue: h.currentValue || 0,
+        totalPnL: h.unrealizedPnl || 0,
+        totalInvested: (h.quantity || 0) * (h.averageBuyPrice || 0),
+        avgPrice: h.averageBuyPrice || 0,
+        currentPrice: h.currentPrice,
+        dayChangePct: h.dayChangePct,
+        representative: h,
+      }))
+    }
+
+    // Family view: group by symbol+assetType
+    const groups = new Map()
+    for (const h of filteredHoldings) {
+      const key = `${h.symbol}__${h.assetType}`
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          symbol: h.symbol,
+          name: h.name,
+          assetType: h.assetType,
+          holdings: [],
+          owners: new Set(),
+        })
+      }
+      const g = groups.get(key)
+      g.holdings.push(h)
+      if (h.ownerName) g.owners.add(h.ownerName)
+    }
+
+    return Array.from(groups.values()).map(g => {
+      const totalQuantity = g.holdings.reduce((s, h) => s + (Number(h.quantity) || 0), 0)
+      const totalValue = g.holdings.reduce((s, h) => s + (Number(h.currentValue) || 0), 0)
+      const totalPnL = g.holdings.reduce((s, h) => s + (Number(h.unrealizedPnl) || 0), 0)
+      const totalInvested = g.holdings.reduce((s, h) => s + ((Number(h.quantity) || 0) * (Number(h.averageBuyPrice) || 0)), 0)
+      const avgPrice = totalQuantity > 0 ? totalInvested / totalQuantity : 0
+      // Use first holding's current price (should be same across members for same symbol)
+      const currentPrice = g.holdings[0]?.currentPrice
+      const dayChangePct = g.holdings[0]?.dayChangePct
+      return {
+        ...g,
+        owners: Array.from(g.owners),
+        isGroup: g.holdings.length > 1,
+        totalQuantity,
+        totalValue,
+        totalPnL,
+        totalInvested,
+        avgPrice,
+        currentPrice,
+        dayChangePct,
+        representative: g.holdings[0],
+      }
+    })
+  }, [filteredHoldings, isFamilyView])
+
+  const [expandedGroups, setExpandedGroups] = useState({})
+  const toggleGroup = (key) => {
+    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   const dematMap = useMemo(() => {
     const map = {}
@@ -856,64 +929,130 @@ export default function Holdings() {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
-            {filteredHoldings.length === 0 ? (
+            {groupedHoldings.length === 0 ? (
               <tr><td colSpan="9" className="px-4 py-12 text-center text-[var(--text-secondary)]">No holdings yet. Add your first investment above.</td></tr>
             ) : (
-              filteredHoldings.map((h) => {
-                const pnl = h.unrealizedPnl || 0
-                return (
-                  <tr key={h.id} className="hover:bg-[var(--hover-bg)]">
+              groupedHoldings.flatMap((group) => {
+                const isExpanded = expandedGroups[group.key]
+                const isClickable = group.assetType === 'EQUITY' || group.assetType === 'ETF' || group.assetType === 'MUTUAL_FUND'
+                const groupRow = (
+                  <tr key={group.key} className={`hover:bg-[var(--hover-bg)] ${group.isGroup ? 'bg-[var(--input-bg)]/20' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {(h.assetType === 'EQUITY' || h.assetType === 'ETF' || h.assetType === 'MUTUAL_FUND')
-                          ? <button onClick={() => openChart(h, chartDays)} className="font-medium text-left hover:text-blue-400 transition">{h.symbol}</button>
-                          : <span className="font-medium">{h.symbol}</span>}
-                        {isFamilyView && h.ownerName && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
-                            <Users className="w-2.5 h-2.5" />
-                            {h.ownerName}
-                          </span>
+                        {group.isGroup && (
+                          <button
+                            onClick={() => toggleGroup(group.key)}
+                            className="text-[var(--text-muted)] hover:text-blue-400 transition p-0.5 -ml-1"
+                            aria-label={isExpanded ? 'Collapse breakdown' : 'Expand breakdown'}
+                          >
+                            {isExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                        )}
+                        {isClickable
+                          ? <button onClick={() => openChart(group.representative, chartDays)} className="font-medium text-left hover:text-blue-400 transition">{group.symbol}</button>
+                          : <span className="font-medium">{group.symbol}</span>}
+                        {/* Show owner badges - all in family view, none in self view */}
+                        {isFamilyView && group.owners.length > 0 && (
+                          <>
+                            {group.isGroup ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                                <Users className="w-2.5 h-2.5" />
+                                {group.owners.length} members
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                                <Users className="w-2.5 h-2.5" />
+                                {group.owners[0]}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
-                      {h.name && <div className="text-xs text-[var(--text-secondary)]">{h.name}</div>}
+                      {group.name && <div className="text-xs text-[var(--text-secondary)]">{group.name}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      {h.dematAccountBroker ? (
+                      {group.isGroup ? (
+                        <span className="text-xs text-[var(--text-secondary)]">{group.holdings.length} accounts</span>
+                      ) : group.representative.dematAccountBroker ? (
                         <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
                           <Building2 className="w-3 h-3" />
-                          {h.dematAccountBroker}{h.dematAccountNumber ? ` (${h.dematAccountNumber.slice(-4)})` : ''}
+                          {group.representative.dematAccountBroker}{group.representative.dematAccountNumber ? ` (${group.representative.dematAccountNumber.slice(-4)})` : ''}
                         </div>
                       ) : (
                         <span className="text-xs text-[var(--text-secondary)]">General</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded ${ASSET_COLORS[h.assetType] || 'bg-slate-700 text-slate-300'}`}>
-                        {ASSET_LABELS[h.assetType] || h.assetType.replace('_', ' ')}
+                      <span className={`text-xs px-2 py-1 rounded ${ASSET_COLORS[group.assetType] || 'bg-slate-700 text-slate-300'}`}>
+                        {ASSET_LABELS[group.assetType] || group.assetType.replace('_', ' ')}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">{h.quantity}</td>
-                    <td className="px-4 py-3 text-right">Rs. {h.averageBuyPrice.toLocaleString('en-IN')}</td>
-                    <td className="px-4 py-3 text-right font-medium">Rs. {(h.currentValue || 0).toLocaleString('en-IN')}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${h.dayChangePct != null ? (h.dayChangePct >= 0 ? 'text-green-400' : 'text-red-400') : 'text-[var(--text-muted)]'}`}>
-                      {h.dayChangePct != null ? `${h.dayChangePct >= 0 ? '+' : ''}${Number(h.dayChangePct).toFixed(2)}%` : '-'}
+                    <td className="px-4 py-3 text-right">{group.totalQuantity}</td>
+                    <td className="px-4 py-3 text-right">Rs. {Number(group.avgPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                    <td className="px-4 py-3 text-right font-medium">Rs. {Number(group.totalValue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td className={`px-4 py-3 text-right font-medium ${group.dayChangePct != null ? (group.dayChangePct >= 0 ? 'text-green-400' : 'text-red-400') : 'text-[var(--text-muted)]'}`}>
+                      {group.dayChangePct != null ? `${group.dayChangePct >= 0 ? '+' : ''}${Number(group.dayChangePct).toFixed(2)}%` : '-'}
                     </td>
-                    <td className={`px-4 py-3 text-right font-medium flex items-center justify-end gap-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {pnl >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                      Rs. {Math.abs(pnl).toLocaleString('en-IN')}
+                    <td className={`px-4 py-3 text-right font-medium ${group.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      <div className="flex items-center justify-end gap-1">
+                        {group.totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                        Rs. {Math.abs(group.totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {h.assetType === 'GOLD' && (
-                          <button onClick={() => openInvoices(h)} className="text-[var(--text-secondary)] hover:text-amber-400 transition p-1" title="Invoices">
-                            <FileText className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button onClick={() => handleDelete(h.id)} aria-label="Delete holding" className="text-[var(--text-secondary)] hover:text-red-400 transition p-1"><Trash2 className="w-4 h-4" /></button>
-                      </div>
+                      {!group.isGroup && (
+                        <div className="flex items-center justify-end gap-1">
+                          {group.assetType === 'GOLD' && (
+                            <button onClick={() => openInvoices(group.representative)} className="text-[var(--text-secondary)] hover:text-amber-400 transition p-1" title="Invoices">
+                              <FileText className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button onClick={() => handleDelete(group.representative.id)} aria-label="Delete holding" className="text-[var(--text-secondary)] hover:text-red-400 transition p-1"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )
+
+                if (!group.isGroup || !isExpanded) return [groupRow]
+
+                // Expanded sub-rows - one per member's holding
+                const subRows = group.holdings.map((h) => {
+                  const pnl = h.unrealizedPnl || 0
+                  return (
+                    <tr key={h.id} className="bg-[var(--bg)]/30 hover:bg-[var(--hover-bg)]/50 border-l-2 border-purple-500/40">
+                      <td className="px-4 py-2 pl-12">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                            <Users className="w-2.5 h-2.5" />
+                            {h.ownerName || 'Unknown'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        {h.dematAccountBroker ? (
+                          <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+                            <Building2 className="w-3 h-3" />
+                            {h.dematAccountBroker}{h.dematAccountNumber ? ` (${h.dematAccountNumber.slice(-4)})` : ''}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--text-secondary)]">General</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2"></td>
+                      <td className="px-4 py-2 text-right text-sm">{h.quantity}</td>
+                      <td className="px-4 py-2 text-right text-sm">Rs. {h.averageBuyPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-2 text-right text-sm">Rs. {(h.currentValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                      <td className="px-4 py-2"></td>
+                      <td className={`px-4 py-2 text-right text-sm ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        Rs. {Math.abs(pnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </td>
+                      <td className="px-4 py-2"></td>
+                    </tr>
+                  )
+                })
+
+                return [groupRow, ...subRows]
               })
             )}
           </tbody>
