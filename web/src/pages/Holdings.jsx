@@ -314,17 +314,80 @@ export default function Holdings() {
     setChartLoading(true)
     setBackfillStatus(null)
     try {
+      // For MFs, check backfill status FIRST so we know if one is in progress
+      let isBackfillRunning = false
+      if (holding.assetType === 'MUTUAL_FUND') {
+        try {
+          const statusRes = await client.get('/market/backfill-mf-status')
+          if (statusRes.data?.running) {
+            setBackfillStatus(statusRes.data)
+            isBackfillRunning = true
+          }
+        } catch (e) {
+          // Ignore status fetch errors
+        }
+      }
+
       const { data } = await client.get(`/portfolio/holdings/${holding.id}/price-history?days=${days}`)
       setPriceHistory(data || [])
-      if ((!data || data.length === 0) && holding.assetType === 'MUTUAL_FUND') {
-        const statusRes = await client.get('/market/backfill-mf-status')
-        setBackfillStatus(statusRes.data)
+
+      // If no history and not already showing running status, check once more
+      // This handles the case where backfill just finished (completed=true)
+      if ((!data || data.length === 0) && !isBackfillRunning && holding.assetType === 'MUTUAL_FUND') {
+        try {
+          const statusRes = await client.get('/market/backfill-mf-status')
+          if (statusRes.data?.completed || statusRes.data?.running) {
+            setBackfillStatus(statusRes.data)
+          }
+        } catch (e) {
+          // Ignore
+        }
       }
     } catch (e) {
       console.error('Failed to load price history:', e)
       setPriceHistory([])
     } finally {
       setChartLoading(false)
+    }
+  }
+
+  const triggerEquityBackfill = async (holding) => {
+    try {
+      // Show loading toast
+      const { toast } = await import('sonner')
+      toast.loading('Fetching price history...', { id: 'equity-backfill' })
+      await client.post(`/market/backfill-prices?fromDate=${new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]}`)
+      toast.success('Price history fetched', {
+        id: 'equity-backfill',
+        description: 'Try opening the chart again',
+      })
+      // Reload price history
+      const { data } = await client.get(`/portfolio/holdings/${holding.id}/price-history?days=${chartDays}`)
+      setPriceHistory(data || [])
+    } catch (e) {
+      const { toast } = await import('sonner')
+      toast.error('Failed to fetch history', {
+        id: 'equity-backfill',
+        description: e?.message || 'Please try again',
+      })
+    }
+  }
+
+  const triggerMfBackfill = async (holding) => {
+    try {
+      const { toast } = await import('sonner')
+      // Optimistic UI - show progress immediately
+      setBackfillStatus({ running: true, progressDays: 0, totalDays: 1 })
+      toast.info('Backfill started', {
+        description: 'NAV history will be downloaded in the background.',
+      })
+      await client.post('/market/backfill-mf-history')
+    } catch (e) {
+      setBackfillStatus(null)
+      const { toast } = await import('sonner')
+      toast.error('Failed to start backfill', {
+        description: e?.message || 'Please try again',
+      })
     }
   }
 
@@ -922,18 +985,41 @@ export default function Holdings() {
                     <p className="text-xs text-[var(--text-muted)] mt-1">
                       {backfillStatus.progressDays} / {backfillStatus.totalDays} days processed
                     </p>
+                    <p className="text-xs text-[var(--text-muted)] mt-2">
+                      You can close this dialog - backfill continues in background.
+                    </p>
                   </>
-                ) : (
+                ) : backfillStatus?.completed && (backfillStatus?.recordsBackfilled || 0) === 0 ? (
                   <>
-                    <p className="text-sm text-[var(--text-secondary)] mb-3">No price history yet.</p>
-                    <button onClick={async () => {
-                      setBackfillStatus({ running: true, progressDays: 0, totalDays: 1 })
-                      await client.post('/market/backfill-mf-history')
-                    }}
+                    <p className="text-sm text-amber-400 mb-2">No historical NAV data available for this fund.</p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      AMFI may not have published NAVs for this scheme in the requested period.
+                    </p>
+                  </>
+                ) : chartHolding?.assetType === 'MUTUAL_FUND' ? (
+                  <>
+                    <p className="text-sm text-[var(--text-secondary)] mb-3">No NAV history available yet.</p>
+                    <button onClick={() => triggerMfBackfill(chartHolding)}
                       className="px-4 py-2 rounded-lg bg-blue-500/20 text-blue-400 text-sm hover:bg-blue-500/30 transition">
                       Fetch NAV History
                     </button>
+                    <p className="text-xs text-[var(--text-muted)] mt-3">
+                      This downloads NAVs from AMFI (may take a few minutes).
+                    </p>
                   </>
+                ) : chartHolding?.assetType === 'EQUITY' || chartHolding?.assetType === 'ETF' ? (
+                  <>
+                    <p className="text-sm text-[var(--text-secondary)] mb-3">No price history available yet.</p>
+                    <button onClick={() => triggerEquityBackfill(chartHolding)}
+                      className="px-4 py-2 rounded-lg bg-blue-500/20 text-blue-400 text-sm hover:bg-blue-500/30 transition">
+                      Fetch Price History
+                    </button>
+                    <p className="text-xs text-[var(--text-muted)] mt-3">
+                      Downloads OHLC data via Upstox API.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">Price history not available for this asset type.</p>
                 )}
               </div>
             ) : chartStats ? <div>
