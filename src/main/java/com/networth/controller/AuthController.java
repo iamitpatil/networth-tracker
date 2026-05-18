@@ -1,11 +1,13 @@
 package com.networth.controller;
 
+import com.networth.exception.RateLimitExceededException;
 import com.networth.model.dto.AuthResponse;
 import com.networth.model.dto.LoginRequest;
 import com.networth.model.dto.RefreshTokenRequest;
 import com.networth.model.dto.RegisterRequest;
 import com.networth.model.entity.User;
 import com.networth.repository.UserRepository;
+import com.networth.security.RateLimitService;
 import com.networth.service.AuthService;
 import com.networth.service.TwoFactorService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,18 +27,66 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthController {
 
+    // Rate limit configurations
+    private static final int LOGIN_MAX_ATTEMPTS = 5;
+    private static final int LOGIN_WINDOW_SECONDS = 300; // 5 minutes
+    private static final int REGISTER_MAX_ATTEMPTS = 3;
+    private static final int REGISTER_WINDOW_SECONDS = 3600; // 1 hour
+
     private final AuthService authService;
     private final TwoFactorService twoFactorService;
     private final UserRepository userRepository;
+    private final RateLimitService rateLimitService;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<AuthResponse> register(
+            @Valid @RequestBody RegisterRequest request,
+            HttpServletRequest httpRequest) {
+        // Rate limit by IP
+        String ip = getClientIp(httpRequest);
+        String key = "register:" + ip;
+        if (!rateLimitService.isAllowed(key, REGISTER_MAX_ATTEMPTS, REGISTER_WINDOW_SECONDS)) {
+            throw new RateLimitExceededException("Too many registration attempts. Try again later.");
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<AuthResponse> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest) {
+        // Rate limit by IP + email (defense in depth)
+        String ip = getClientIp(httpRequest);
+        String ipKey = "login:ip:" + ip;
+        String emailKey = "login:email:" + request.getEmail();
+
+        if (!rateLimitService.isAllowed(ipKey, LOGIN_MAX_ATTEMPTS * 2, LOGIN_WINDOW_SECONDS)
+                || !rateLimitService.isAllowed(emailKey, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS)) {
+            throw new RateLimitExceededException(
+                    "Too many login attempts. Please wait and try again.");
+        }
+
+        try {
+            AuthResponse response = authService.login(request);
+            // Reset on success
+            rateLimitService.reset(emailKey);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            // Don't reset - count failed attempts
+            throw e;
+        }
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String xfHeader = request.getHeader("X-Forwarded-For");
+        if (xfHeader != null && !xfHeader.isBlank()) {
+            return xfHeader.split(",")[0].trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp;
+        }
+        return request.getRemoteAddr();
     }
 
     @PostMapping("/refresh")

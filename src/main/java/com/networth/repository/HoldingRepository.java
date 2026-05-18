@@ -13,10 +13,21 @@ import java.util.UUID;
 
 @Repository
 public interface HoldingRepository extends JpaRepository<Holding, UUID> {
-    List<Holding> findByUserId(UUID userId);
-    List<Holding> findByUserIdAndAssetType(UUID userId, AssetType assetType);
-    List<Holding> findByUserIdAndSymbol(UUID userId, String symbol);
 
-    @Query("SELECT DISTINCT h.isin FROM Holding h WHERE h.symbol = :symbol AND h.isin IS NOT NULL")
+    // Default queries filter out soft-deleted records
+    @Query("SELECT h FROM Holding h WHERE h.userId = :userId AND h.deletedAt IS NULL")
+    List<Holding> findByUserId(@Param("userId") UUID userId);
+
+    @Query("SELECT h FROM Holding h WHERE h.userId = :userId AND h.assetType = :assetType AND h.deletedAt IS NULL")
+    List<Holding> findByUserIdAndAssetType(@Param("userId") UUID userId, @Param("assetType") AssetType assetType);
+
+    @Query("SELECT h FROM Holding h WHERE h.userId = :userId AND h.symbol = :symbol AND h.deletedAt IS NULL")
+    List<Holding> findByUserIdAndSymbol(@Param("userId") UUID userId, @Param("symbol") String symbol);
+
+    @Query("SELECT DISTINCT h.isin FROM Holding h WHERE h.symbol = :symbol AND h.isin IS NOT NULL AND h.deletedAt IS NULL")
     Optional<String> findIsinBySymbol(@Param("symbol") String symbol);
+
+    // For finding ALL holdings (including deleted) - use only when needed for audit/reports
+    @Query("SELECT h FROM Holding h WHERE h.userId = :userId")
+    List<Holding> findAllByUserIdIncludingDeleted(@Param("userId") UUID userId);
 }

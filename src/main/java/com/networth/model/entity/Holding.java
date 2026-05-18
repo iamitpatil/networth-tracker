@@ -93,4 +93,18 @@ public class Holding {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    /**
+     * Soft delete timestamp. Non-null means this holding is deleted but preserved for audit.
+     */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    /**
+     * Optimistic locking version. Prevents lost updates on concurrent modifications.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    @Builder.Default
+    private Long version = 0L;
 }

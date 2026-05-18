@@ -138,7 +138,10 @@ public class HoldingService {
     @Transactional
     public void deleteHolding(String userId, String holdingId) {
         Holding holding = findOwnedHolding(userId, holdingId);
-        holdingRepository.delete(holding);
+        // Soft delete: preserve for tax/audit history
+        holding.setDeletedAt(java.time.LocalDateTime.now());
+        holdingRepository.save(holding);
+        log.info("Soft-deleted holding {} for user {}", holdingId, userId);
     }
 
     @Transactional

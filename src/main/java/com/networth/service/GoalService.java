@@ -66,7 +66,10 @@ public class GoalService {
     @Transactional
     public void deleteGoal(UUID userId, UUID goalId) {
         Goal goal = findOwnedGoal(userId, goalId);
-        goalRepository.delete(goal);
+        // Soft delete
+        goal.setDeletedAt(java.time.LocalDateTime.now());
+        goalRepository.save(goal);
+        log.info("Soft-deleted goal {} for user {}", goalId, userId);
     }
 
     @Transactional

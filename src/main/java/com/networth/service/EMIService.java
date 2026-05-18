@@ -113,7 +113,10 @@ public class EMIService {
     @Transactional
     public void deleteLiability(UUID userId, UUID liabilityId) {
         Liability liability = findOwnedLiability(userId, liabilityId);
-        liabilityRepository.delete(liability);
+        // Soft delete: preserve for audit
+        liability.setDeletedAt(java.time.LocalDateTime.now());
+        liabilityRepository.save(liability);
+        log.info("Soft-deleted liability {} for user {}", liabilityId, userId);
     }
 
     @Transactional(readOnly = true)
