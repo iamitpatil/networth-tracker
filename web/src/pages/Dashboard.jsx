@@ -137,7 +137,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-2xl font-bold text-purple-400 mb-1">
-            {xirr?.xirr != null ? `${(xirr.xirr * 100).toFixed(2)}%` : '—'}
+            {xirr?.xirr != null && isFinite(xirr.xirr) ? `${Math.abs(xirr.xirr * 100) > 9999 ? (xirr.xirr > 0 ? '>9,999' : '<-9,999') : (xirr.xirr * 100).toFixed(2)}%` : '—'}
           </p>
           <p className="text-xs text-[var(--text-muted)]">Annualized return</p>
         </Card>

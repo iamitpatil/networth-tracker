@@ -43,7 +43,12 @@ export default function Analytics() {
   }
 
   // Backend returns XIRR/CAGR as decimal (0.12 = 12%); we display as percent
-  const formatRate = (val) => val != null ? `${(val * 100).toFixed(2)}%` : '—'
+  const formatRate = (val) => {
+    if (val == null || !isFinite(val)) return '—'
+    const pct = val * 100
+    if (Math.abs(pct) > 9999) return pct > 0 ? '>9,999%' : '<-9,999%'
+    return `${pct.toFixed(2)}%`
+  }
   const formatPlain = (val, dec = 2) => val != null ? Number(val).toFixed(dec) : '—'
 
   if (loading) return <PageSkeleton />
