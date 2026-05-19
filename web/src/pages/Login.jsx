@@ -1,26 +1,39 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { TrendingUp, Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react'
+import { TrendingUp, Eye, EyeOff, Mail, Lock, ArrowRight, ShieldCheck } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [needs2FA, setNeeds2FA] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
+  const totpRef = useRef(null)
+
+  useEffect(() => {
+    if (needs2FA && totpRef.current) totpRef.current.focus()
+  }, [needs2FA])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
+      await login(email, password, needs2FA ? twoFactorCode : undefined)
       navigate('/dashboard')
     } catch (err) {
-      setError(err.message || 'Invalid email or password')
+      const msg = err.response?.data?.message || err.message || ''
+      if (msg.toLowerCase().includes('two-factor') && msg.toLowerCase().includes('required')) {
+        setNeeds2FA(true)
+        setError('')
+      } else {
+        setError(msg || 'Invalid email or password')
+      }
     } finally {
       setLoading(false)
     }
@@ -123,6 +136,28 @@ export default function Login() {
                 </button>
               </div>
             </div>
+
+            {needs2FA && (
+              <div>
+                <label className="block text-sm font-medium text-[var(--text)] mb-1.5">Two-Factor Code</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+                  <input
+                    ref={totpRef}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl pl-10 pr-4 py-3 text-sm text-[var(--text)] placeholder-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 focus:border-[var(--primary)] transition tracking-[0.3em] text-center font-mono"
+                    placeholder="000000"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-1.5">Enter the 6-digit code from your authenticator app</p>
+              </div>
+            )}
 
             <div className="flex items-center justify-end">
               <button type="button" className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] transition">

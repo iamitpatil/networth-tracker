@@ -16,8 +16,10 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
-  const login = async (email, password) => {
-    const { data } = await client.post('/auth/login', { email, password })
+  const login = async (email, password, twoFactorCode) => {
+    const body = { email, password }
+    if (twoFactorCode) body.twoFactorCode = twoFactorCode
+    const { data } = await client.post('/auth/login', body)
     localStorage.setItem('accessToken', data.accessToken)
     localStorage.setItem('user', JSON.stringify(data))
     setUser(data)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Building2, ArrowLeft, Palette, Upload, Trash2, Check, Plus, X, FolderOpen, Database, RefreshCw, Loader2, Pencil } from 'lucide-react'
+import { Building2, ArrowLeft, Palette, Upload, Trash2, Check, Plus, X, FolderOpen, Database, RefreshCw, Loader2, Pencil, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useNavigate } from 'react-router-dom'
@@ -43,6 +43,7 @@ function hexToRgba(hex, alpha) {
 
 const TABS = [
   { id: 'demat', label: 'Demat Accounts', icon: Building2, color: 'var(--primary)' },
+  { id: '2fa', label: 'Two-Factor Auth', icon: ShieldCheck, color: 'var(--green)' },
   { id: 'documents', label: 'Documents', icon: FolderOpen, color: 'var(--amber)' },
   { id: 'themes', label: 'Themes', icon: Palette, color: 'var(--green)' },
   { id: 'data', label: 'Data', icon: Database, color: 'var(--blue)' },
@@ -212,6 +213,7 @@ export default function Profile() {
 
       <div>
         {activeTab === 'demat' && <DematAccounts />}
+        {activeTab === '2fa' && <TwoFactorAuth />}
         {activeTab === 'documents' && <Documents />}
         {activeTab === 'themes' && (
           <div className="space-y-4">
@@ -348,6 +350,204 @@ export default function Profile() {
         )}
         {activeTab === 'data' && <DataRefresh />}
       </div>
+    </div>
+  )
+}
+
+function TwoFactorAuth() {
+  const { user } = useAuth()
+  const [enabled, setEnabled] = useState(user?.twoFactorEnabled || false)
+  const [step, setStep] = useState('idle') // idle | setup | verify | disable
+  const [qrUrl, setQrUrl] = useState('')
+  const [secret, setSecret] = useState('')
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const startSetup = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      const { data } = await client.post('/auth/2fa/setup')
+      setQrUrl(data.qrCodeUrl)
+      setSecret(data.secret)
+      setStep('verify')
+    } catch (e) {
+      setError(e.response?.data?.message || 'Failed to start 2FA setup')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const verifySetup = async () => {
+    setError('')
+    if (code.length !== 6) { setError('Enter a 6-digit code'); return }
+    setLoading(true)
+    try {
+      await client.post('/auth/2fa/verify-setup', { code })
+      setEnabled(true)
+      setStep('idle')
+      setCode('')
+      setQrUrl('')
+      setSecret('')
+      // Update stored user
+      const stored = JSON.parse(localStorage.getItem('user') || '{}')
+      stored.twoFactorEnabled = true
+      localStorage.setItem('user', JSON.stringify(stored))
+    } catch (e) {
+      setError(e.response?.data?.message || 'Invalid code. Try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const disable2FA = async () => {
+    setError('')
+    if (code.length !== 6) { setError('Enter your current 6-digit code to disable 2FA'); return }
+    setLoading(true)
+    try {
+      await client.post('/auth/2fa/disable', { code })
+      setEnabled(false)
+      setStep('idle')
+      setCode('')
+      const stored = JSON.parse(localStorage.getItem('user') || '{}')
+      stored.twoFactorEnabled = false
+      localStorage.setItem('user', JSON.stringify(stored))
+    } catch (e) {
+      setError(e.response?.data?.message || 'Invalid code. Cannot disable 2FA.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${enabled ? 'bg-green-500/20' : 'bg-[var(--hover-bg)]'}`}>
+            <ShieldCheck className={`w-5 h-5 ${enabled ? 'text-green-400' : 'text-[var(--text-muted)]'}`} />
+          </div>
+          <div>
+            <h3 className="font-semibold text-[var(--text)]">Two-Factor Authentication</h3>
+            <p className="text-sm text-[var(--text-muted)]">
+              {enabled ? 'Enabled — your account is protected with TOTP' : 'Add an extra layer of security to your account'}
+            </p>
+          </div>
+        </div>
+        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${enabled ? 'bg-green-500/20 text-green-400' : 'bg-[var(--hover-bg)] text-[var(--text-muted)]'}`}>
+          {enabled ? 'Enabled' : 'Disabled'}
+        </span>
+      </div>
+
+      {step === 'idle' && !enabled && (
+        <button
+          onClick={startSetup}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition disabled:opacity-60"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+          Enable Two-Factor Authentication
+        </button>
+      )}
+
+      {step === 'idle' && enabled && (
+        <button
+          onClick={() => { setStep('disable'); setCode(''); setError('') }}
+          className="flex items-center gap-2 px-4 py-2.5 border border-red-500/30 text-red-400 hover:bg-red-500/10 rounded-lg text-sm font-medium transition"
+        >
+          Disable Two-Factor Authentication
+        </button>
+      )}
+
+      {step === 'verify' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-[var(--bg)] rounded-lg border border-[var(--border)] space-y-3">
+            <p className="text-sm font-medium text-[var(--text)]">1. Scan this QR code with your authenticator app</p>
+            <p className="text-xs text-[var(--text-muted)]">(Google Authenticator, Authy, 1Password, etc.)</p>
+            <div className="flex justify-center py-3">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`}
+                alt="2FA QR Code"
+                className="w-48 h-48 rounded-lg border border-[var(--border)]"
+              />
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-[var(--text-muted)] mb-1">Or enter this secret manually:</p>
+              <code className="text-xs font-mono bg-[var(--bg-card)] px-3 py-1.5 rounded border border-[var(--border)] text-[var(--text)] select-all">{secret}</code>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-[var(--text)] mb-2">2. Enter the 6-digit code from your app</p>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-lg px-4 py-3 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition tracking-[0.3em] text-center font-mono"
+              placeholder="000000"
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              onClick={verifySetup}
+              disabled={loading || code.length !== 6}
+              className="flex items-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition disabled:opacity-60"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Verify & Enable
+            </button>
+            <button
+              onClick={() => { setStep('idle'); setCode(''); setError(''); setQrUrl(''); setSecret('') }}
+              className="px-4 py-2.5 border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] rounded-lg text-sm transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'disable' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-sm text-red-400">Enter your current authenticator code to disable 2FA. This will remove the extra security layer from your account.</p>
+          </div>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-lg px-4 py-3 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition tracking-[0.3em] text-center font-mono"
+            placeholder="000000"
+          />
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              onClick={disable2FA}
+              disabled={loading || code.length !== 6}
+              className="flex items-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition disabled:opacity-60"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Disable 2FA
+            </button>
+            <button
+              onClick={() => { setStep('idle'); setCode(''); setError('') }}
+              className="px-4 py-2.5 border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] rounded-lg text-sm transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
