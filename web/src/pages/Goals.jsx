@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Target, Plus, Trash2, TrendingUp, Calendar, BarChart3, CheckCircle, AlertCircle } from 'lucide-react'
+import { Target, Plus, Trash2, TrendingUp, Calendar, BarChart3, CheckCircle, AlertCircle, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { formatINR, formatPercent, formatDate } from '../utils/format'
 import { Button, Card, Modal, ConfirmDialog, Input, Select, EmptyState, Badge, PageHeader, PageSkeleton } from '../components/ui'
+import GoalHoldingLinker from '../components/GoalHoldingLinker'
 
 const GOAL_TYPES = [
   { value: 'retirement', label: 'Retirement', emoji: '🏖️' },
@@ -32,6 +33,7 @@ export default function Goals() {
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [linkingGoal, setLinkingGoal] = useState(null)
   const [form, setForm] = useState({
     name: '',
     type: 'retirement',
@@ -217,13 +219,23 @@ export default function Goals() {
                       <Badge variant="blue" size="sm">{typeInfo.label}</Badge>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setConfirmDelete(goal)}
-                    aria-label={`Delete ${goal.name}`}
-                    className="text-[var(--text-muted)] hover:text-red-400 transition-colors p-1"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setLinkingGoal(goal)}
+                      aria-label={`Link holdings to ${goal.name}`}
+                      className="text-[var(--text-muted)] hover:text-blue-400 transition-colors p-1"
+                      title="Link holdings"
+                    >
+                      <Link2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(goal)}
+                      aria-label={`Delete ${goal.name}`}
+                      className="text-[var(--text-muted)] hover:text-red-400 transition-colors p-1"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Progress */}
@@ -269,6 +281,16 @@ export default function Goals() {
                 {remainingDays != null && remainingDays > 0 && (
                   <p className="text-xs text-[var(--text-muted)] mt-2">
                     {remainingDays} days remaining
+                  </p>
+                )}
+                {progress?.linkedHoldings > 0 && (
+                  <p className="text-xs text-blue-400 mt-1 flex items-center gap-1 cursor-pointer hover:text-blue-300" onClick={() => setLinkingGoal(goal)}>
+                    <Link2 className="w-3 h-3" /> {progress.linkedHoldings} holding{progress.linkedHoldings > 1 ? 's' : ''} linked
+                  </p>
+                )}
+                {(!progress?.linkedHoldings || progress.linkedHoldings === 0) && (
+                  <p className="text-xs text-[var(--text-secondary)] mt-1 flex items-center gap-1 cursor-pointer hover:text-blue-400" onClick={() => setLinkingGoal(goal)}>
+                    <Link2 className="w-3 h-3" /> Link holdings to track progress
                   </p>
                 )}
               </Card>
@@ -354,6 +376,14 @@ export default function Goals() {
         description="This will permanently delete this goal and its progress history. This action cannot be undone."
         confirmText="Delete Goal"
       />
+
+      {linkingGoal && (
+        <GoalHoldingLinker
+          goal={linkingGoal}
+          onClose={() => setLinkingGoal(null)}
+          onUpdate={() => fetchGoals()}
+        />
+      )}
     </div>
   )
 }

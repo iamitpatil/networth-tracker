@@ -1,6 +1,7 @@
 package com.networth.controller;
 
 import com.networth.model.entity.Goal;
+import com.networth.model.entity.GoalHolding;
 import com.networth.service.FamilyDataService;
 import com.networth.service.GoalService;
 import com.networth.service.GoalService.GoalProgress;
@@ -73,27 +74,45 @@ public class GoalController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/map-holding")
-    public ResponseEntity<Void> mapHoldingToGoal(
+    // --- Holding Linking ---
+
+    @PostMapping("/{id}/holdings")
+    public ResponseEntity<GoalHolding> linkHolding(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestBody Map<String, Object> request) {
-        String holdingId = (String) request.get("holdingId");
-        if (holdingId == null) {
-            return ResponseEntity.badRequest().build();
-        }
-        Object allocObj = request.get("allocationPercentage");
-        if (allocObj == null) {
-            return ResponseEntity.badRequest().build();
-        }
-        BigDecimal allocation = new BigDecimal(allocObj.toString());
-        goalService.mapHoldingToGoal(
+        UUID holdingId = UUID.fromString((String) request.get("holdingId"));
+        BigDecimal pct = request.containsKey("allocationPct")
+                ? new BigDecimal(request.get("allocationPct").toString())
+                : BigDecimal.valueOf(100);
+        return ResponseEntity.ok(goalService.linkHolding(
                 UUID.fromString(userDetails.getUsername()),
                 UUID.fromString(id),
-                UUID.fromString(holdingId),
-                allocation);
-        return ResponseEntity.ok().build();
+                holdingId, pct));
     }
+
+    @GetMapping("/{id}/holdings")
+    public ResponseEntity<List<Map<String, Object>>> getLinkedHoldings(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        return ResponseEntity.ok(goalService.getLinkedHoldings(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id)));
+    }
+
+    @DeleteMapping("/{id}/holdings/{holdingId}")
+    public ResponseEntity<Void> unlinkHolding(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id,
+            @PathVariable String holdingId) {
+        goalService.unlinkHolding(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id),
+                UUID.fromString(holdingId));
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Progress ---
 
     @GetMapping("/{id}/progress")
     public ResponseEntity<GoalProgress> getGoalProgress(
@@ -102,5 +121,21 @@ public class GoalController {
         return ResponseEntity.ok(goalService.getGoalProgress(
                 UUID.fromString(userDetails.getUsername()),
                 UUID.fromString(id)));
+    }
+
+    /** Backward-compatible endpoint */
+    @PostMapping("/{id}/map-holding")
+    public ResponseEntity<Void> mapHoldingToGoal(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id,
+            @RequestBody Map<String, Object> request) {
+        String holdingId = (String) request.get("holdingId");
+        BigDecimal allocation = new BigDecimal(request.get("allocationPercentage").toString());
+        goalService.linkHolding(
+                UUID.fromString(userDetails.getUsername()),
+                UUID.fromString(id),
+                UUID.fromString(holdingId),
+                allocation);
+        return ResponseEntity.ok().build();
     }
 }
