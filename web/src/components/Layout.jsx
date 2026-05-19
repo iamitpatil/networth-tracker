@@ -23,6 +23,7 @@ import {
   Users,
 } from 'lucide-react'
 import FloatingChat from './FloatingChat'
+import AppLogo from './AppLogo'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -81,13 +82,8 @@ export default function Layout() {
       )}
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 sidebar-bg sidebar-border border-r sidebar-shadow transform transition-transform duration-200 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="flex items-center justify-between h-16 px-6 sidebar-border border-b bg-gradient-to-r from-blue-500/5 to-transparent">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-lg text-theme">NW Tracker</span>
-          </div>
+        <div className="flex items-center justify-between h-16 px-5 sidebar-border border-b bg-gradient-to-r from-blue-500/5 to-transparent">
+          <AppLogo variant="compact" />
           <button className="lg:hidden text-theme-muted hover:text-theme transition" onClick={() => setSidebarOpen(false)}>
             <X className="w-5 h-5" />
           </button>

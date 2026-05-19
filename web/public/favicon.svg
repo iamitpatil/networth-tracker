@@ -1,19 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#1d4ed8"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect width="128" height="128" rx="24" fill="url(#g)"/>
-  <g stroke="#fff" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <polyline points="28,88 48,62 64,72 84,42 100,50" stroke-width="8"/>
-  </g>
-  <polygon points="92,36 104,46 86,52" fill="#22c55e"/>
-  <circle cx="48" cy="62" r="5" fill="#fff"/>
-  <circle cx="64" cy="72" r="5" fill="#fff"/>
-  <circle cx="84" cy="42" r="5" fill="#fff"/>
-  <g transform="translate(0,0)">
-    <text x="64" y="116" text-anchor="middle" fill="#fff" font-size="11" font-family="system-ui, sans-serif" font-weight="700" opacity="0.5">NW</text>
-  </g>
+  <!-- Background -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <rect width="128" height="128" rx="28" fill="url(#glow)"/>
+  <!-- Bars (ascending, left to right) -->
+  <rect x="18" y="72" width="16" height="36" rx="4" fill="#ffffff" opacity="0.45"/>
+  <rect x="40" y="56" width="16" height="52" rx="4" fill="#ffffff" opacity="0.6"/>
+  <rect x="62" y="40" width="16" height="68" rx="4" fill="#ffffff" opacity="0.78"/>
+  <rect x="84" y="22" width="16" height="86" rx="4" fill="#ffffff" opacity="0.95"/>
+  <!-- Trend line -->
+  <path d="M26 66 L48 50 L70 36 L92 18" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.55"/>
+  <circle cx="92" cy="18" r="5" fill="#ffffff" opacity="0.75"/>
 </svg>
