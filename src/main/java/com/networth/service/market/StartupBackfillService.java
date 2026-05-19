@@ -36,6 +36,7 @@ public class StartupBackfillService {
     private final AmfiHistoricalService amfiHistoricalService;
     private final NetWorthHistoryService netWorthHistoryService;
     private final UserRepository userRepository;
+    private final com.networth.service.portfolio.HoldingService holdingService;
 
     @EventListener(ApplicationReadyEvent.class)
     @Async
@@ -43,6 +44,9 @@ public class StartupBackfillService {
         log.info("=== Starting backfill check on application startup ===");
         try {
             Thread.sleep(5000); // Let other beans init
+
+            // Ensure all holdings have ISINs before backfilling prices
+            holdingService.backfillMissingIsins();
 
             backfillEquityHistory();
             backfillMutualFundHistory();

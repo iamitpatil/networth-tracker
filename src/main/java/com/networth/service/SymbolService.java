@@ -27,6 +27,7 @@ public class SymbolService {
 
     private final SymbolRepository symbolRepository;
     private final SymbolAliasRepository symbolAliasRepository;
+    private final com.networth.service.portfolio.HoldingService holdingService;
 
     private static final String NSE_CSV_URL = "https://archives.nseindia.com/content/equities/EQUITY_L.csv";
     private static final String MF_NAV_URL = "https://portal.amfiindia.com/spages/NAVAll.txt";
@@ -41,7 +42,9 @@ public class SymbolService {
     public void refreshAll() {
         refreshEquities();
         refreshMutualFunds();
-        log.info("Symbol refresh complete");
+        // Backfill ISINs on holdings using updated symbols
+        int fixed = holdingService.backfillMissingIsins();
+        log.info("Symbol refresh complete (fixed {} holding ISINs)", fixed);
     }
 
     @Transactional
@@ -88,7 +91,9 @@ public class SymbolService {
                 }
             }
 
-            symbolRepository.deleteAll();
+            // Only delete existing equities, not MFs
+            List<Symbol> existingEquities = symbolRepository.findByCategory("EQUITY");
+            symbolRepository.deleteAll(existingEquities);
             symbolRepository.saveAll(symbols);
             log.info("Refreshed {} NSE equity symbols", symbols.size());
 

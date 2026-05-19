@@ -15,6 +15,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import com.networth.model.enums.AssetType;
+import com.networth.repository.HoldingRepository;
 import com.networth.repository.StockPriceHistoryRepository;
 import com.networth.repository.SymbolRepository;
 import java.time.LocalDate;
@@ -34,6 +35,7 @@ public class PortfolioController {
     private final PortfolioSummaryService portfolioSummaryService;
     private final FamilyDataService familyDataService;
     private final InvestmentOverTimeService investmentOverTimeService;
+    private final HoldingRepository holdingRepository;
     private final StockPriceHistoryRepository stockPriceHistoryRepository;
     private final SymbolRepository symbolRepository;
 
@@ -119,12 +121,13 @@ public class PortfolioController {
 
     @GetMapping("/holdings/{id}/price-history")
     public ResponseEntity<List<Map<String, Object>>> getPriceHistory(
-            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestParam(defaultValue = "90") int days) {
-        com.networth.model.dto.HoldingResponse holding = holdingService.getHolding(userDetails.getUsername(), id);
+        // Price history is public market data — no ownership check needed (supports family view)
+        com.networth.model.entity.Holding holding = holdingRepository.findById(UUID.fromString(id))
+                .orElseThrow(() -> new com.networth.exception.ResourceNotFoundException("Holding", id));
         String symbol = holding.getSymbol();
-        if (holding.getAssetType().name().equals("MUTUAL_FUND")) {
+        if (holding.getAssetType() == com.networth.model.enums.AssetType.MUTUAL_FUND) {
             String isin = holding.getIsin();
             if (isin != null && !isin.isBlank()) {
                 symbol = isin;
@@ -136,7 +139,8 @@ public class PortfolioController {
                     symbol = found.get().getSymbol();
                 }
             }
-        } else if (!"EQUITY".equals(holding.getAssetType().name()) && !"ETF".equals(holding.getAssetType().name())) {
+        } else if (holding.getAssetType() != com.networth.model.enums.AssetType.EQUITY
+                && holding.getAssetType() != com.networth.model.enums.AssetType.ETF) {
             return ResponseEntity.ok(List.of());
         }
         LocalDate to = LocalDate.now();

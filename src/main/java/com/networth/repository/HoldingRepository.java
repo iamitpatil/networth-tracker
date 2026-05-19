@@ -24,6 +24,9 @@ public interface HoldingRepository extends JpaRepository<Holding, UUID> {
     @Query("SELECT h FROM Holding h WHERE h.userId = :userId AND h.symbol = :symbol AND h.deletedAt IS NULL")
     List<Holding> findByUserIdAndSymbol(@Param("userId") UUID userId, @Param("symbol") String symbol);
 
+    @Query("SELECT h FROM Holding h WHERE h.userId = :userId AND h.symbol = :symbol AND h.dematAccountId = :dematAccountId AND h.deletedAt IS NULL")
+    Optional<Holding> findByUserIdAndSymbolAndDematAccountId(@Param("userId") UUID userId, @Param("symbol") String symbol, @Param("dematAccountId") UUID dematAccountId);
+
     @Query("SELECT DISTINCT h.isin FROM Holding h WHERE h.symbol = :symbol AND h.isin IS NOT NULL AND h.deletedAt IS NULL")
     Optional<String> findIsinBySymbol(@Param("symbol") String symbol);
 

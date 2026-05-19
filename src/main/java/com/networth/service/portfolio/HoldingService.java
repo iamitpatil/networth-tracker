@@ -7,9 +7,11 @@ import com.networth.model.dto.HoldingResponse;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
 import com.networth.model.enums.AssetType;
+import com.networth.model.entity.Symbol;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
+import com.networth.repository.SymbolRepository;
 import com.networth.service.market.PriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class HoldingService {
     private final MarketPriceRepository marketPriceRepository;
     private final PriceService priceService;
     private final DematAccountRepository dematAccountRepository;
+    private final SymbolRepository symbolRepository;
 
     @Transactional(readOnly = true)
     public List<HoldingResponse> getUserHoldings(String userId) {
@@ -122,6 +125,12 @@ public class HoldingService {
             }
         }
 
+        // Auto-resolve ISIN from symbols table if not provided
+        String isin = request.getIsin();
+        if ((isin == null || isin.isBlank()) && request.getSymbol() != null) {
+            isin = resolveIsin(request.getSymbol());
+        }
+
         Holding holding = Holding.builder()
                 .userId(uid)
                 .assetType(request.getAssetType())
@@ -136,7 +145,7 @@ public class HoldingService {
                 .currency(request.getCurrency() != null ? request.getCurrency() : "INR")
                 .exchange(request.getExchange())
                 .sector(request.getSector())
-                .isin(request.getIsin())
+                .isin(isin)
                 .lockInUntil(request.getLockInUntil())
                 .dematAccountId(request.getDematAccountId() != null ? UUID.fromString(request.getDematAccountId()) : null)
                 .metadata(request.getMetadata())
@@ -235,7 +244,7 @@ public class HoldingService {
             DematAccount da = dematMap.get(holding.getDematAccountId());
             if (da != null) {
                 dematBroker = da.getBrokerName();
-                dematAccountNumber = da.getAccountNumber();
+                dematAccountNumber = maskAccountNumber(da.getAccountNumber());
             }
         }
 
@@ -278,5 +287,40 @@ public class HoldingService {
                 .createdAt(holding.getCreatedAt())
                 .updatedAt(holding.getUpdatedAt())
                 .build();
+    }
+
+    private String maskAccountNumber(String accountNumber) {
+        if (accountNumber == null || accountNumber.length() <= 4) return accountNumber;
+        return "****" + accountNumber.substring(accountNumber.length() - 4);
+    }
+
+    private String resolveIsin(String symbol) {
+        return symbolRepository.findById(symbol)
+                .map(Symbol::getIsin)
+                .filter(i -> i != null && !i.isBlank())
+                .orElse(null);
+    }
+
+    /**
+     * Backfill ISIN for all existing holdings that are missing it.
+     * Called on startup or on-demand.
+     */
+    @Transactional
+    public int backfillMissingIsins() {
+        List<Holding> holdings = holdingRepository.findAll();
+        int fixed = 0;
+        for (Holding h : holdings) {
+            if ((h.getIsin() == null || h.getIsin().isBlank()) && h.getSymbol() != null) {
+                String isin = resolveIsin(h.getSymbol());
+                if (isin != null) {
+                    h.setIsin(isin);
+                    holdingRepository.save(h);
+                    fixed++;
+                    log.info("Backfilled ISIN for {}: {}", h.getSymbol(), isin);
+                }
+            }
+        }
+        if (fixed > 0) log.info("Backfilled ISIN for {} holdings", fixed);
+        return fixed;
     }
 }
