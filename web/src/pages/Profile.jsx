@@ -581,7 +581,7 @@ function DataRefresh() {
         <button
           onClick={handleRefresh}
           disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-slate-600 disabled:cursor-not-allowed transition text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium"
         >
           {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           {syncing ? 'Refreshing...' : 'Refresh Symbols'}

@@ -32,8 +32,8 @@ export default function Tooltip({ children, content, side = 'top', className = '
             absolute z-50 pointer-events-none
             ${sideClasses[side]}
             px-2 py-1 rounded-md
-            bg-slate-900 text-white text-xs
-            shadow-lg border border-slate-700
+            bg-[var(--bg-card)] text-white text-xs
+            shadow-lg border border-[var(--border)]
             whitespace-nowrap
             animate-in fade-in duration-150
           `}

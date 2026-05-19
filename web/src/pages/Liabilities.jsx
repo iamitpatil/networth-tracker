@@ -104,39 +104,39 @@ export default function Liabilities() {
     }
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-slate-400">Loading...</div>
+  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Liabilities</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage your loans and EMIs</p>
+          <p className="text-[var(--text-muted)] text-sm mt-1">Manage your loans and EMIs</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-slate-600 hover:bg-slate-500' : 'bg-blue-500 hover:bg-blue-600'}`}
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)]' : 'bg-blue-500 hover:bg-blue-600'}`}
         >
           <Plus className="w-4 h-4" /> {showForm ? 'Cancel' : 'Add Liability'}
         </button>
       </div>
 
-      <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-        <p className="text-slate-400 text-sm">Total Liabilities</p>
+      <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+        <p className="text-[var(--text-muted)] text-sm">Total Liabilities</p>
         <p className="text-2xl font-bold mt-1 text-red-400">Rs. {totalLiabilities.toLocaleString('en-IN')}</p>
       </div>
 
       {showForm && (
-        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
           <h3 className="text-lg font-semibold mb-4">Add New Liability</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Liability Type</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Liability Type</label>
                 <select
                   value={form.liabilityType}
                   onChange={(e) => setForm({ ...form, liabilityType: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   required
                 >
                   {LIABILITY_TYPES.map((t) => (
@@ -145,70 +145,70 @@ export default function Liabilities() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Lender</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Lender</label>
                 <input
                   type="text"
                   value={form.lender}
                   onChange={(e) => setForm({ ...form, lender: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   placeholder="e.g., HDFC Bank"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Original Amount</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Original Amount</label>
                 <input
                   type="number"
                   step="any"
                   value={form.originalAmount}
                   onChange={(e) => setForm({ ...form, originalAmount: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   placeholder="500000"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Outstanding Amount</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Outstanding Amount</label>
                 <input
                   type="number"
                   step="any"
                   value={form.outstandingAmount}
                   onChange={(e) => setForm({ ...form, outstandingAmount: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   placeholder="450000"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Interest Rate (%)</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Interest Rate (%)</label>
                 <input
                   type="number"
                   step="any"
                   value={form.interestRate}
                   onChange={(e) => setForm({ ...form, interestRate: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   placeholder="8.5"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Tenure (months)</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Tenure (months)</label>
                 <input
                   type="number"
                   value={form.tenureMonths}
                   onChange={(e) => setForm({ ...form, tenureMonths: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   placeholder="240"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Start Date</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Start Date</label>
                 <input
                   type="date"
                   value={form.startDate}
                   onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                   required
                 />
               </div>
@@ -218,7 +218,7 @@ export default function Liabilities() {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition"
+                className="px-4 py-2 bg-[var(--input-bg)] rounded-lg hover:bg-[var(--hover-bg)] transition"
               >
                 Cancel
               </button>
@@ -234,26 +234,26 @@ export default function Liabilities() {
       )}
 
       {localLiabilities.length > 0 && (
-        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-700">
+        <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+          <div className="px-4 py-3 border-b border-[var(--border)]">
             <h3 className="text-lg font-semibold">Your Liabilities</h3>
           </div>
           <table className="w-full">
-            <thead className="bg-slate-700/50 text-left">
+            <thead className="bg-[var(--input-bg)] text-left">
               <tr>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400">Type</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400">Lender</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Original</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">EMI</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Outstanding</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400">Actions</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Type</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Lender</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Original</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">EMI</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Outstanding</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700">
+            <tbody className="divide-y divide-[var(--border)]">
               {localLiabilities.map((liability) => (
-                <tr key={liability.id} className="hover:bg-slate-700/30">
+                <tr key={liability.id} className="hover:bg-[var(--hover-bg)]">
                   <td className="px-4 py-3">
-                    <span className="text-xs bg-slate-700 px-2 py-1 rounded">
+                    <span className="text-xs bg-[var(--input-bg)] px-2 py-1 rounded">
                       {LIABILITY_TYPES.find((t) => t.value === liability.liabilityType)?.label || liability.liabilityType}
                     </span>
                   </td>
@@ -274,7 +274,7 @@ export default function Liabilities() {
                       </button>
                       <button
                         onClick={() => handleDelete(liability.id)}
-                        className="text-slate-500 hover:text-red-400 transition"
+                        className="text-[var(--text-secondary)] hover:text-red-400 transition"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -288,34 +288,34 @@ export default function Liabilities() {
       )}
 
       {selectedLiability && emiSchedule.length > 0 && (
-        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+        <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+          <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
             <h3 className="text-lg font-semibold">EMI Schedule - {selectedLiability.lender}</h3>
             <button
               onClick={() => {
                 setSelectedLiability(null)
                 setEmiSchedule([])
               }}
-              className="text-slate-500 hover:text-slate-300 transition"
+              className="text-[var(--text-secondary)] hover:text-[var(--text)] transition"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
           <table className="w-full">
-            <thead className="bg-slate-700/50 text-left">
+            <thead className="bg-[var(--input-bg)] text-left">
               <tr>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400">EMI #</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400">Due Date</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Principal</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Interest</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Total EMI</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400">Status</th>
-                <th className="px-4 py-3 text-sm font-medium text-slate-400"></th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">EMI #</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Due Date</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Principal</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Interest</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Total EMI</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Status</th>
+                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700">
+            <tbody className="divide-y divide-[var(--border)]">
               {emiSchedule.map((emi) => (
-                <tr key={emi.id} className="hover:bg-slate-700/30">
+                <tr key={emi.id} className="hover:bg-[var(--hover-bg)]">
                   <td className="px-4 py-3">{emi.emiNumber}</td>
                   <td className="px-4 py-3">{new Date(emi.dueDate).toLocaleDateString('en-IN')}</td>
                   <td className="px-4 py-3 text-right">Rs. {emi.principal?.toLocaleString('en-IN')}</td>
@@ -350,10 +350,10 @@ export default function Liabilities() {
       )}
 
       {localLiabilities.length === 0 && !showForm && (
-        <div className="bg-slate-800 rounded-xl p-12 border border-slate-700 text-center">
-          <CreditCard className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400 mb-2">No liabilities added yet</p>
-          <p className="text-slate-500 text-sm">Click "Add Liability" to get started</p>
+        <div className="bg-[var(--bg-card)] rounded-xl p-12 border border-[var(--border)] text-center">
+          <CreditCard className="w-12 h-12 text-[var(--text-secondary)] mx-auto mb-4" />
+          <p className="text-[var(--text-muted)] mb-2">No liabilities added yet</p>
+          <p className="text-[var(--text-secondary)] text-sm">Click "Add Liability" to get started</p>
         </div>
       )}
     </div>

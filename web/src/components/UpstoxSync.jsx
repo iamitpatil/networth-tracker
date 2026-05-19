@@ -89,8 +89,8 @@ export default function UpstoxSync({ onSyncComplete }) {
     <div className="bg-[var(--bg-card)] rounded-xl p-4 border border-[var(--border)]">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${isConnected ? 'bg-green-500/20' : isExpired ? 'bg-amber-500/20' : 'bg-slate-500/20'}`}>
-            <Link2 className={`w-5 h-5 ${isConnected ? 'text-green-400' : isExpired ? 'text-amber-400' : 'text-slate-400'}`} />
+          <div className={`p-2 rounded-lg ${isConnected ? 'bg-green-500/20' : isExpired ? 'bg-amber-500/20' : 'bg-[var(--hover-bg)]'}`}>
+            <Link2 className={`w-5 h-5 ${isConnected ? 'text-green-400' : isExpired ? 'text-amber-400' : 'text-[var(--text-muted)]'}`} />
           </div>
           <div>
             <p className="text-sm font-medium">

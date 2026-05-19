@@ -94,14 +94,14 @@ export default function BankAccounts() {
     loadTransactions()
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-slate-400">Loading...</div>
+  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Bank Accounts</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-[var(--text-muted)] text-sm mt-1">
             {tab === 'accounts'
               ? `${accounts.length} accounts · Total: Rs. ${accounts.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0).toLocaleString('en-IN')}`
               : 'Monitor transactions & balances from Gmail'}
@@ -109,7 +109,7 @@ export default function BankAccounts() {
         </div>
         {tab === 'accounts' && (
           <button onClick={() => { if (showForm) { setShowForm(false); resetForm() } else openCreate() }}
-            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-slate-600 hover:bg-slate-500' : 'bg-blue-500 hover:bg-blue-600'}`}>
+            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)]' : 'bg-blue-500 hover:bg-blue-600'}`}>
             {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
             {showForm ? 'Cancel' : 'Add Account'}
           </button>
@@ -171,7 +171,7 @@ export default function BankAccounts() {
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => { setShowForm(false); resetForm() }} className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition">Cancel</button>
+                <button type="button" onClick={() => { setShowForm(false); resetForm() }} className="px-4 py-2 bg-[var(--input-bg)] rounded-lg hover:bg-[var(--hover-bg)] transition">Cancel</button>
                 <button type="submit" disabled={saving || !form.accountName || !form.bankName}
                   className="px-6 py-2 bg-blue-500 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 flex items-center gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}

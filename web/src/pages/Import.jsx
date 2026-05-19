@@ -88,7 +88,7 @@ export default function Import() {
                     className={`flex flex-col items-center gap-3 p-5 rounded-lg border-2 transition-all text-left
                       ${isSelected
                         ? 'border-[#3b82f6] bg-[var(--bg-card)] shadow-[0_0_0_1px_#3b82f6]'
-                        : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[#475569]'
+                        : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--border)]'
                       }`}
                   >
                     <Icon className={`w-8 h-8 ${isSelected ? 'text-[#3b82f6]' : 'text-[var(--text-muted)]'}`} />
@@ -163,7 +163,7 @@ export default function Import() {
           <h3 className="text-xl font-semibold mb-2">Import Successful!</h3>
           <p className="text-[var(--text-muted)] mb-1">{result.message || `Successfully imported ${result.count} transactions`}</p>
           <p className="text-3xl font-bold text-[#22c55e]">{result.count} records</p>
-          <button onClick={reset} className="mt-6 px-6 py-2 bg-[#334155] hover:bg-[#475569] rounded-lg text-sm transition-colors">
+          <button onClick={reset} className="mt-6 px-6 py-2 bg-[var(--input-bg)] hover:bg-[var(--hover-bg)] rounded-lg text-sm transition-colors">
             Import Another
           </button>
         </div>

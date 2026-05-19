@@ -11,7 +11,7 @@ const variants = {
   cyan: 'bg-cyan-500/15 text-cyan-400 ring-1 ring-inset ring-cyan-500/30',
   orange: 'bg-orange-500/15 text-orange-400 ring-1 ring-inset ring-orange-500/30',
   pink: 'bg-pink-500/15 text-pink-400 ring-1 ring-inset ring-pink-500/30',
-  gray: 'bg-slate-500/15 text-slate-400 ring-1 ring-inset ring-slate-500/30',
+  gray: 'bg-[var(--hover-bg)] text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)]',
 }
 
 const sizes = {
