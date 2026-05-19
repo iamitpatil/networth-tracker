@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/logo-full-dark.png" alt="NetWorth Tracker" width="500" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-full-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/logo-full-light.png" />
+    <img src="docs/logo-full-light.png" alt="NetWorth Tracker" width="500" />
+  </picture>
 </p>
 
 <p align="center">
