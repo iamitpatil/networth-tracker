@@ -620,18 +620,18 @@ export default function Holdings() {
   const totalPnL = filteredHoldings.reduce((s, h) => s + (h.unrealizedPnl || 0), 0)
   const totalInvested = filteredHoldings.reduce((s, h) => s + ((h.quantity || 0) * (h.averageBuyPrice || 0)), 0)
 
-  if (loading) return <div className="flex justify-center py-20 text-slate-400">Loading...</div>
+  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Holdings</h1>
-          <p className="text-slate-400 text-sm mt-1">{holdings.length} investments across all asset classes</p>
+          <p className="text-[var(--text-muted)] text-sm mt-1">{holdings.length} investments across all asset classes</p>
         </div>
         <button
           onClick={() => { if (showForm) { setShowForm(false); resetForm() } else openForm() }}
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-slate-600 hover:bg-slate-500' : 'bg-blue-500 hover:bg-blue-600'}`}
+          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)]' : 'bg-blue-500 hover:bg-blue-600'}`}
         >
           <Plus className="w-4 h-4" /> {showForm ? 'Cancel' : 'Add Holdings'}
         </button>
@@ -894,11 +894,11 @@ export default function Holdings() {
                 </div>
 
                 <div className="flex justify-end gap-3">
-                  <button type="button" onClick={() => { setShowForm(false); resetForm() }} className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition">Cancel</button>
+                  <button type="button" onClick={() => { setShowForm(false); resetForm() }} className="px-4 py-2 bg-[var(--input-bg)] rounded-lg hover:bg-[var(--hover-bg)] transition">Cancel</button>
                   <button
                     type="submit"
                     disabled={submitting || !assetType || (needsSymbol && !selectedSymbol) || (!needsSymbol && !form.name) || !form.quantity}
-                    className="px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition bg-blue-500 hover:bg-blue-600 disabled:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                     {submitting ? 'Adding...' : `Add ${ASSET_LABELS[assetType] || 'Holding'}`}
@@ -1085,7 +1085,7 @@ export default function Holdings() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded ${ASSET_COLORS[group.assetType] || 'bg-slate-700 text-slate-300'}`}>
+                      <span className={`text-xs px-2 py-1 rounded ${ASSET_COLORS[group.assetType] || 'bg-[var(--input-bg)] text-[var(--text)]'}`}>
                         {ASSET_LABELS[group.assetType] || group.assetType.replace('_', ' ')}
                       </span>
                     </td>

@@ -195,24 +195,24 @@ export default function Tax() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Tax Planning</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage your tax liability and optimize deductions</p>
+          <p className="text-[var(--text-muted)] text-sm mt-1">Manage your tax liability and optimize deductions</p>
         </div>
         <div className="relative">
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 hover:border-blue-500 transition-colors"
+            className="flex items-center gap-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-4 py-2 hover:border-blue-500 transition-colors"
           >
             <Calendar className="w-4 h-4 text-blue-400" />
             <span className="font-medium text-sm">{selectedFY}</span>
-            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
           {dropdownOpen && (
-            <div className="absolute right-0 mt-2 w-44 bg-slate-700 border border-slate-600 rounded-lg shadow-xl z-10 overflow-hidden">
+            <div className="absolute right-0 mt-2 w-44 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg shadow-xl z-10 overflow-hidden">
               {FINANCIAL_YEARS.map((fy) => (
                 <button
                   key={fy}
                   onClick={() => { setSelectedFY(fy); setDropdownOpen(false); }}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-600 transition-colors ${selectedFY === fy ? 'text-blue-400 bg-slate-600/50' : 'text-slate-300'}`}
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-[var(--hover-bg)] transition-colors ${selectedFY === fy ? 'text-blue-400 bg-[var(--hover-bg)]' : 'text-[var(--text)]'}`}
                 >
                   {fy}
                 </button>
@@ -223,31 +223,31 @@ export default function Tax() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-slate-400">Loading tax data...</div>
+        <div className="flex items-center justify-center h-64 text-[var(--text-muted)]">Loading tax data...</div>
       ) : (
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-              <p className="text-slate-400 text-sm">Total LTCG</p>
+            <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+              <p className="text-[var(--text-muted)] text-sm">Total LTCG</p>
               <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(totalLTCG)}</p>
             </div>
-            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-              <p className="text-slate-400 text-sm">Total STCG</p>
+            <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+              <p className="text-[var(--text-muted)] text-sm">Total STCG</p>
               <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(totalSTCG)}</p>
             </div>
-            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-              <p className="text-slate-400 text-sm">Tax Liability</p>
+            <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+              <p className="text-[var(--text-muted)] text-sm">Tax Liability</p>
               <p className="text-2xl font-bold text-amber-400 mt-1">{formatCurrency(totalTax)}</p>
             </div>
-            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-              <p className="text-slate-400 text-sm">80C Utilized</p>
+            <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+              <p className="text-[var(--text-muted)] text-sm">80C Utilized</p>
               <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(util80C?.utilized)}</p>
             </div>
           </div>
 
           {/* Tax Regime Selector */}
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Shield className="w-5 h-5 text-purple-400" />
@@ -260,31 +260,31 @@ export default function Tax() {
             <div className="flex gap-3">
               <button
                 onClick={() => updateRegime('NEW')}
-                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'NEW' ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-slate-500'}`}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'NEW' ? 'border-blue-500 bg-blue-500/10' : 'border-[var(--border)] hover:border-[var(--border)]'}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-semibold">NEW Regime</span>
                   {taxRegime === 'NEW' && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
                 </div>
-                <p className="text-xs text-slate-400 text-left">Lower slabs, no 80C/HRA. Default for FY 2023-24+</p>
-                <p className="text-xs text-slate-500 mt-1 text-left">Std Deduction: ₹75,000</p>
+                <p className="text-xs text-[var(--text-muted)] text-left">Lower slabs, no 80C/HRA. Default for FY 2023-24+</p>
+                <p className="text-xs text-[var(--text-secondary)] mt-1 text-left">Std Deduction: ₹75,000</p>
               </button>
               <button
                 onClick={() => updateRegime('OLD')}
-                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'OLD' ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-slate-500'}`}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'OLD' ? 'border-blue-500 bg-blue-500/10' : 'border-[var(--border)] hover:border-[var(--border)]'}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-semibold">OLD Regime</span>
                   {taxRegime === 'OLD' && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
                 </div>
-                <p className="text-xs text-slate-400 text-left">Higher slabs but 80C, HRA, etc. allowed</p>
-                <p className="text-xs text-slate-500 mt-1 text-left">Std Deduction: ₹50,000</p>
+                <p className="text-xs text-[var(--text-muted)] text-left">Higher slabs but 80C, HRA, etc. allowed</p>
+                <p className="text-xs text-[var(--text-secondary)] mt-1 text-left">Std Deduction: ₹50,000</p>
               </button>
             </div>
           </div>
 
           {/* Form 16 Section */}
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-green-400" />
@@ -307,14 +307,14 @@ export default function Tax() {
               />
             </div>
             {form16s.length === 0 ? (
-              <p className="text-slate-500 text-sm">No Form 16 uploaded yet. Upload your employer's TDS certificate to auto-fill tax details.</p>
+              <p className="text-[var(--text-secondary)] text-sm">No Form 16 uploaded yet. Upload your employer's TDS certificate to auto-fill tax details.</p>
             ) : (
               <div className="space-y-2">
                 {form16s.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
+                  <div key={f.id} className="flex items-center justify-between p-3 bg-[var(--hover-bg)] rounded-lg">
                     <div>
                       <p className="font-medium">{f.employerName || 'Unknown Employer'}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
                         FY {f.financialYear} • Gross: {formatCurrency(f.grossSalary)} • TDS: {formatCurrency(f.tdsTotal)}
                         {f.parseConfidence != null && ` • Confidence: ${f.parseConfidence}%`}
                       </p>
@@ -329,7 +329,7 @@ export default function Tax() {
           </div>
 
           {/* ITR Filings */}
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-cyan-400" />
@@ -352,17 +352,17 @@ export default function Tax() {
               />
             </div>
             {itrFilings.length === 0 ? (
-              <p className="text-slate-500 text-sm">No ITR filings yet. Upload your ITR-V acknowledgement after filing.</p>
+              <p className="text-[var(--text-secondary)] text-sm">No ITR filings yet. Upload your ITR-V acknowledgement after filing.</p>
             ) : (
               <div className="space-y-2">
                 {itrFilings.map((itr) => (
-                  <div key={itr.id} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
+                  <div key={itr.id} className="flex items-center justify-between p-3 bg-[var(--hover-bg)] rounded-lg">
                     <div>
                       <p className="font-medium">
                         {itr.itrFormType || 'ITR'} • FY {itr.financialYear}
                         {itr.filingType !== 'ORIGINAL' && <span className="text-xs text-amber-400 ml-2">({itr.filingType})</span>}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
                         {itr.acknowledgementNumber && `Ack: ${itr.acknowledgementNumber}`}
                         {itr.filingDate && ` • Filed: ${itr.filingDate}`}
                         {itr.eVerified && <span className="text-green-400 ml-2">✓ Verified</span>}
@@ -378,18 +378,18 @@ export default function Tax() {
           </div>
 
           {/* 80C Utilization */}
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Shield className="w-5 h-5 text-blue-400" />
                 80C Deduction Utilization
               </h2>
-              <span className="text-sm text-slate-400">{formatCurrency(util80C?.utilized)} / ₹1,50,000</span>
+              <span className="text-sm text-[var(--text-muted)]">{formatCurrency(util80C?.utilized)} / ₹1,50,000</span>
             </div>
-            <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
+            <div className="w-full bg-[var(--input-bg)] rounded-full h-3 mb-2">
               <div className="h-3 rounded-full transition-all duration-500" style={{ width: `${getUtilizationPercent()}%`, backgroundColor: getBarColor(getUtilizationPercent()) }} />
             </div>
-            <div className="flex justify-between text-xs text-slate-400">
+            <div className="flex justify-between text-xs text-[var(--text-muted)]">
               <span>{getUtilizationPercent().toFixed(1)}% utilized</span>
               <span>{formatCurrency(remaining80C)} remaining</span>
             </div>
@@ -398,8 +398,8 @@ export default function Tax() {
                 {Object.entries(util80C.breakdown).map(([key, value]) => (
                   value > 0 && (
                     <div key={key} className="text-sm">
-                      <span className="text-slate-400">{key}:</span>
-                      <span className="text-slate-200 ml-1 font-medium">{formatCurrency(value)}</span>
+                      <span className="text-[var(--text-muted)]">{key}:</span>
+                      <span className="text-[var(--text)] ml-1 font-medium">{formatCurrency(value)}</span>
                     </div>
                   )
                 ))}
@@ -408,28 +408,28 @@ export default function Tax() {
           </div>
 
           {/* Capital Gains Table */}
-          <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border)]">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-400" />
                 Capital Gains Details
               </h2>
             </div>
             <table className="w-full">
-              <thead className="bg-slate-700/50 text-left">
+              <thead className="bg-[var(--input-bg)] text-left">
                 <tr>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400">Asset</th>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400">Type</th>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Gain Amount</th>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Tax</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Asset</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Type</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Gain Amount</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Tax</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700">
+              <tbody className="divide-y divide-[var(--border)]">
                 {gainDetails.length === 0 ? (
-                  <tr><td colSpan="4" className="px-4 py-12 text-center text-slate-500">No capital gains for this financial year</td></tr>
+                  <tr><td colSpan="4" className="px-4 py-12 text-center text-[var(--text-secondary)]">No capital gains for this financial year</td></tr>
                 ) : (
                   gainDetails.map((g, idx) => (
-                    <tr key={idx} className="hover:bg-slate-700/30">
+                    <tr key={idx} className="hover:bg-[var(--hover-bg)]">
                       <td className="px-4 py-3 font-medium text-sm">{g.asset}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${g.type === 'LTCG' ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>{g.type}</span>
@@ -444,28 +444,28 @@ export default function Tax() {
           </div>
 
           {/* Tax Harvesting Opportunities */}
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Lightbulb className="w-5 h-5 text-amber-400" />
               Tax Harvesting Opportunities
             </h2>
             {harvestingOpps.length === 0 ? (
-              <p className="text-slate-500 text-center py-8">No harvesting opportunities available</p>
+              <p className="text-[var(--text-secondary)] text-center py-8">No harvesting opportunities available</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {harvestingOpps.map((opp, idx) => (
-                  <div key={idx} className="bg-slate-700/50 border border-slate-700 rounded-lg p-4 hover:border-blue-500 transition-colors">
+                  <div key={idx} className="bg-[var(--input-bg)] border border-[var(--border)] rounded-lg p-4 hover:border-blue-500 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-semibold text-sm">{opp.symbol}</span>
-                      <span className="text-xs text-slate-400">{opp.quantity} shares</span>
+                      <span className="text-xs text-[var(--text-muted)]">{opp.quantity} shares</span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Current Loss</span>
+                        <span className="text-[var(--text-muted)]">Current Loss</span>
                         <span className="text-red-400 font-medium">{formatCurrency(opp.currentLoss)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Potential Savings</span>
+                        <span className="text-[var(--text-muted)]">Potential Savings</span>
                         <span className="text-green-400 font-medium">{formatCurrency(opp.potentialSavings)}</span>
                       </div>
                       <div className="flex items-center gap-1 text-xs text-blue-400 mt-2">
@@ -480,29 +480,29 @@ export default function Tax() {
           </div>
 
           {/* Tax Rules Reference */}
-          <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border)]">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-400" />
                 Tax Rules Reference
               </h2>
             </div>
             <table className="w-full">
-              <thead className="bg-slate-700/50 text-left">
+              <thead className="bg-[var(--input-bg)] text-left">
                 <tr>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400">Asset Type</th>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400">Tax Rate</th>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400">Threshold</th>
-                  <th className="px-4 py-3 text-sm font-medium text-slate-400">Notes</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Asset Type</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Tax Rate</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Threshold</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Notes</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700">
+              <tbody className="divide-y divide-[var(--border)]">
                 {TAX_RULES.map((rule, idx) => (
-                  <tr key={idx} className="hover:bg-slate-700/30">
+                  <tr key={idx} className="hover:bg-[var(--hover-bg)]">
                     <td className="px-4 py-3 font-medium text-sm">{rule.asset}</td>
                     <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-400/10 text-blue-400">{rule.rate}</span></td>
-                    <td className="px-4 py-3 text-slate-400 text-sm">{rule.threshold}</td>
-                    <td className="px-4 py-3 text-slate-400 text-sm">{rule.notes}</td>
+                    <td className="px-4 py-3 text-[var(--text-muted)] text-sm">{rule.threshold}</td>
+                    <td className="px-4 py-3 text-[var(--text-muted)] text-sm">{rule.notes}</td>
                   </tr>
                 ))}
               </tbody>
@@ -523,25 +523,25 @@ export default function Tax() {
       {/* Regime Compare Modal */}
       {showRegimeCompare && comparison && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowRegimeCompare(false)}>
-          <div className="bg-slate-800 rounded-xl max-w-2xl w-full mx-4 border border-slate-700" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-6 border-b border-slate-700">
+          <div className="bg-[var(--bg-card)] rounded-xl max-w-2xl w-full mx-4 border border-[var(--border)]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
               <h3 className="text-lg font-semibold">Tax Regime Comparison</h3>
-              <button onClick={() => setShowRegimeCompare(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setShowRegimeCompare(false)} className="text-[var(--text-muted)] hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'OLD' ? 'border-green-500 bg-green-500/10' : 'border-slate-600'}`}>
-                  <p className="text-sm text-slate-400 mb-2">OLD Regime</p>
+                <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'OLD' ? 'border-green-500 bg-green-500/10' : 'border-[var(--border)]'}`}>
+                  <p className="text-sm text-[var(--text-muted)] mb-2">OLD Regime</p>
                   <p className="text-2xl font-bold">{formatCurrency(comparison.oldRegime?.totalTax)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Taxable: {formatCurrency(comparison.oldRegime?.taxableIncome)}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Taxable: {formatCurrency(comparison.oldRegime?.taxableIncome)}</p>
                   {comparison.recommended === 'OLD' && <p className="text-xs text-green-400 mt-2">✓ Recommended</p>}
                 </div>
-                <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'NEW' ? 'border-green-500 bg-green-500/10' : 'border-slate-600'}`}>
-                  <p className="text-sm text-slate-400 mb-2">NEW Regime</p>
+                <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'NEW' ? 'border-green-500 bg-green-500/10' : 'border-[var(--border)]'}`}>
+                  <p className="text-sm text-[var(--text-muted)] mb-2">NEW Regime</p>
                   <p className="text-2xl font-bold">{formatCurrency(comparison.newRegime?.totalTax)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Taxable: {formatCurrency(comparison.newRegime?.taxableIncome)}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Taxable: {formatCurrency(comparison.newRegime?.taxableIncome)}</p>
                   {comparison.recommended === 'NEW' && <p className="text-xs text-green-400 mt-2">✓ Recommended</p>}
                 </div>
               </div>

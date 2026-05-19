@@ -73,63 +73,63 @@ export default function Transactions() {
     LUMPSUM: 'text-amber-400 bg-amber-400/10',
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-slate-400">Loading...</div>
+  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Transactions</h1>
-        <p className="text-slate-400 text-sm mt-1">{transactions.length} total · {filtered.length} shown</p>
+        <p className="text-[var(--text-muted)] text-sm mt-1">{transactions.length} total · {filtered.length} shown</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
           <div className="flex items-center justify-between">
-            <div><p className="text-slate-400 text-sm">Total Buys</p><p className="text-2xl font-bold text-blue-400 mt-1">{summary.buys}</p></div>
+            <div><p className="text-[var(--text-muted)] text-sm">Total Buys</p><p className="text-2xl font-bold text-blue-400 mt-1">{summary.buys}</p></div>
             <TrendingUp className="w-8 h-8 text-blue-400/30" />
           </div>
         </div>
-        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
           <div className="flex items-center justify-between">
-            <div><p className="text-slate-400 text-sm">Total Sells</p><p className="text-2xl font-bold text-red-400 mt-1">{summary.sells}</p></div>
+            <div><p className="text-[var(--text-muted)] text-sm">Total Sells</p><p className="text-2xl font-bold text-red-400 mt-1">{summary.sells}</p></div>
             <TrendingDown className="w-8 h-8 text-red-400/30" />
           </div>
         </div>
-        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
           <div className="flex items-center justify-between">
-            <div><p className="text-slate-400 text-sm">Total SIPs</p><p className="text-2xl font-bold text-green-400 mt-1">{summary.sips}</p></div>
+            <div><p className="text-[var(--text-muted)] text-sm">Total SIPs</p><p className="text-2xl font-bold text-green-400 mt-1">{summary.sips}</p></div>
             <Repeat className="w-8 h-8 text-green-400/30" />
           </div>
         </div>
-        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
           <div className="flex items-center justify-between">
-            <div><p className="text-slate-400 text-sm">Total Volume</p><p className="text-xl font-bold text-amber-400 mt-1">Rs. {fmt(summary.totalVolume)}</p></div>
+            <div><p className="text-[var(--text-muted)] text-sm">Total Volume</p><p className="text-xl font-bold text-amber-400 mt-1">Rs. {fmt(summary.totalVolume)}</p></div>
             <DollarSign className="w-8 h-8 text-amber-400/30" />
           </div>
         </div>
       </div>
 
-      <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <div className="bg-[var(--bg-card)] rounded-xl p-4 border border-[var(--border)]">
         <div className="flex items-center gap-3">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+          <Filter className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
 
           <div className="flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+            <Calendar className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-              className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 w-28" />
-            <span className="text-slate-500 text-xs">-</span>
+              className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-28" />
+            <span className="text-[var(--text-secondary)] text-xs">-</span>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-              className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 w-28" />
+              className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-28" />
           </div>
 
           <div className="flex items-center gap-1">
-            <Search className="w-3.5 h-3.5 text-slate-500" />
+            <Search className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
             <input type="text" placeholder="Symbol..." value={symbolSearch} onChange={(e) => setSymbolSearch(e.target.value)}
-              className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 w-24 placeholder-slate-500" />
+              className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-24 placeholder-[var(--text-secondary)]" />
           </div>
 
           <select value={assetFilter} onChange={(e) => setAssetFilter(e.target.value)}
-            className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">
+            className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)]">
             {assetTypes.map((a) => <option key={a} value={a}>{a === 'ALL' ? 'All' : a.replace('_', ' ')}</option>)}
           </select>
 
@@ -137,7 +137,7 @@ export default function Transactions() {
             {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (
               <button key={f} onClick={() => setActiveFilter(f)}
                 className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  activeFilter === f ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 border border-slate-600'
+                  activeFilter === f ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-[var(--input-bg)] text-[var(--text-muted)] hover:bg-[var(--hover-bg)] border border-[var(--border)]'
                 }`}>{f}</button>
             ))}
           </div>
@@ -149,25 +149,25 @@ export default function Transactions() {
         </div>
       </div>
 
-      <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
         <table className="w-full">
-          <thead className="bg-slate-700/50 text-left">
+          <thead className="bg-[var(--input-bg)] text-left">
             <tr>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400">Date</th>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400">Holding</th>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400">Type</th>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Qty</th>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Price</th>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400 text-right">Amount</th>
-              <th className="px-4 py-3 text-sm font-medium text-slate-400">Broker</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Date</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Holding</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Type</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Qty</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Price</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Broker</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700">
+          <tbody className="divide-y divide-[var(--border)]">
             {filtered.length === 0 ? (
-              <tr><td colSpan="7" className="px-4 py-12 text-center text-slate-500">No transactions found</td></tr>
+              <tr><td colSpan="7" className="px-4 py-12 text-center text-[var(--text-secondary)]">No transactions found</td></tr>
             ) : (
               filtered.map((tx) => (
-                <tr key={tx.id} className="hover:bg-slate-700/30">
+                <tr key={tx.id} className="hover:bg-[var(--hover-bg)]">
                   <td className="px-4 py-3 text-sm">{new Date(tx.transactionDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                   <td className="px-4 py-3 text-sm">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -181,14 +181,14 @@ export default function Transactions() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${typeColors[tx.transactionType] || 'text-slate-400 bg-slate-700'}`}>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${typeColors[tx.transactionType] || 'text-[var(--text-muted)] bg-[var(--input-bg)]'}`}>
                       {tx.transactionType}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-sm">{tx.quantity}</td>
                   <td className="px-4 py-3 text-right text-sm">Rs. {fmt(tx.price)}</td>
                   <td className="px-4 py-3 text-right text-sm font-medium">Rs. {fmt(tx.amount)}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{tx.broker || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{tx.broker || '-'}</td>
                 </tr>
               ))
             )}

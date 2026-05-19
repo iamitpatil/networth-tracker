@@ -103,14 +103,14 @@ export default function Family() {
     } catch (e) { console.error(e) }
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-slate-400">Loading...</div>
+  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Family</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage families and invite members to view combined finances</p>
+          <p className="text-[var(--text-muted)] text-sm mt-1">Manage families and invite members to view combined finances</p>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
