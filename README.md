@@ -1,17 +1,25 @@
-# NetWorth Tracker - Your Local Investment Manager
+<p align="center">
+  <img src="docs/logo-full-dark.png" alt="NetWorth Tracker" width="500" />
+</p>
 
-[![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.4-green?logo=springboot)](https://spring.io/projects/spring-boot)
-[![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
-[![Flutter](https://img.shields.io/badge/Flutter-3-blue?logo=flutter)](https://flutter.dev/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](http://makeapullrequest.com)
-[![Self-Hosted](https://img.shields.io/badge/Self--Hosted-yes-success)]()
-[![AI Powered](https://img.shields.io/badge/AI-Llama%203.2-purple?logo=meta)](https://llama.meta.com/)
+<p align="center">
+  <a href="https://openjdk.org/"><img src="https://img.shields.io/badge/Java-21-orange?logo=openjdk" alt="Java" /></a>
+  <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Spring%20Boot-3.2.4-green?logo=springboot" alt="Spring Boot" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-blue?logo=react" alt="React" /></a>
+  <a href="https://flutter.dev/"><img src="https://img.shields.io/badge/Flutter-3-blue?logo=flutter" alt="Flutter" /></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white" alt="PostgreSQL" /></a>
+  <a href="https://redis.io/"><img src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white" alt="Redis" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License" /></a>
+  <a href="http://makeapullrequest.com"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
+  <img src="https://img.shields.io/badge/Self--Hosted-yes-success" alt="Self-Hosted" />
+  <a href="https://llama.meta.com/"><img src="https://img.shields.io/badge/AI-Llama%203.2-purple?logo=meta" alt="AI Powered" /></a>
+</p>
 
-A self-hosted personal finance platform built for Indian investors. Track equity, mutual funds, EPF, PPF, NPS, gold, crypto, real estate, FDs, bonds, and bank balances in one place with live market data, net-worth analytics, AI insights, tax computation, and family aggregation.
+<p align="center">
+  A self-hosted personal finance platform built for Indian investors.<br/>
+  Track equity, mutual funds, EPF, PPF, NPS, gold, crypto, real estate, FDs, bonds, and bank balances<br/>
+  in one place with live market data, net-worth analytics, AI insights, tax computation, and family aggregation.
+</p>
 
 ![NetWorth Tracker Demo](docs/demo.gif)
 
