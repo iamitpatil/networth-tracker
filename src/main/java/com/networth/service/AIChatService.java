@@ -41,7 +41,7 @@ public class AIChatService {
     private final PriceService priceService;
     private final ObjectMapper objectMapper;
 
-    private static final String LLAMA_URL = "http://localhost:8081/v1/chat/completions";
+    private static final String LLAMA_URL = "http://localhost:8082/v1/chat/completions";
     private static final String MODEL = "llama";
     private static final double TEMPERATURE = 0.3;
 
