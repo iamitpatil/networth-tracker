@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
+import NewsPanel from '../components/NewsPanel'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#14b8a6', '#f97316']
@@ -80,6 +81,7 @@ export default function Holdings() {
   const [chartLoading, setChartLoading] = useState(false)
   const [backfillStatus, setBackfillStatus] = useState(null)
   const [chartMode, setChartMode] = useState('recharts')
+  const [newsHolding, setNewsHolding] = useState(null)
 
   const chartStats = useMemo(() => {
     if (!priceHistory.length) return null
@@ -1002,6 +1004,11 @@ export default function Holdings() {
                     <td className="px-4 py-3 text-right">
                       {!group.isGroup && (
                         <div className="flex items-center justify-end gap-1">
+                          {(group.assetType === 'EQUITY' || group.assetType === 'ETF' || group.assetType === 'MUTUAL_FUND') && (
+                            <button onClick={() => setNewsHolding(group.representative)} className="text-[var(--text-secondary)] hover:text-blue-400 transition p-1" title="News">
+                              <Newspaper className="w-4 h-4" />
+                            </button>
+                          )}
                           {group.assetType === 'GOLD' && (
                             <button onClick={() => openInvoices(group.representative)} className="text-[var(--text-secondary)] hover:text-amber-400 transition p-1" title="Invoices">
                               <FileText className="w-4 h-4" />
@@ -1136,6 +1143,10 @@ export default function Holdings() {
             </div>
           </div>
         </div>
+      )}
+
+      {newsHolding && (
+        <NewsPanel holding={newsHolding} onClose={() => setNewsHolding(null)} />
       )}
 
       {chartHolding && (

@@ -153,7 +153,7 @@ export default function Dashboard() {
             {healthScore?.grade || '—'}
           </p>
           <p className="text-xs text-[var(--text-muted)]">
-            {healthScore?.score ? `${healthScore.score.toFixed(0)}/100` : 'Not calculated'}
+            {healthScore?.totalScore ? `${healthScore.totalScore.toFixed(0)}/100` : 'Not calculated'}
           </p>
         </Card>
       </div>

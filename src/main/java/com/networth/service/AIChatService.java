@@ -9,6 +9,7 @@ import com.networth.model.entity.Holding;
 import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.HoldingRepository;
+import com.networth.service.market.NewsService;
 import com.networth.service.market.PriceService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
@@ -39,6 +40,7 @@ public class AIChatService {
     private final TransactionService transactionService;
     private final HoldingRepository holdingRepository;
     private final PriceService priceService;
+    private final NewsService newsService;
     private final ObjectMapper objectMapper;
 
     private static final String LLAMA_URL = "http://localhost:8082/v1/chat/completions";
@@ -132,11 +134,13 @@ CSV: INF090I01CS4,LUMPSUM,1,5000,2025-02-01
 """;
         } else {
             String portfolio = getPortfolioSummary(userId);
+            String news = getRecentNews(userId);
+            String newsSection = news.isBlank() ? "" : "\nRecent News:\n" + news;
             return """
 You are a financial advisor for the Net Worth Tracker app. You have access to the user's portfolio data.
 
 Current Portfolio:
-%s
+%s%s
 
 Provide helpful financial advice based on their holdings. Consider:
 - Portfolio diversification across asset types
@@ -145,9 +149,24 @@ Provide helpful financial advice based on their holdings. Consider:
 - Suggestions for rebalancing
 - Tax-efficient investing tips
 - SIP vs lumpsum recommendations
+- Incorporate recent news when relevant
 
 Be concise, practical, and focused on Indian market context.
-""".formatted(portfolio);
+""".formatted(portfolio, newsSection);
+        }
+    }
+
+    private String getRecentNews(String userId) {
+        try {
+            var news = newsService.getNewsForHoldings(userId, 2);
+            if (news.isEmpty()) return "";
+            return news.stream()
+                    .map(n -> "- " + n.get("title") + " (" + n.get("symbol") + ")")
+                    .distinct()
+                    .limit(5)
+                    .collect(Collectors.joining("\n"));
+        } catch (Exception e) {
+            return "";
         }
     }
 
