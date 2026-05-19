@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { FamilyViewProvider } from './context/FamilyViewContext'
+import { FeatureFlagProvider } from './context/FeatureFlagContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -39,6 +40,7 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
+        <FeatureFlagProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -77,6 +79,7 @@ createRoot(document.getElementById('root')).render(
             },
           }}
         />
+        </FeatureFlagProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>

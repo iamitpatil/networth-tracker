@@ -1,7 +1,8 @@
 package com.networth.controller;
 
-import com.networth.service.AIInsightsService;
+import com.networth.service.FeatureFlagService;
 import com.networth.service.broker.AccountAggregatorService;
+import com.networth.service.broker.UpstoxBrokerService;
 import com.networth.service.broker.ZerodhaIntegrationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +20,57 @@ import java.util.UUID;
 public class BrokerIntegrationController {
 
     private final ZerodhaIntegrationService zerodhaService;
+    private final UpstoxBrokerService upstoxService;
     private final AccountAggregatorService aaService;
+    private final FeatureFlagService featureFlags;
+
+    // ---- Upstox ----
+
+    @GetMapping("/upstox/auth-url")
+    public ResponseEntity<?> getUpstoxAuthUrl(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (!featureFlags.isEnabled("upstox-import")) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Upstox import is not enabled"));
+        }
+        String url = upstoxService.getAuthUrl(UUID.fromString(userDetails.getUsername()));
+        return ResponseEntity.ok(Map.of("url", url));
+    }
+
+    @PostMapping("/upstox/callback")
+    public ResponseEntity<Map<String, Object>> upstoxCallback(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody Map<String, String> request) {
+        if (!featureFlags.isEnabled("upstox-import")) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Upstox import is not enabled"));
+        }
+        String code = request.get("code");
+        return ResponseEntity.ok(upstoxService.exchangeCodeForToken(
+                UUID.fromString(userDetails.getUsername()), code));
+    }
+
+    @PostMapping("/upstox/sync")
+    public ResponseEntity<Map<String, Object>> syncUpstoxHoldings(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (!featureFlags.isEnabled("upstox-import")) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Upstox import is not enabled"));
+        }
+        return ResponseEntity.ok(upstoxService.syncHoldings(UUID.fromString(userDetails.getUsername())));
+    }
+
+    @GetMapping("/upstox/status")
+    public ResponseEntity<Map<String, Object>> getUpstoxStatus(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(upstoxService.getConnectionStatus(UUID.fromString(userDetails.getUsername())));
+    }
+
+    @PostMapping("/upstox/disconnect")
+    public ResponseEntity<Map<String, String>> disconnectUpstox(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        upstoxService.disconnect(UUID.fromString(userDetails.getUsername()));
+        return ResponseEntity.ok(Map.of("message", "Upstox disconnected"));
+    }
+
+    // ---- Zerodha ----
 
     @GetMapping("/zerodha/holdings")
     public ResponseEntity<List<Map<String, Object>>> fetchZerodhaHoldings(
@@ -46,6 +97,8 @@ public class BrokerIntegrationController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(zerodhaService.syncAllHoldings(UUID.fromString(userDetails.getUsername())));
     }
+
+    // ---- Account Aggregator ----
 
     @PostMapping("/aa/consent")
     public ResponseEntity<Map<String, Object>> initiateConsent(
