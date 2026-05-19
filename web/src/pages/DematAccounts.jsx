@@ -49,7 +49,7 @@ export default function DematAccounts() {
   function openEdit(acc) {
     setForm({
       brokerName: acc.brokerName,
-      accountNumber: acc.accountNumber || '',
+      accountNumber: '',
       accountType: acc.accountType,
       description: acc.description || '',
       isDefault: acc.isDefault,
@@ -152,7 +152,7 @@ export default function DematAccounts() {
                   value={form.accountNumber}
                   onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
                   className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5"
-                  placeholder="Last 4 digits: 1234"
+                  placeholder={editingId ? 'Leave blank to keep unchanged' : 'Full demat account number'}
                 />
               </div>
               <div>
@@ -227,7 +227,7 @@ export default function DematAccounts() {
                     <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded">{acc.accountType}</span>
                     {acc.accountNumber && (
                       <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-mono">
-                        ****{acc.accountNumber.slice(-4)}
+                        {acc.accountNumber}
                       </span>
                     )}
                   </div>

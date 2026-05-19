@@ -52,7 +52,9 @@ public class DematAccountService {
         }
 
         if (request.brokerName() != null) account.setBrokerName(request.brokerName());
-        if (request.accountNumber() != null) account.setAccountNumber(request.accountNumber());
+        if (request.accountNumber() != null && !request.accountNumber().isBlank()) {
+            account.setAccountNumber(request.accountNumber());
+        }
         if (request.accountType() != null) account.setAccountType(request.accountType());
         if (request.description() != null) account.setDescription(request.description());
         account.setIsDefault(request.isDefault());

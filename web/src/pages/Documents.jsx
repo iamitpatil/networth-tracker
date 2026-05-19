@@ -235,7 +235,7 @@ export default function Documents() {
                 <select value={dematAccountId} onChange={(e) => setDematAccountId(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5">
                   <option value="">None (general document)</option>
                   {dematAccounts.map((d) => (
-                    <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber.slice(-4)})` : ''}</option>
+                    <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber})` : ''}</option>
                   ))}
                 </select>
               </div>

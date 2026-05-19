@@ -5,6 +5,8 @@ import { useFamilyView } from '../context/FamilyViewContext'
 import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
+import UpstoxSync from '../components/UpstoxSync'
+import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#14b8a6', '#f97316']
@@ -12,6 +14,7 @@ const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4'
 const ASSET_TYPES = [
   { value: 'EQUITY', label: 'Stocks', icon: TrendingUp, color: 'blue' },
   { value: 'MUTUAL_FUND', label: 'Mutual Funds', icon: TrendingUp, color: 'green' },
+  { value: 'BOND', label: 'Bonds', icon: Landmark, color: 'cyan' },
   { value: 'GOLD', label: 'Gold / SGB', icon: Gem, color: 'amber' },
   { value: 'FD', label: 'Fixed Deposit', icon: Banknote, color: 'purple' },
   { value: 'PPF', label: 'PPF', icon: ShieldCheck, color: 'teal' },
@@ -22,6 +25,7 @@ const ASSET_TYPES = [
 const TYPE_TRANSACTIONS = {
   EQUITY: ['BUY', 'SELL', 'SIP', 'LUMPSUM'],
   MUTUAL_FUND: ['SIP', 'LUMPSUM', 'SELL'],
+  BOND: ['BUY', 'SELL'],
   GOLD: ['BUY', 'SELL'],
   FD: ['OPEN', 'RENEW', 'WITHDRAW'],
   PPF: ['DEPOSIT', 'WITHDRAWAL'],
@@ -30,12 +34,13 @@ const TYPE_TRANSACTIONS = {
 }
 
 const ASSET_LABELS = {
-  EQUITY: 'Stock', MUTUAL_FUND: 'MF', GOLD: 'Gold', FD: 'FD', PPF: 'PPF', EPF: 'EPF', NPS: 'NPS',
+  EQUITY: 'Stock', MUTUAL_FUND: 'MF', BOND: 'Bond', GOLD: 'Gold', FD: 'FD', PPF: 'PPF', EPF: 'EPF', NPS: 'NPS',
 }
 
 const ASSET_COLORS = {
   EQUITY: 'bg-blue-500/20 text-blue-400',
   MUTUAL_FUND: 'bg-green-500/20 text-green-400',
+  BOND: 'bg-cyan-500/20 text-cyan-400',
   GOLD: 'bg-amber-500/20 text-amber-400',
   FD: 'bg-purple-500/20 text-purple-400',
   PPF: 'bg-teal-500/20 text-teal-400',
@@ -46,9 +51,26 @@ const ASSET_COLORS = {
 // Asset types that REQUIRE a demat account (must match backend)
 const ASSET_TYPES_REQUIRING_DEMAT = ['EQUITY', 'ETF', 'MUTUAL_FUND']
 
+const POPULAR_BONDS = [
+  { name: 'RBI Floating Rate Savings Bond 2020 (Taxable)', coupon: 8.05 },
+  { name: 'Sovereign Gold Bond (SGB)', coupon: 2.5 },
+  { name: 'NHAI Tax-Free Bond', coupon: 8.2 },
+  { name: 'IRFC Tax-Free Bond', coupon: 8.1 },
+  { name: 'REC Tax-Free Bond', coupon: 8.01 },
+  { name: 'PFC Tax-Free Bond', coupon: 8.0 },
+  { name: 'HUDCO Tax-Free Bond', coupon: 8.1 },
+  { name: 'NABARD Tax-Free Bond', coupon: 7.64 },
+  { name: 'Indian Railway Finance Corp NCD', coupon: 7.5 },
+  { name: 'Muthoot Finance NCD', coupon: 8.0 },
+  { name: 'Shriram Transport NCD', coupon: 8.5 },
+  { name: 'Mahindra Finance NCD', coupon: 7.75 },
+  { name: 'NHPC Tax-Free Bond', coupon: 8.2 },
+]
+
 export default function Holdings() {
   const { view: familyView } = useFamilyView()
   const isFamilyView = familyView === 'family'
+  const upstoxEnabled = useFeature('upstox-import')
   const [holdings, setHoldings] = useState([])
   const [symbols, setSymbols] = useState([])
   const [loading, setLoading] = useState(true)
@@ -63,6 +85,8 @@ export default function Holdings() {
     price: '',
     transactionType: 'BUY',
     name: '',
+    couponRate: '',
+    maturityDate: '',
   })
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -315,6 +339,7 @@ export default function Holdings() {
       symbol: '', dematAccountId: '',
       transactionDate: new Date().toISOString().slice(0, 16),
       quantity: '', price: '', transactionType: 'BUY', name: '',
+      couponRate: '', maturityDate: '',
     })
     setAssetType('')
   }
@@ -340,8 +365,9 @@ export default function Holdings() {
 
     setSubmitting(true)
     try {
-      const qty = needsSymbol || assetType === 'GOLD' ? (parseFloat(form.quantity) || 0) : 1
-      const price = needsSymbol || assetType === 'GOLD' ? (parseFloat(form.price) || 0) : (parseFloat(form.quantity) || 0)
+      const isBondLike = assetType === 'BOND' || assetType === 'GOLD'
+      const qty = needsSymbol || isBondLike ? (parseFloat(form.quantity) || 0) : 1
+      const price = needsSymbol || isBondLike ? (parseFloat(form.price) || 0) : (parseFloat(form.quantity) || 0)
       const sym = needsSymbol ? selectedSymbol.symbol : assetType
       const name = needsSymbol ? selectedSymbol.name : form.name
 
@@ -363,6 +389,12 @@ export default function Holdings() {
           quantity: 0,
           averageBuyPrice: 0,
           dematAccountId: form.dematAccountId || null,
+        }
+        if (assetType === 'BOND') {
+          const metadata = {}
+          if (form.couponRate) metadata.interestRate = form.couponRate
+          if (Object.keys(metadata).length > 0) payload.metadata = metadata
+          if (form.maturityDate) payload.lockInUntil = form.maturityDate
         }
         const { data } = await client.post('/portfolio/holdings', payload)
         holdingId = data.id
@@ -443,17 +475,24 @@ export default function Holdings() {
 
   const triggerEquityBackfill = async (holding) => {
     try {
-      // Show loading toast
       const { toast } = await import('sonner')
       toast.loading('Fetching price history...', { id: 'equity-backfill' })
-      await client.post(`/market/backfill-prices?fromDate=${new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]}`)
-      toast.success('Price history fetched', {
-        id: 'equity-backfill',
-        description: 'Try opening the chart again',
-      })
+      const backfillRes = await client.post(`/market/backfill-holding/${holding.id}?days=${chartDays > 180 ? 365 : chartDays + 30}`)
+      const count = backfillRes.data?.recordsBackfilled || 0
       // Reload price history
       const { data } = await client.get(`/portfolio/holdings/${holding.id}/price-history?days=${chartDays}`)
       setPriceHistory(data || [])
+      if (data && data.length > 0) {
+        toast.success('Price history loaded', {
+          id: 'equity-backfill',
+          description: `${count} records fetched`,
+        })
+      } else {
+        toast.warning('No price data available', {
+          id: 'equity-backfill',
+          description: backfillRes.data?.message || 'Upstox may not have data for this symbol',
+        })
+      }
     } catch (e) {
       const { toast } = await import('sonner')
       toast.error('Failed to fetch history', {
@@ -566,6 +605,7 @@ export default function Holdings() {
   const allocation = [
     { name: 'Equity', key: 'EQUITY' },
     { name: 'Mutual Fund', key: 'MUTUAL_FUND' },
+    { name: 'Bond', key: 'BOND' },
     { name: 'Gold', key: 'GOLD' },
     { name: 'FD', key: 'FD' },
     { name: 'PPF', key: 'PPF' },
@@ -596,6 +636,10 @@ export default function Holdings() {
           <Plus className="w-4 h-4" /> {showForm ? 'Cancel' : 'Add Holdings'}
         </button>
       </div>
+
+      {upstoxEnabled && (
+        <UpstoxSync onSyncComplete={() => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))} />
+      )}
 
       {showForm && (
         <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
@@ -682,14 +726,70 @@ export default function Holdings() {
                 {!needsSymbol && (
                   <div>
                     <label className="block text-sm text-[var(--text-muted)] mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
-                      placeholder={assetType === 'FD' ? 'e.g., HDFC Bank FD 2025' : `e.g., ${assetType} Account`}
-                      required
-                    />
+                    {assetType === 'BOND' ? (
+                      <>
+                        <input
+                          type="text"
+                          value={form.name}
+                          onChange={(e) => setForm({ ...form, name: e.target.value })}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
+                          placeholder="e.g., RBI Floating Rate Bond 2025"
+                          list="bond-suggestions"
+                          required
+                        />
+                        <datalist id="bond-suggestions">
+                          {POPULAR_BONDS.map(b => (
+                            <option key={b.name} value={b.name} />
+                          ))}
+                        </datalist>
+                        {!form.name && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {POPULAR_BONDS.slice(0, 6).map(b => (
+                              <button key={b.name} type="button"
+                                onClick={() => setForm({ ...form, name: b.name, couponRate: String(b.coupon) })}
+                                className="text-xs px-2 py-1 rounded bg-[var(--input-bg)] text-[var(--text-muted)] hover:bg-cyan-500/20 hover:text-cyan-400 transition border border-[var(--border)]">
+                                {b.name.length > 25 ? b.name.slice(0, 25) + '...' : b.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
+                        placeholder={assetType === 'FD' ? 'e.g., HDFC Bank FD 2025' : `e.g., ${assetType} Account`}
+                        required
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Bond-specific fields: coupon rate & maturity */}
+                {assetType === 'BOND' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-1">Coupon Rate (%)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={form.couponRate}
+                        onChange={(e) => setForm({ ...form, couponRate: e.target.value })}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
+                        placeholder="e.g., 8.05"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-1">Maturity Date</label>
+                      <input
+                        type="date"
+                        value={form.maturityDate}
+                        onChange={(e) => setForm({ ...form, maturityDate: e.target.value })}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -728,15 +828,15 @@ export default function Holdings() {
                   </div>
                   <div>
                     <label className="block text-sm text-[var(--text-muted)] mb-1">
-                      {isEquity ? 'Shares' : isMF ? 'Units' : assetType === 'GOLD' ? 'Grams' : 'Amount (₹)'}
+                      {isEquity ? 'Shares' : isMF ? 'Units' : assetType === 'GOLD' ? 'Grams' : assetType === 'BOND' ? 'Face Value (₹)' : 'Amount (₹)'}
                     </label>
-                    <input type="number" step="any" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required placeholder={isEquity ? '10' : isMF ? '150.234' : assetType === 'GOLD' ? '50' : '100000'} />
+                    <input type="number" step="any" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required placeholder={isEquity ? '10' : isMF ? '150.234' : assetType === 'GOLD' ? '50' : assetType === 'BOND' ? '10000' : '100000'} />
                   </div>
                   <div>
                     <label className="block text-sm text-[var(--text-muted)] mb-1">
-                      {isEquity ? 'Price/Share' : isMF ? 'NAV' : assetType === 'GOLD' ? 'Price/Gram' : 'Rate (if any)'}
+                      {isEquity ? 'Price/Share' : isMF ? 'NAV' : assetType === 'GOLD' ? 'Price/Gram' : assetType === 'BOND' ? 'Purchase Price (₹)' : 'Rate (if any)'}
                     </label>
-                    <input type="number" step="any" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required={needsSymbol} placeholder={isEquity ? '1450.50' : isMF ? '45.678' : '0'} />
+                    <input type="number" step="any" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required={needsSymbol || assetType === 'BOND'} placeholder={isEquity ? '1450.50' : isMF ? '45.678' : assetType === 'BOND' ? '10000' : '0'} />
                   </div>
                 </div>
 
@@ -773,7 +873,7 @@ export default function Holdings() {
                             : 'No account (general)'}
                         </option>
                         {dematAccounts.map((d) => (
-                          <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber.slice(-4)})` : ''}{d.isDefault ? ' ⭐' : ''}</option>
+                          <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber})` : ''}{d.isDefault ? ' ⭐' : ''}</option>
                         ))}
                       </select>
                     )}
@@ -978,7 +1078,7 @@ export default function Holdings() {
                       ) : group.representative.dematAccountBroker ? (
                         <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
                           <Building2 className="w-3 h-3" />
-                          {group.representative.dematAccountBroker}{group.representative.dematAccountNumber ? ` (${group.representative.dematAccountNumber.slice(-4)})` : ''}
+                           {group.representative.dematAccountBroker}{group.representative.dematAccountNumber ? ` (${group.representative.dematAccountNumber})` : ''}
                         </div>
                       ) : (
                         <span className="text-xs text-[var(--text-secondary)]">General</span>
@@ -1040,7 +1140,7 @@ export default function Holdings() {
                         {h.dematAccountBroker ? (
                           <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
                             <Building2 className="w-3 h-3" />
-                            {h.dematAccountBroker}{h.dematAccountNumber ? ` (${h.dematAccountNumber.slice(-4)})` : ''}
+                             {h.dematAccountBroker}{h.dematAccountNumber ? ` (${h.dematAccountNumber})` : ''}
                           </div>
                         ) : (
                           <span className="text-xs text-[var(--text-secondary)]">General</span>
