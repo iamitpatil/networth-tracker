@@ -1,249 +1,158 @@
-# Mobile Apps - Net Worth Tracker
+# NetWorth Tracker - Mobile App
 
-This directory contains cross-platform mobile apps for the Net Worth Tracker.
+Cross-platform mobile companion for NetWorth Tracker, built with Flutter. Runs on iOS, Android, and Web from a single codebase.
 
-## 📱 Flutter App (Recommended)
+## Tech Stack
 
-**Location:** `mobile/flutter_networth/`
+| Layer | Technology |
+|-------|------------|
+| Framework | Flutter 3, Dart |
+| State Management | Provider (ChangeNotifier) |
+| HTTP Client | http package |
+| Local Storage | shared_preferences |
+| Charts | fl_chart |
+| Fonts | google_fonts (Inter) |
 
-### Why Flutter?
-- ✅ **Single codebase** for iOS & Android
-- ✅ **Faster development** with hot reload
-- ✅ **Beautiful UI** with Material Design
-- ✅ **Better performance** than React Native
-- ✅ **Easy integration** with backend
-- ✅ **Good documentation** and community
+## Project Structure
 
-### Features Included:
-- **Full REST API integration** with JWT auth
-- **Dashboard**: Net worth, health score, asset allocation charts
-- **Holdings**: Manage all asset types (Equity, MF, Gold, FD, PPF, EPF, NPS)
-- **Net Worth**: Asset breakdown with visual charts
-- **Goals**: Financial goal tracking
-- **State Management**: Flutter BLoC pattern
-- **Charts**: FL Chart library for beautiful visualizations
-- **Currency**: INR (₹) formatting throughout
-
-### Tech Stack:
-```yaml
-flutter: ^3.0.0
-flutter_bloc: ^8.1.3      # State management
-dio: ^5.4.0               # HTTP client
-fl_chart: ^0.66.0         # Charts
-retrofit: ^4.0.3          # Type-safe APIs
-hive: ^2.2.3              # Local storage
+```
+mobile/lib/
+├── main.dart                     # App entry point
+├── core/
+│   ├── constants/
+│   │   ├── app_colors.dart       # Centralized color palette
+│   │   └── app_config.dart       # API URL, storage keys
+│   ├── services/
+│   │   └── api_client.dart       # HTTP client with JWT + refresh
+│   ├── theme/
+│   │   └── app_theme.dart        # Material theme configuration
+│   └── utils/
+│       ├── formatters.dart       # Currency (INR), percentage, date, file size
+│       └── validators.dart       # Email, password, number validation
+├── data/
+│   ├── models/
+│   │   └── app_models.dart       # Holding, NetWorthData, Goal, etc.
+│   └── repositories/
+├── providers/
+│   └── data_provider.dart        # ChangeNotifier for global state
+├── features/                     # 19 screens organized by feature
+│   ├── auth/                     # Login, Register
+│   ├── dashboard/                # Dashboard with net worth, health score
+│   ├── portfolio/                # Holdings, Transactions, Analytics
+│   ├── accounts/                 # Bank Accounts, Demat Accounts, Salaries
+│   ├── networth/                 # Net Worth, Goals, Liabilities, Tax
+│   ├── personal/                 # Documents, Family, Import
+│   ├── ai_chat/                  # AI Chat
+│   ├── profile/                  # Profile & Settings
+│   └── home/                     # Main navigation hub
+└── widgets/
+    ├── charts/
+    │   ├── asset_allocation_chart.dart   # Pie chart for asset breakdown
+    │   └── holding_price_chart.dart      # Interactive price chart
+    ├── common/
+    │   ├── error_view.dart
+    │   ├── loading_view.dart
+    │   ├── empty_state.dart
+    │   └── stat_card.dart
+    └── dialogs/
+        ├── add_holding_dialog.dart
+        ├── add_transaction_dialog.dart
+        └── add_goal_dialog.dart
 ```
 
-### How to Run:
+## Features
+
+- **Dashboard** — Net worth summary, health score (A+ to D), asset allocation pie chart, top holdings
+- **Holdings** — All asset types (Equity, MF, Gold, FD, PPF, EPF, NPS, Bonds, Crypto, Real Estate), filter tabs, P&L tracking
+- **Net Worth** — Total wealth, asset category breakdown, historical charts
+- **Goals** — Financial goal tracking with progress bars, target vs current
+- **Transactions** — Buy/sell/SIP/dividend history
+- **Analytics** — XIRR, CAGR, allocation breakdown
+- **Tax** — LTCG/STCG calculations, 80C tracking
+- **Liabilities** — Loan management, EMI schedules
+- **Bank Accounts** — Savings, Current, FD, NRE, NRO
+- **Salaries** — Income tracking with component breakdown
+- **AI Chat** — Portfolio-aware Q&A via local LLM
+- **Family** — Multi-member dashboard
+- **Documents** — File upload and viewer
+- **Import** — CSV/PDF import
+- **Profile** — User settings
+
+## Quick Start
+
+### Prerequisites
+
+- Flutter SDK 3.0+ ([Install guide](https://docs.flutter.dev/get-started/install))
+- Backend running on `http://localhost:8080`
+
+### Run
+
 ```bash
-cd mobile/flutter_networth
+cd mobile
 
 # Install dependencies
 flutter pub get
 
-# Generate API code
-flutter pub run build_runner build
+# Run on connected device or emulator
+flutter run
+
+# Run on Chrome (web)
+flutter run -d chrome    # Serves on port 8081
 
 # Run on iOS Simulator
-flutter run
+flutter run -d ios
 
-# Run on Android Emulator  
-flutter run
-
-# Build release APK
-flutter build apk
-
-# Build iOS release
-flutter build ios
+# Run on Android Emulator
+flutter run -d android
 ```
 
-### API Integration:
+### Backend Connection
+
+The app connects to the Spring Boot backend at `http://localhost:8080/api/v1` by default. Update `lib/core/constants/app_config.dart` for production:
+
 ```dart
-// Auto-generated from Retrofit annotations
-@GET('/net-worth/breakdown')
-Future<NetWorthBreakdown> getNetWorthBreakdown();
+static const String baseUrl = 'https://your-api.example.com/api/v1';
 ```
 
----
+## Build for Production
 
-## 🍎 iOS App (SwiftUI)
-
-**Location:** `ios/NetWorthTracker/`
-
-### Features:
-- **Native iOS design** with SwiftUI
-- **iOS 15+ support**
-- **Same features** as Flutter version
-- **Charts**: SwiftUI Charts (iOS 16+)
-- **Backend**: Connects to Spring Boot API
-
-### How to Open:
 ```bash
-cd ios/NetWorthTracker
-open NetWorthTracker.xcodeproj
-```
-
----
-
-## 🎯 Recommendation: Use Flutter!
-
-**Flutter is the better choice because:**
-
-1. **Cross-Platform**: One codebase = iOS + Android
-2. **Fast Development**: Hot reload, single language (Dart)
-3. **Native Performance**: Compiled to native ARM code
-4. **Beautiful UI**: Rich widget library, consistent across platforms
-5. **Easy Maintenance**: Update once, deploy everywhere
-6. **Future-Proof**: Google's official framework, growing fast
-7. **Cost-Effective**: Develop for both platforms with one team
-
-### Comparison:
-
-| Feature | Flutter | Native iOS | React Native |
-|---------|---------|-----------|--------------|
-| Code Sharing | 100% | 0% | ~70% |
-| Performance | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
-| Development Speed | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ |
-| UI Quality | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
-| Learning Curve | Medium | High | Medium |
-| Community | Growing | Mature | Mature |
-
----
-
-## 🚀 Quick Start with Flutter
-
-1. **Install Flutter:**
-   ```bash
-   https://docs.flutter.dev/get-started/install
-   ```
-
-2. **Setup Project:**
-   ```bash
-   cd mobile/flutter_networth
-   flutter pub get
-   ```
-
-3. **Configure Backend:**
-   - Update `lib/services/api_service.dart` with your backend URL
-   - Default: `http://localhost:8080/api/v1`
-
-4. **Generate API Code:**
-   ```bash
-   flutter pub run build_runner build --delete-conflicting-outputs
-   ```
-
-5. **Run App:**
-   ```bash
-   flutter run
-   ```
-
----
-
-## 📊 App Features
-
-Both apps include:
-
-### Authentication
-- Login/Register screens
-- JWT token management
-- Auto-login with saved token
-- Secure logout
-
-### Dashboard
-- Total net worth card
-- Assets vs liabilities
-- Health score with grade
-- Asset allocation pie chart
-- Top 5 holdings list
-- Pull-to-refresh
-
-### Holdings
-- All investments list
-- Filter by asset type
-- P&L tracking (realized & unrealized)
-- Add new holdings
-- Delete holdings
-- View holding details
-
-### Net Worth
-- Total wealth tracking
-- Asset category breakdown
-- Visual progress bars
-- Historical charts
-
-### Goals
-- Financial goals tracking
-- Progress indicators
-- Target vs current amount
-- Visual progress bars
-
-### More Section
-- Tax planning (LTCG/STCG)
-- Loans & liabilities
-- Bank accounts
-- AI Chat
-- Import data
-- Family dashboard
-- Settings
-
----
-
-## 🔌 Backend Connection
-
-All mobile apps connect to your existing Spring Boot backend:
-
-```
-Mobile App → HTTP/REST → Spring Boot Backend
-                ↓
-         JWT Authentication
-                ↓
-     PostgreSQL + Redis
-```
-
-**Default API URL:** `http://localhost:8080/api/v1`
-
-**For Production:** Update to your deployed backend URL.
-
----
-
-## 📱 Build for Production
-
-### Android APK:
-```bash
-cd mobile/flutter_networth
+# Android APK
 flutter build apk --release
 # Output: build/app/outputs/flutter-apk/app-release.apk
-```
 
-### iOS App Store:
-```bash
-cd mobile/flutter_networth
+# Android App Bundle (Play Store)
+flutter build appbundle --release
+
+# iOS (requires Xcode + Apple Developer account)
 flutter build ios --release
-# Then use Xcode to upload to App Store
+
+# Web
+flutter build web --release
+# Output: build/web/
 ```
 
----
+## Architecture
 
-## 🎨 Screenshots (Coming Soon)
+```
+Flutter App
+    │
+    ├── Provider (State Management)
+    │   └── DataProvider (ChangeNotifier)
+    │       ├── Holdings, Goals, Liabilities
+    │       ├── Net Worth, Bank Accounts
+    │       └── Auth state (JWT tokens)
+    │
+    ├── API Client (HTTP + JWT)
+    │   ├── Auto-attaches Bearer token
+    │   ├── Token refresh on 401
+    │   └── Base URL from AppConfig
+    │
+    └── Feature Screens (19 total)
+        └── Each screen reads from Provider
+            and calls API Client for data
+```
 
-- Dashboard with charts
-- Holdings list with P&L
-- Net worth breakdown
-- Goals progress
+## License
 
----
-
-## 🆘 Support
-
-For Flutter issues:
-- [Flutter Documentation](https://docs.flutter.dev)
-- [Flutter Community](https://flutter.dev/community)
-
-For iOS issues:
-- [Apple Developer](https://developer.apple.com)
-
----
-
-**Recommendation: Go with Flutter!** 🚀
-
-It's the best choice for your app - beautiful, fast, and works on both platforms with one codebase.
+MIT — Same as the main project.
