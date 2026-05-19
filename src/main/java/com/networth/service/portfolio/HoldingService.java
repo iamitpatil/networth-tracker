@@ -129,6 +129,9 @@ public class HoldingService {
         String isin = request.getIsin();
         if ((isin == null || isin.isBlank()) && request.getSymbol() != null) {
             isin = resolveIsin(request.getSymbol());
+            if (isin == null && ASSET_TYPES_REQUIRING_DEMAT.contains(request.getAssetType())) {
+                log.warn("Symbol '{}' not found in symbols table — ISIN could not be resolved", request.getSymbol());
+            }
         }
 
         Holding holding = Holding.builder()
@@ -295,10 +298,19 @@ public class HoldingService {
     }
 
     private String resolveIsin(String symbol) {
-        return symbolRepository.findById(symbol)
+        // Direct lookup first (e.g. "TCS.NS" or ISIN for MFs)
+        String isin = symbolRepository.findById(symbol)
                 .map(Symbol::getIsin)
                 .filter(i -> i != null && !i.isBlank())
                 .orElse(null);
+        // Fallback: try with .NS suffix (holdings store "TCS", symbols store "TCS.NS")
+        if (isin == null && !symbol.endsWith(".NS")) {
+            isin = symbolRepository.findById(symbol + ".NS")
+                    .map(Symbol::getIsin)
+                    .filter(i -> i != null && !i.isBlank())
+                    .orElse(null);
+        }
+        return isin;
     }
 
     /**

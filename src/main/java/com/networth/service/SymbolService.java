@@ -183,24 +183,24 @@ public class SymbolService {
 
     public List<Map<String, String>> getAllSymbols() {
         return symbolRepository.findAll().stream()
-                .map(s -> Map.of(
-                        "symbol", s.getSymbol(),
-                        "name", s.getName(),
-                        "category", s.getCategory(),
-                        "sector", s.getSector() != null ? s.getSector() : ""
-                ))
+                .map(this::symbolToMap)
                 .collect(Collectors.toList());
     }
 
     public List<Map<String, String>> getSymbolsByCategory(String category) {
         return symbolRepository.findByCategory(category.toUpperCase()).stream()
-                .map(s -> Map.of(
-                        "symbol", s.getSymbol(),
-                        "name", s.getName(),
-                        "category", s.getCategory(),
-                        "sector", s.getSector() != null ? s.getSector() : ""
-                ))
+                .map(this::symbolToMap)
                 .collect(Collectors.toList());
+    }
+
+    private Map<String, String> symbolToMap(Symbol s) {
+        var map = new java.util.HashMap<String, String>();
+        map.put("symbol", s.getSymbol());
+        map.put("name", s.getName());
+        map.put("category", s.getCategory());
+        map.put("sector", s.getSector() != null ? s.getSector() : "");
+        map.put("isin", s.getIsin() != null ? s.getIsin() : "");
+        return map;
     }
 
     private String[] parseCsvLine(String line) {
