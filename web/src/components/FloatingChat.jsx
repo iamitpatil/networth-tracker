@@ -1,17 +1,46 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import axios from '../api/client'
-import { Send, Bot, User, FileText, Sparkles, Plus, X, Check } from 'lucide-react'
+import { toast } from 'sonner'
+import client from '../api/client'
+import {
+  Send, Sparkles, FileText, X, Check, Minimize2, Maximize2,
+  Loader2, User, RotateCcw, MessageSquare,
+} from 'lucide-react'
 
 export default function FloatingChat() {
   const [open, setOpen] = useState(false)
+  const [minimized, setMinimized] = useState(false)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('advice')
   const [loading, setLoading] = useState(false)
   const [executing, setExecuting] = useState(null)
   const bottomRef = useRef(null)
+  const textareaRef = useRef(null)
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px'
+    }
+  }, [input])
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    }
+  }, [messages, loading])
+
+  // ESC to close
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open])
 
   const sendMessage = async (msg) => {
     const message = msg || input
@@ -24,7 +53,7 @@ export default function FloatingChat() {
     setLoading(true)
 
     try {
-      const { data } = await axios.post('/ai/chat', {
+      const { data } = await client.post('/ai/chat', {
         message, mode,
         history: messages.slice(-10).map(m => ({ user: m.user, content: m.content })),
       })
@@ -38,10 +67,14 @@ export default function FloatingChat() {
       }
       setMessages([...updated, botMsg])
     } catch (err) {
-      setMessages([...updated, { user: false, content: 'Error: ' + (err.response?.data?.error || err.message || 'Could not reach AI server'), id: Date.now() + 1 }])
+      setMessages([...updated, {
+        user: false,
+        content: '⚠️ ' + (err.response?.data?.error || err.message || 'Could not reach AI server'),
+        id: Date.now() + 1,
+        isError: true,
+      }])
     } finally {
       setLoading(false)
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
     }
   }
 
@@ -52,7 +85,7 @@ export default function FloatingChat() {
     setExecuting(botIndex)
 
     try {
-      const { data } = await axios.post('/ai/execute', { csv: csvText })
+      const { data } = await client.post('/ai/execute', { csv: csvText })
       const success = (data.results || []).filter(r => r.status === 'success')
       const errors = (data.results || []).filter(r => r.status === 'error')
       let resultText = ''
@@ -61,6 +94,7 @@ export default function FloatingChat() {
       const updated = [...messages]
       updated[botIndex] = { ...botMsg, executed: true, executeResult: resultText || 'No transactions processed.' }
       setMessages(updated)
+      if (success.length > 0) toast.success(`Added ${success.length} transaction(s)`)
     } catch (err) {
       const updated = [...messages]
       updated[botIndex] = { ...botMsg, executed: true, executeResult: 'Error: ' + (err.response?.data?.message || err.message) }
@@ -70,143 +104,278 @@ export default function FloatingChat() {
     }
   }
 
+  const clearChat = () => {
+    setMessages([])
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
   return (
     <>
+      {/* Floating Button */}
       <button
-        onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-lg flex items-center justify-center transition shadow-blue-500/25"
+        onClick={() => { setOpen(!open); setMinimized(false) }}
+        aria-label={open ? 'Close AI chat' : 'Open AI chat'}
+        className={`fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 ${
+          open
+            ? 'bg-red-500 hover:bg-red-600 rotate-90'
+            : 'bg-gradient-to-br from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700'
+        }`}
+        style={{
+          boxShadow: open
+            ? '0 10px 30px rgba(239, 68, 68, 0.4)'
+            : '0 10px 30px rgba(59, 130, 246, 0.4)'
+        }}
       >
-        {open ? <X className="w-6 h-6" /> : <Bot className="w-6 h-6" />}
+        {open ? <X className="w-6 h-6 text-white" /> : <Sparkles className="w-6 h-6 text-white" />}
+        {!open && messages.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+            {messages.filter(m => !m.user).length}
+          </span>
+        )}
       </button>
 
+      {/* Chat Panel */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-96 h-[550px] bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
-            <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5 text-blue-500" />
-              <span className="font-semibold text-sm text-theme">AI Chat</span>
-            </div>
-            <div className="flex gap-1">
-              <button
-                onClick={() => { setMode('advice'); setMessages([]) }}
-                className={`text-xs px-2 py-1 rounded ${mode === 'advice' ? 'bg-blue-500 text-white' : 'text-theme-secondary hover:text-theme'}`}
-              >Advisor</button>
-              <button
-                onClick={() => { setMode('import'); setMessages([]) }}
-                className={`text-xs px-2 py-1 rounded ${mode === 'import' ? 'bg-blue-500 text-white' : 'text-theme-secondary hover:text-theme'}`}
-              >Import</button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {messages.length === 0 && (
-              <div className="text-center py-8">
-                <Bot className="w-8 h-8 mx-auto text-theme-secondary mb-2" />
-                <p className="text-xs text-theme-secondary">
-                  {mode === 'advice' ? 'Ask for financial advice' : 'Describe a transaction'}
+        <div
+          className={`fixed z-40 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all animate-in zoom-in-95 fade-in duration-200 ${
+            minimized
+              ? 'bottom-24 right-6 w-80 h-14'
+              : 'bottom-24 right-6 w-[calc(100vw-3rem)] sm:w-[420px] h-[600px] max-h-[calc(100vh-8rem)]'
+          }`}
+          style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)' }}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[var(--border)] bg-gradient-to-r from-blue-500/5 to-purple-500/5 flex-shrink-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm truncate">AI Assistant</p>
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  {mode === 'advice' ? 'Advisor mode' : 'Import mode'}
                 </p>
               </div>
-            )}
+            </div>
 
-            {messages.map((msg, i) => (
-              <div key={msg.id || i}>
-                <div className={`flex gap-2 ${msg.user ? 'justify-end' : ''}`}>
-                  {!msg.user && (
-                    <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                      <Bot className="w-3 h-3 text-blue-400" />
-                    </div>
-                  )}
-                  <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${msg.user ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-800 text-theme rounded-bl-sm'}`}>
-                    {msg.user ? (
-                      <p className="whitespace-pre-wrap text-xs">{msg.content}</p>
-                    ) : (
-                      <div className="prose prose-xs dark:prose-invert max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
-                  {msg.user && (
-                    <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
-                      <User className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                </div>
-
-                {!msg.user && msg.csvLines && !msg.executed && (
-                  <div className="ml-8 mt-2 space-y-2">
-                    <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-2 text-xs">
-                      <p className="font-medium text-green-500 mb-1">Preview:</p>
-                      {msg.csvLines.map((t, j) => (
-                        <div key={j} className="flex gap-2 text-theme py-0.5">
-                          <span className="text-green-400 font-mono">{t.symbol}</span>
-                          <span className={t.type === 'BUY' ? 'text-green-400' : 'text-red-400'}>{t.type}</span>
-                          <span className="text-theme-muted">{t.qty} × {t.price}</span>
-                          <span className="text-theme-muted">{t.date}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => confirmCsv(i)}
-                      disabled={executing === i}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition disabled:opacity-50"
-                    >
-                      {executing === i ? (
-                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Check className="w-3 h-3" />
-                      )}
-                      Confirm & Add
-                    </button>
-                  </div>
-                )}
-
-                {!msg.user && msg.executed && msg.executeResult && (
-                  <div className="ml-8 mt-2">
-                    <div className="bg-green-500/5 border border-green-500/20 rounded-lg px-3 py-2 text-xs text-theme">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.executeResult}</ReactMarkdown>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {loading && (
-              <div className="flex gap-2">
-                <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center">
-                  <Bot className="w-3 h-3 text-blue-400" />
-                </div>
-                <div className="bg-gray-100 dark:bg-gray-800 rounded-xl rounded-bl-sm px-3 py-2">
-                  <div className="flex gap-1">
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}} />
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}} />
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}} />
-                  </div>
-                </div>
+            {/* Mode toggle (only when not minimized) */}
+            {!minimized && (
+              <div className="inline-flex p-0.5 bg-[var(--input-bg)] rounded-md flex-shrink-0">
+                <button
+                  onClick={() => { setMode('advice'); setMessages([]) }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                    mode === 'advice'
+                      ? 'bg-[var(--bg-card)] text-blue-400 shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Advice
+                </button>
+                <button
+                  onClick={() => { setMode('import'); setMessages([]) }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                    mode === 'import'
+                      ? 'bg-[var(--bg-card)] text-blue-400 shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  <FileText className="w-3 h-3" />
+                  Import
+                </button>
               </div>
             )}
 
-            <div ref={bottomRef} />
-          </div>
-
-          <div className="border-t border-[var(--border)] p-3 shrink-0">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder={mode === 'advice' ? 'Ask anything...' : 'Describe transaction...'}
-                className="flex-1 bg-[var(--bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-theme placeholder-theme-secondary focus:outline-none focus:border-blue-500"
-              />
+            {/* Window controls */}
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              {messages.length > 0 && !minimized && (
+                <button
+                  onClick={clearChat}
+                  aria-label="Clear chat"
+                  className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition"
+                  title="Clear conversation"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
-                onClick={() => sendMessage()}
-                disabled={loading || !input.trim()}
-                className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
+                onClick={() => setMinimized(!minimized)}
+                aria-label={minimized ? 'Maximize' : 'Minimize'}
+                className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--input-bg)] transition"
+                title={minimized ? 'Maximize' : 'Minimize'}
               >
-                <Send className="w-4 h-4" />
+                {minimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close chat"
+                className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
+
+          {/* Body (hidden when minimized) */}
+          {!minimized && (
+            <>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full px-4 py-8 text-center">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-3">
+                      <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <p className="font-semibold text-sm mb-1">
+                      {mode === 'advice' ? 'Ask me anything' : 'Add a transaction'}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)] mb-4">
+                      {mode === 'advice'
+                        ? 'I can analyze your portfolio and give advice'
+                        : 'Describe a transaction in plain English'}
+                    </p>
+                    <div className="space-y-2 w-full">
+                      {(mode === 'advice'
+                        ? ['How is my portfolio performing?', 'Should I rebalance?']
+                        : ['bought 10 reliance at 2800', 'sold 5 tcs at 4200 today']
+                      ).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => sendMessage(p)}
+                          className="w-full text-left text-xs px-3 py-2 rounded-lg border border-[var(--border)] hover:border-blue-500/30 hover:bg-[var(--input-bg)]/50 transition"
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((msg, i) => (
+                    <div key={msg.id || i}>
+                      <div className={`flex gap-2 ${msg.user ? 'flex-row-reverse' : ''}`}>
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${
+                          msg.user ? 'bg-blue-500' :
+                          msg.isError ? 'bg-red-500/20' :
+                          'bg-gradient-to-br from-blue-500 to-purple-600'
+                        }`}>
+                          {msg.user ? (
+                            <User className="w-3 h-3 text-white" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 text-white" />
+                          )}
+                        </div>
+                        <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${
+                          msg.user
+                            ? 'bg-blue-500 text-white rounded-tr-sm'
+                            : msg.isError
+                              ? 'bg-red-500/10 border border-red-500/30 text-[var(--text)] rounded-tl-sm'
+                              : 'bg-[var(--input-bg)] text-[var(--text)] rounded-tl-sm'
+                        }`}>
+                          {msg.user ? (
+                            <p className="whitespace-pre-wrap text-xs break-words">{msg.content}</p>
+                          ) : (
+                            <div className="prose prose-xs prose-invert max-w-none text-xs prose-p:my-1 prose-ul:my-1 prose-li:my-0">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {!msg.user && msg.csvLines && !msg.executed && (
+                        <div className="ml-8 mt-2 space-y-2">
+                          <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-2 text-xs">
+                            <p className="font-medium text-green-400 mb-1.5">{msg.csvLines.length} transaction(s)</p>
+                            {msg.csvLines.map((t, j) => (
+                              <div key={j} className="flex gap-2 items-center text-[11px] py-0.5">
+                                <span className={`font-mono font-medium ${t.type === 'BUY' || t.type === 'SIP' ? 'text-green-400' : t.type === 'SELL' ? 'text-red-400' : 'text-blue-400'}`}>{t.type}</span>
+                                <span className="font-mono">{t.symbol}</span>
+                                <span className="text-[var(--text-muted)]">{t.qty} × ₹{t.price}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => confirmCsv(i)}
+                            disabled={executing === i}
+                            className="w-full flex items-center justify-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition disabled:opacity-50"
+                          >
+                            {executing === i ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            Add to Portfolio
+                          </button>
+                        </div>
+                      )}
+
+                      {!msg.user && msg.executed && msg.executeResult && (
+                        <div className="ml-8 mt-2">
+                          <div className="bg-green-500/5 border border-green-500/20 rounded-lg px-2 py-1.5 text-xs">
+                            <div className="prose prose-xs prose-invert max-w-none">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.executeResult}</ReactMarkdown>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+
+                {loading && (
+                  <div className="flex gap-2">
+                    <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-3 h-3 text-white" />
+                    </div>
+                    <div className="bg-[var(--input-bg)] rounded-xl rounded-tl-sm px-3 py-2">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 bg-[var(--text-muted)] rounded-full animate-bounce" style={{animationDelay: '0ms'}} />
+                        <div className="w-1.5 h-1.5 bg-[var(--text-muted)] rounded-full animate-bounce" style={{animationDelay: '150ms'}} />
+                        <div className="w-1.5 h-1.5 bg-[var(--text-muted)] rounded-full animate-bounce" style={{animationDelay: '300ms'}} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input */}
+              <div className="border-t border-[var(--border)] p-3 flex-shrink-0">
+                <div className="relative">
+                  <textarea
+                    ref={textareaRef}
+                    rows={1}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={mode === 'advice' ? 'Ask anything...' : 'Describe transaction...'}
+                    disabled={loading}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-xl pl-3 pr-10 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 resize-none transition-all min-h-[36px] max-h-[120px]"
+                    style={{ overflow: 'hidden' }}
+                  />
+                  <button
+                    onClick={() => sendMessage()}
+                    disabled={loading || !input.trim()}
+                    aria-label="Send"
+                    className={`absolute right-1.5 bottom-1.5 p-1.5 rounded-lg transition-all ${
+                      input.trim() && !loading
+                        ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                        : 'bg-[var(--input-bg)] text-[var(--text-muted)]'
+                    }`}
+                  >
+                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </>
