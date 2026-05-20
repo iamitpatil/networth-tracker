@@ -37,15 +37,19 @@ public class SalaryController {
     @PostMapping("/parse-slip")
     public ResponseEntity<Map<String, Object>> parseSlip(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "password", required = false) String password) {
         try {
             UUID userId = UUID.fromString(userDetails.getUsername());
             Document doc = documentService.uploadDocument(
                     userId, file, "PAYSLIP", "Salary slip upload", null, null, null);
-            Map<String, Object> parsed = salarySlipParser.parseSlip(file, userDetails.getUsername());
+            Map<String, Object> parsed = salarySlipParser.parseSlip(file, userDetails.getUsername(), password);
             Map<String, Object> result = new HashMap<>(parsed);
             result.put("documentId", doc.getId().toString());
             return ResponseEntity.ok(result);
+        } catch (com.networth.service.CreditCardBillParser.PasswordRequiredException e) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(Map.of("error", "PASSWORD_REQUIRED", "message", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }

@@ -50,10 +50,10 @@ public class CreditCardBillParser {
             Credit card statement text:
             """;
 
-    public Map<String, Object> parseBill(MultipartFile file, String userId) {
+    public Map<String, Object> parseBill(MultipartFile file, String userId, String password) {
         try {
             byte[] bytes = file.getBytes();
-            String text = extractText(bytes, file.getOriginalFilename());
+            String text = extractText(bytes, file.getOriginalFilename(), password);
 
             if (text.isBlank()) {
                 throw new IllegalArgumentException("Could not extract text from the uploaded file");
@@ -85,18 +85,37 @@ public class CreditCardBillParser {
         }
     }
 
-    private String extractText(byte[] bytes, String filename) {
+    private String extractText(byte[] bytes, String filename, String password) {
         if (filename != null && filename.toLowerCase().endsWith(".pdf")) {
-            try (InputStream is = new ByteArrayInputStream(bytes);
-                 PDDocument doc = Loader.loadPDF(is.readAllBytes())) {
-                PDFTextStripper stripper = new PDFTextStripper();
-                String text = stripper.getText(doc);
-                if (!text.isBlank()) return text;
+            try {
+                byte[] pdfBytes = new ByteArrayInputStream(bytes).readAllBytes();
+                PDDocument doc;
+                if (password != null && !password.isBlank()) {
+                    doc = Loader.loadPDF(pdfBytes, password);
+                } else {
+                    doc = Loader.loadPDF(pdfBytes);
+                }
+                try (doc) {
+                    PDFTextStripper stripper = new PDFTextStripper();
+                    String text = stripper.getText(doc);
+                    if (!text.isBlank()) return text;
+                }
+            } catch (org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException e) {
+                throw new PasswordRequiredException("This PDF is password protected. Please provide the password.");
             } catch (Exception e) {
                 log.warn("PDFBox extraction failed, falling back to raw text: {}", e.getMessage());
             }
         }
         // Fallback: treat as plain text (CSV, text statement)
         return new String(bytes);
+    }
+
+    /**
+     * Custom exception to signal that a PDF password is required.
+     */
+    public static class PasswordRequiredException extends RuntimeException {
+        public PasswordRequiredException(String message) {
+            super(message);
+        }
     }
 }

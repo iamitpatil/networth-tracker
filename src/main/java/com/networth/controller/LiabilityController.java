@@ -88,18 +88,19 @@ public class LiabilityController {
     @PostMapping("/parse-cc-bill")
     public ResponseEntity<Map<String, Object>> parseCreditCardBill(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "password", required = false) String password) {
         try {
             UUID userId = UUID.fromString(userDetails.getUsername());
-            // Store the document
             var doc = documentService.uploadDocument(userId, file, "CC_BILL",
                     "Credit card bill upload", null, null, null);
-            // Parse via AI
-            Map<String, Object> parsed = creditCardBillParser.parseBill(file, userDetails.getUsername());
-            // Attach document reference
+            Map<String, Object> parsed = creditCardBillParser.parseBill(file, userDetails.getUsername(), password);
             Map<String, Object> result = new HashMap<>(parsed);
             result.put("documentId", doc.getId().toString());
             return ResponseEntity.ok(result);
+        } catch (CreditCardBillParser.PasswordRequiredException e) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(Map.of("error", "PASSWORD_REQUIRED", "message", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to parse credit card bill", "message", e.getMessage()));

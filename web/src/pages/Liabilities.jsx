@@ -78,6 +78,9 @@ export default function Liabilities() {
   const [ccBillParsing, setCcBillParsing] = useState(false)
   const [ccBillResult, setCcBillResult] = useState(null)
   const [showCcAnalysis, setShowCcAnalysis] = useState(false)
+  const [ccPasswordNeeded, setCcPasswordNeeded] = useState(false)
+  const [ccPassword, setCcPassword] = useState('')
+  const [ccPendingFile, setCcPendingFile] = useState(null)
   const ccFileRef = useRef(null)
   const [form, setForm] = useState({
     liabilityType: 'home_loan',
@@ -128,30 +131,66 @@ export default function Liabilities() {
   const totalMonthlyEmi = localLiabilities.reduce((s, l) => s + (l.monthlyEmi || 0), 0)
   const totalOutstanding = localLiabilities.reduce((s, l) => s + (l.outstandingAmount || l.originalAmount || 0), 0)
 
-  const handleCcBillUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.name.match(/\.(pdf|csv|txt)$/i)) {
-      toast.error('Unsupported file', { description: 'Please upload a PDF, CSV, or text file' })
-      return
-    }
+  const uploadCcBill = async (file, password) => {
     setCcBillParsing(true)
     setCcBillResult(null)
     try {
       const formData = new FormData()
       formData.append('file', file)
+      if (password) formData.append('password', password)
       const { data } = await client.post('/liabilities/parse-cc-bill', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      if (data.error === 'PASSWORD_REQUIRED') {
+        setCcPendingFile(file)
+        setCcPasswordNeeded(true)
+        setCcPassword('')
+        toast.warning('Password protected PDF', { description: 'Please enter the PDF password to continue' })
+        return
+      }
       setCcBillResult(data)
       setShowCcAnalysis(true)
+      setCcPasswordNeeded(false)
+      setCcPendingFile(null)
+      setCcPassword('')
       toast.success('Bill parsed successfully', { description: `${data.cardIssuer || 'Credit card'} — ${(data.transactions || []).length} transactions found` })
     } catch (err) {
-      toast.error('Failed to parse bill', { description: err.response?.data?.message || err.message })
+      const errData = err.response?.data
+      if (errData?.error === 'PASSWORD_REQUIRED') {
+        setCcPendingFile(file)
+        setCcPasswordNeeded(true)
+        setCcPassword('')
+        toast.warning('Password protected PDF', { description: 'Please enter the PDF password to continue' })
+      } else {
+        toast.error('Failed to parse bill', { description: errData?.message || err.message })
+      }
     } finally {
       setCcBillParsing(false)
-      if (ccFileRef.current) ccFileRef.current.value = ''
     }
+  }
+
+  const handleCcBillUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.name.match(/\.(pdf|csv|txt)$/i)) {
+      toast.error('Unsupported file', { description: 'Please upload a PDF, CSV, or text file' })
+      if (ccFileRef.current) ccFileRef.current.value = ''
+      return
+    }
+    await uploadCcBill(file, null)
+    if (ccFileRef.current) ccFileRef.current.value = ''
+  }
+
+  const handleCcPasswordSubmit = async (e) => {
+    e.preventDefault()
+    if (!ccPendingFile || !ccPassword.trim()) return
+    await uploadCcBill(ccPendingFile, ccPassword)
+  }
+
+  const cancelCcPassword = () => {
+    setCcPasswordNeeded(false)
+    setCcPendingFile(null)
+    setCcPassword('')
   }
 
   const ccSpendData = useMemo(() => {
@@ -362,6 +401,38 @@ export default function Liabilities() {
             </button>
           </div>
         </div>
+
+        {/* Password prompt for protected PDFs */}
+        {ccPasswordNeeded && (
+          <div className="border-t border-[var(--border)] p-4">
+            <form onSubmit={handleCcPasswordSubmit} className="flex items-end gap-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-amber-400" />
+                  <p className="text-sm font-medium text-amber-400">Password protected PDF</p>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mb-2">This PDF is encrypted. Enter the password to unlock and parse it.</p>
+                <input
+                  type="password"
+                  value={ccPassword}
+                  onChange={(e) => setCcPassword(e.target.value)}
+                  placeholder="Enter PDF password"
+                  autoFocus
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                />
+              </div>
+              <button type="submit" disabled={ccBillParsing || !ccPassword.trim()}
+                className="px-4 py-2.5 bg-purple-500 hover:bg-purple-600 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition inline-flex items-center gap-2 shrink-0">
+                {ccBillParsing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {ccBillParsing ? 'Parsing...' : 'Unlock & Parse'}
+              </button>
+              <button type="button" onClick={cancelCcPassword}
+                className="px-3 py-2.5 bg-[var(--bg)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition shrink-0">
+                Cancel
+              </button>
+            </form>
+          </div>
+        )}
 
         {showCcAnalysis && ccBillResult && (
           <div className="border-t border-[var(--border)] p-5 space-y-5">

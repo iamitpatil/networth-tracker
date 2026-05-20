@@ -31,10 +31,14 @@ public class SalarySlipParser {
     private final ObjectMapper objectMapper;
 
     public Map<String, Object> parseSlip(MultipartFile file, String userId) {
+        return parseSlip(file, userId, null);
+    }
+
+    public Map<String, Object> parseSlip(MultipartFile file, String userId, String password) {
         String text = "";
         try {
             byte[] bytes = file.getBytes();
-            text = extractText(bytes, file.getOriginalFilename());
+            text = extractText(bytes, file.getOriginalFilename(), password);
             String aiResponse = aiChatService.chat(
                     userId,
                     "You are a salary slip parser. Extract all earnings, deductions, and net pay from the salary slip text below. " +
@@ -144,14 +148,25 @@ public class SalarySlipParser {
 //        }
 //    }
 
-    private String extractText(byte[] bytes, String filename) {
+    private String extractText(byte[] bytes, String filename, String password) {
         String name = filename != null ? filename.toLowerCase() : "";
         if (name.endsWith(".pdf")) {
-            try (InputStream is = new ByteArrayInputStream(bytes); PDDocument doc = Loader.loadPDF(is.readAllBytes())) {
-                PDFTextStripper stripper = new PDFTextStripper();
-                String text = stripper.getText(doc);
-                if (!text.isBlank()) return text;
-                log.warn("PDF text extraction returned empty");
+            try {
+                byte[] pdfBytes = new ByteArrayInputStream(bytes).readAllBytes();
+                PDDocument doc;
+                if (password != null && !password.isBlank()) {
+                    doc = Loader.loadPDF(pdfBytes, password);
+                } else {
+                    doc = Loader.loadPDF(pdfBytes);
+                }
+                try (doc) {
+                    PDFTextStripper stripper = new PDFTextStripper();
+                    String text = stripper.getText(doc);
+                    if (!text.isBlank()) return text;
+                    log.warn("PDF text extraction returned empty");
+                }
+            } catch (org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException e) {
+                throw new CreditCardBillParser.PasswordRequiredException("This PDF is password protected. Please provide the password.");
             } catch (Exception e) {
                 log.error("Failed to extract text from PDF: {}", e.getMessage());
             }
