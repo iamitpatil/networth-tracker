@@ -6,7 +6,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.5.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -26,7 +26,7 @@ dependencies:
   # UI Components
   fl_chart: ^0.66.0
   intl: ^0.19.0
-  google_fonts: ^6.2.1
+  # google_fonts removed — incompatible with Flutter 3.44 (FontWeight operator== issue)
   
   # Icons
   cupertino_icons: ^1.0.6

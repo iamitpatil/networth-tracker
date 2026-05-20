@@ -301,32 +301,41 @@ class _SalaryDialogState extends State<_SalaryDialog> {
             children: [
               Text(_isEditing ? 'Edit Salary' : 'Add Salary', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _employerController,
-                decoration: const InputDecoration(labelText: 'Employer', border: OutlineInputBorder()),
-                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _amountController,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                decoration: const InputDecoration(labelText: 'Amount', prefixText: '₹ ', border: OutlineInputBorder()),
-                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: _selectDate,
-                child: InputDecorator(
-                  decoration: const InputDecoration(labelText: 'Pay Date', border: OutlineInputBorder()),
-                  child: Text('${_payDate.year}-${_payDate.month.toString().padLeft(2, '0')}-${_payDate.day.toString().padLeft(2, '0')}'),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: _employerController,
+                        decoration: const InputDecoration(labelText: 'Employer', border: OutlineInputBorder()),
+                        validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _amountController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                        decoration: const InputDecoration(labelText: 'Amount', prefixText: '₹ ', border: OutlineInputBorder()),
+                        validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: _selectDate,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(labelText: 'Pay Date', border: OutlineInputBorder()),
+                          child: Text('${_payDate.year}-${_payDate.month.toString().padLeft(2, '0')}-${_payDate.day.toString().padLeft(2, '0')}'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _notesController,
+                        decoration: const InputDecoration(labelText: 'Notes (Optional)', border: OutlineInputBorder()),
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _notesController,
-                decoration: const InputDecoration(labelText: 'Notes (Optional)', border: OutlineInputBorder()),
-                maxLines: 2,
               ),
               const SizedBox(height: 16),
               Row(

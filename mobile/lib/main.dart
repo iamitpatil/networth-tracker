@@ -1,7 +1,7 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+// google_fonts removed — using system fonts for Flutter 3.44 compat
 import 'package:provider/provider.dart';
 import 'package:flutter_networth/features/auth/login_screen.dart';
 import 'package:flutter_networth/features/auth/register_screen.dart';
@@ -51,23 +51,71 @@ class NetWorthApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF3B82F6),
           brightness: Brightness.light,
+          surfaceTint: Colors.transparent,
         ),
-        textTheme: GoogleFonts.interTextTheme(),
-        appBarTheme: AppBarTheme(
+        textTheme: const TextTheme(),
+        appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
+          scrolledUnderElevation: 0.5,
           backgroundColor: Colors.white,
-          titleTextStyle: GoogleFonts.inter(
+          titleTextStyle: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF1E293B),
+            color: Color(0xFF1E293B),
           ),
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           elevation: 0,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF3B82F6),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: const Color(0xFF3B82F6),
+          foregroundColor: Colors.white,
+          elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+        ),
+        dividerTheme: const DividerThemeData(
+          color: Color(0xFFF1F5F9),
+          thickness: 1,
         ),
       ),
       home: const AuthWrapper(),
@@ -152,6 +200,9 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
 
+  final GlobalKey<HoldingsScreenState> _holdingsKey = GlobalKey<HoldingsScreenState>();
+  final GlobalKey<GoalsScreenState> _goalsKey = GlobalKey<GoalsScreenState>();
+
   final List<String> _titles = [
     'Dashboard',
     'Holdings',
@@ -171,14 +222,39 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     // to ensure scrolling works properly
     return IndexedStack(
       index: _selectedIndex,
-      children: const [
-        DashboardScreen(),
-        HoldingsScreen(),
-        NetWorthScreen(),
-        GoalsScreen(),
-        MoreScreen(),
+      children: [
+        const DashboardScreen(),
+        HoldingsScreen(key: _holdingsKey),
+        const NetWorthScreen(),
+        GoalsScreen(key: _goalsKey),
+        const MoreScreen(),
       ],
     );
+  }
+
+  Widget? _buildFab() {
+    switch (_selectedIndex) {
+      case 1:
+        return FloatingActionButton.extended(
+          onPressed: () {
+            _holdingsKey.currentState?.showAddHoldingDialog();
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('Add Holding'),
+          backgroundColor: const Color(0xFF3B82F6),
+        );
+      case 3:
+        return FloatingActionButton.extended(
+          onPressed: () {
+            _goalsKey.currentState?.showAddGoalDialog();
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('Add Goal'),
+          backgroundColor: const Color(0xFF10B981),
+        );
+      default:
+        return null;
+    }
   }
 
   @override
@@ -200,62 +276,42 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ] : null,
       ),
       body: _buildBody(),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(Icons.dashboard, 'Dashboard', 0),
-                _buildNavItem(Icons.pie_chart, 'Holdings', 1),
-                _buildNavItem(Icons.account_balance_wallet, 'Net Worth', 2),
-                _buildNavItem(Icons.flag, 'Goals', 3),
-                _buildNavItem(Icons.more_horiz, 'More', 4),
-              ],
-            ),
+      floatingActionButton: _buildFab(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: _onItemTapped,
+        height: 65,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        indicatorColor: const Color(0xFF3B82F6).withAlpha(25),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: const Icon(Icons.dashboard, color: Color(0xFF3B82F6)),
+            label: 'Dashboard',
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
-    return InkWell(
-      onTap: () => _onItemTapped(index),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? const Color(0xFF3B82F6) : Colors.grey,
-              ),
-            ),
-          ],
-        ),
+          NavigationDestination(
+            icon: const Icon(Icons.pie_chart_outline),
+            selectedIcon: const Icon(Icons.pie_chart, color: Color(0xFF3B82F6)),
+            label: 'Holdings',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: const Icon(Icons.account_balance_wallet, color: Color(0xFF3B82F6)),
+            label: 'Net Worth',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.flag_outlined),
+            selectedIcon: const Icon(Icons.flag, color: Color(0xFF3B82F6)),
+            label: 'Goals',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.more_horiz_outlined),
+            selectedIcon: const Icon(Icons.more_horiz, color: Color(0xFF3B82F6)),
+            label: 'More',
+          ),
+        ],
       ),
     );
   }

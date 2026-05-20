@@ -13,10 +13,10 @@ class HoldingsScreen extends StatefulWidget {
   const HoldingsScreen({super.key});
 
   @override
-  State<HoldingsScreen> createState() => _HoldingsScreenState();
+  State<HoldingsScreen> createState() => HoldingsScreenState();
 }
 
-class _HoldingsScreenState extends State<HoldingsScreen> {
+class HoldingsScreenState extends State<HoldingsScreen> {
   String _selectedFilter = 'all';
 
   bool _isChartLoading = true;
@@ -93,176 +93,178 @@ class _HoldingsScreenState extends State<HoldingsScreen> {
         final totalPnL = provider.totalPnL;
         final holdingsCount = provider.holdingsCount;
 
-        return Scaffold(
-          body: RefreshIndicator(
-            onRefresh: () => provider.loadHoldings(),
-            child: Column(
-              children: [
-                // Summary Card
-              Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF10B981), Color(0xFF059669)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Total Value',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _formatCurrency(totalValue),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Text(
-                              'Holdings',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '$holdingsCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+        return RefreshIndicator(
+          onRefresh: () => provider.loadHoldings(),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // Summary Card
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(
-                            totalPnL >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                            color: Colors.white,
-                            size: 16,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Total Value',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _formatCurrency(totalValue),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${totalPnL >= 0 ? '+' : ''}${_formatCurrency(totalPnL)}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text(
+                                'Holdings',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$holdingsCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              totalPnL >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${totalPnL >= 0 ? '+' : ''}${_formatCurrency(totalPnL)}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               
               // Investment Growth Chart
-              _buildInvestmentGrowthChart(),
+              SliverToBoxAdapter(child: _buildInvestmentGrowthChart()),
 
-              // Filter Chips - Wrap in GestureDetector to handle taps properly
-              Container(
-                height: 50,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _buildFilterChip('All', 'all', Colors.blue),
-                    _buildFilterChip('Equity', 'EQUITY', Colors.blue),
-                    _buildFilterChip('MF', 'MUTUAL_FUND', Colors.green),
-                    _buildFilterChip('Gold', 'GOLD', Colors.amber),
-                    _buildFilterChip('FD', 'FD', Colors.purple),
-                  ],
+              // Filter Chips
+              SliverToBoxAdapter(
+                child: Container(
+                  height: 50,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      _buildFilterChip('All', 'all', Colors.blue),
+                      _buildFilterChip('Equity', 'EQUITY', Colors.blue),
+                      _buildFilterChip('MF', 'MUTUAL_FUND', Colors.green),
+                      _buildFilterChip('Gold', 'GOLD', Colors.amber),
+                      _buildFilterChip('FD', 'FD', Colors.purple),
+                    ],
+                  ),
                 ),
               ),
               
-              const SizedBox(height: 16),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
               
               // Holdings List
-              Expanded(
-                child: holdings.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.pie_chart_outline, size: 64, color: Colors.grey),
-                            SizedBox(height: 16),
-                            Text(
-                              'No holdings found',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
+              if (holdings.isEmpty)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.pie_chart_outline, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'No holdings found',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey,
+                          ),
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: holdings.length,
-                        itemBuilder: (context, index) {
-                          return _buildHoldingCard(holdings[index]);
-                        },
-                      ),
-              ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList.builder(
+                    itemCount: holdings.length,
+                    itemBuilder: (context, index) {
+                      return _buildHoldingCard(holdings[index]);
+                    },
+                  ),
+                ),
             ],
           ),
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () async {
-            final result = await showDialog<Map<String, dynamic>>(
-              context: context,
-              builder: (context) => const AddHoldingDialog(),
-            );
-            if (result != null && mounted) {
-              // Show success
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Holding added successfully!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              context.read<DataProvider>().loadHoldings();
-            }
-          },
-          icon: const Icon(Icons.add),
-          label: const Text('Add Holding'),
-          backgroundColor: Colors.blue,
+        );
+    });
+  }
+
+  Future<void> showAddHoldingDialog() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => const AddHoldingDialog(),
+    );
+    if (result != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Holding added successfully!'),
+          backgroundColor: Colors.green,
         ),
       );
-    });
+      context.read<DataProvider>().loadHoldings();
+    }
   }
 
   String _formatLakhs(double value) {

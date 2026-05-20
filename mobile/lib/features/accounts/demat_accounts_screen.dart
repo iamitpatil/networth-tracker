@@ -251,36 +251,45 @@ class _DematAccountDialogState extends State<_DematAccountDialog> {
             children: [
               Text(_isEditing ? 'Edit Demat Account' : 'Add Demat Account', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _broker,
-                decoration: const InputDecoration(labelText: 'Broker', border: OutlineInputBorder()),
-                items: widget.brokers.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
-                onChanged: (v) => setState(() => _broker = v!),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _accountNumberController,
-                decoration: const InputDecoration(labelText: 'Account Number', border: OutlineInputBorder()),
-                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _type,
-                decoration: const InputDecoration(labelText: 'Account Type', border: OutlineInputBorder()),
-                items: widget.types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (v) => setState(() => _type = v!),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(labelText: 'Description (Optional)', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              CheckboxListTile(
-                title: const Text('Set as Default'),
-                value: _isDefault,
-                onChanged: (v) => setState(() => _isDefault = v ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: _broker,
+                        decoration: const InputDecoration(labelText: 'Broker', border: OutlineInputBorder()),
+                        items: widget.brokers.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                        onChanged: (v) => setState(() => _broker = v!),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _accountNumberController,
+                        decoration: const InputDecoration(labelText: 'Account Number', border: OutlineInputBorder()),
+                        validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _type,
+                        decoration: const InputDecoration(labelText: 'Account Type', border: OutlineInputBorder()),
+                        items: widget.types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                        onChanged: (v) => setState(() => _type = v!),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _descriptionController,
+                        decoration: const InputDecoration(labelText: 'Description (Optional)', border: OutlineInputBorder()),
+                      ),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        title: const Text('Set as Default'),
+                        value: _isDefault,
+                        onChanged: (v) => setState(() => _isDefault = v ?? false),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               Row(

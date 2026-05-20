@@ -80,7 +80,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Center(child: CircularProgressIndicator());
     }
 
     final filtered = _filteredTransactions;
@@ -88,19 +88,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final totalSells = filtered.where((t) => t['transactionType'] == 'SELL').length;
     final totalVolume = filtered.fold<double>(0, (sum, t) => sum + ((t['amount'] ?? 0) as num).toDouble());
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Transactions'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: Column(
-          children: [
-            // Summary Cards
-            Container(
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          // Summary Cards
+          SliverToBoxAdapter(
+            child: Container(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
@@ -112,9 +107,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ],
               ),
             ),
+          ),
 
-            // Filters
-            Container(
+          // Filters
+          SliverToBoxAdapter(
+            child: Container(
               height: 50,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ListView(
@@ -127,28 +124,32 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ],
               ),
             ),
+          ),
 
-            // Transactions List
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.receipt_long, size: 64, color: Colors.grey[300]),
-                          const SizedBox(height: 16),
-                          const Text('No transactions found', style: TextStyle(color: Colors.grey, fontSize: 16)),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) => _buildTransactionCard(filtered[index]),
-                    ),
+          // Transactions List
+          if (filtered.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.receipt_long, size: 64, color: Colors.grey[300]),
+                    const SizedBox(height: 16),
+                    const Text('No transactions found', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList.builder(
+                itemCount: filtered.length,
+                itemBuilder: (context, index) => _buildTransactionCard(filtered[index]),
+              ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

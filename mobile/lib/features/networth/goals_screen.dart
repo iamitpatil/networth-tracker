@@ -11,10 +11,10 @@ class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
 
   @override
-  State<GoalsScreen> createState() => _GoalsScreenState();
+  State<GoalsScreen> createState() => GoalsScreenState();
 }
 
-class _GoalsScreenState extends State<GoalsScreen> {
+class GoalsScreenState extends State<GoalsScreen> {
   @override
   void initState() {
     super.initState();
@@ -128,7 +128,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
-                  onPressed: () => _showAddGoalDialog(context),
+                  onPressed: () => showAddGoalDialog(),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Goal'),
                 ),
@@ -137,35 +137,28 @@ class _GoalsScreenState extends State<GoalsScreen> {
           );
         }
 
-        return Scaffold(
-          body: RefreshIndicator(
-            onRefresh: () => provider.loadGoals(),
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: goals.length,
-              itemBuilder: (context, index) {
-                return _buildGoalCard(goals[index]);
-              },
-            ),
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showAddGoalDialog(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Add Goal'),
-            backgroundColor: Colors.green,
+        return RefreshIndicator(
+          onRefresh: () => provider.loadGoals(),
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: goals.length,
+            itemBuilder: (context, index) {
+              return _buildGoalCard(goals[index]);
+            },
           ),
         );
       },
     );
   }
 
-  Future<void> _showAddGoalDialog(BuildContext context) async {
+  Future<void> showAddGoalDialog() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => const AddGoalDialog(),
     );
     
-    if (result != null && context.mounted) {
+    if (result != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Goal created successfully!'),
