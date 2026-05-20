@@ -38,70 +38,95 @@ public class InvestmentOverTimeService {
 
         List<TransactionResponse> allTransactions = transactionService.getUserTransactions(userId.toString());
         Set<UUID> filteredHoldingIds = getFilteredHoldingIds(userId, assetType);
-        List<TransactionResponse> transactions = allTransactions.stream()
+
+        // Sort ALL transactions by date (including before cutoff — needed for position tracking)
+        List<TransactionResponse> allFiltered = allTransactions.stream()
                 .filter(t -> filteredHoldingIds.contains(UUID.fromString(t.getHoldingId())))
+                .sorted(Comparator.comparing(t -> t.getTransactionDate().toLocalDate()))
                 .toList();
-        Map<LocalDate, BigDecimal> dailyInvested = new TreeMap<>();
-        for (TransactionResponse t : transactions) {
-            LocalDate date = t.getTransactionDate().toLocalDate();
-            if (date.isBefore(cutoff)) continue;
-            BigDecimal amount = t.getAmount() != null ? t.getAmount() : t.getPrice().multiply(t.getQuantity());
-            if (INVEST_TXNS.contains(t.getTransactionType().name())) {
-                dailyInvested.merge(date, amount, BigDecimal::add);
-            } else if (DIVEST_TXNS.contains(t.getTransactionType().name())) {
-                dailyInvested.merge(date, amount.negate(), BigDecimal::add);
-            }
-        }
 
+        // Track per-holding: cumulative quantity and last known price
+        Map<UUID, BigDecimal> holdingQty = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> holdingLastPrice = new LinkedHashMap<>();
+
+        // Build timeline: for each transaction date, record cumulative invested + portfolio value
+        // Value = sum of (qty held * last known price) for each holding AT that point in time
         BigDecimal runningInvested = BigDecimal.ZERO;
-        Map<LocalDate, BigDecimal> cumulativeInvested = new LinkedHashMap<>();
-        for (Map.Entry<LocalDate, BigDecimal> entry : dailyInvested.entrySet()) {
-            runningInvested = runningInvested.add(entry.getValue());
-            cumulativeInvested.put(entry.getKey(), runningInvested);
-        }
-
-        List<Map<String, Object>> history = netWorthHistoryService.getNetWorthHistory(userId, days);
-
-        if (history.isEmpty() && !filteredHoldingIds.isEmpty()) {
-            netWorthHistoryService.snapshotNetWorth(userId);
-            history = netWorthHistoryService.getNetWorthHistory(userId, days);
-        }
-
-        Set<LocalDate> dates = new TreeSet<>();
-        dates.addAll(cumulativeInvested.keySet());
-        for (Map<String, Object> h : history) {
-            dates.add(LocalDate.parse(h.get("date").toString()));
-        }
-
         List<Map<String, Object>> result = new ArrayList<>();
-        for (LocalDate date : dates) {
-            BigDecimal invested = cumulativeInvested.get(date);
-            if (invested == null) {
-                Optional<LocalDate> prev = cumulativeInvested.keySet().stream()
-                        .filter(d -> !d.isAfter(date)).max(Comparator.naturalOrder());
-                invested = prev.map(cumulativeInvested::get).orElse(BigDecimal.ZERO);
+        LocalDate lastDate = null;
+
+        for (TransactionResponse t : allFiltered) {
+            LocalDate date = t.getTransactionDate().toLocalDate();
+            UUID holdingId = UUID.fromString(t.getHoldingId());
+            BigDecimal txQty = t.getQuantity() != null ? t.getQuantity().abs() : BigDecimal.ZERO;
+            BigDecimal txPrice = t.getPrice() != null ? t.getPrice() : BigDecimal.ZERO;
+            BigDecimal txAmount = t.getAmount() != null ? t.getAmount() : txPrice.multiply(txQty);
+
+            // Update position and last known price for this holding
+            if (INVEST_TXNS.contains(t.getTransactionType().name())) {
+                holdingQty.merge(holdingId, txQty, BigDecimal::add);
+                runningInvested = runningInvested.add(txAmount);
+            } else if (DIVEST_TXNS.contains(t.getTransactionType().name())) {
+                holdingQty.merge(holdingId, txQty.negate(), BigDecimal::add);
+                runningInvested = runningInvested.subtract(txAmount);
+            }
+            // Always update last known price from transaction
+            if (txPrice.compareTo(BigDecimal.ZERO) > 0) {
+                holdingLastPrice.put(holdingId, txPrice);
             }
 
-            BigDecimal value = null;
-            for (Map<String, Object> h : history) {
-                if (date.equals(LocalDate.parse(h.get("date").toString()))) {
-                    value = getValueForAssetType(h, assetType);
-                    break;
+            // Only emit data points within the requested range
+            if (date.isBefore(cutoff)) continue;
+            // Avoid duplicate points for same date — skip if same as last emitted
+            if (date.equals(lastDate)) {
+                // Update the last point in result instead of adding a new one
+                if (!result.isEmpty()) {
+                    Map<String, Object> lastPoint = result.get(result.size() - 1);
+                    lastPoint.put("invested", runningInvested.setScale(2, RoundingMode.HALF_UP));
+                    lastPoint.put("value", computePortfolioValue(holdingQty, holdingLastPrice));
                 }
-            }
-            if (value == null && !history.isEmpty()) {
-                Map<String, Object> latest = history.getLast();
-                value = getValueForAssetType(latest, assetType);
+                continue;
             }
 
+            lastDate = date;
             Map<String, Object> point = new LinkedHashMap<>();
             point.put("date", date.toString());
-            point.put("invested", invested.setScale(2, RoundingMode.HALF_UP));
-            point.put("value", value != null ? value.setScale(2, RoundingMode.HALF_UP) : null);
+            point.put("invested", runningInvested.setScale(2, RoundingMode.HALF_UP));
+            point.put("value", computePortfolioValue(holdingQty, holdingLastPrice));
+            result.add(point);
+        }
+
+        // Add today's point with current prices
+        LocalDate today = LocalDate.now();
+        if (lastDate == null || !lastDate.equals(today)) {
+            List<Holding> currentHoldings = assetType != null
+                    ? holdingRepository.findByUserIdAndAssetType(userId, assetType)
+                    : holdingRepository.findByUserId(userId);
+            BigDecimal currentValue = currentHoldings.stream()
+                    .filter(h -> h.getCurrentValue() != null)
+                    .map(Holding::getCurrentValue)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            Map<String, Object> point = new LinkedHashMap<>();
+            point.put("date", today.toString());
+            point.put("invested", runningInvested.setScale(2, RoundingMode.HALF_UP));
+            point.put("value", currentValue.setScale(2, RoundingMode.HALF_UP));
             result.add(point);
         }
 
         return result;
+    }
+
+    private BigDecimal computePortfolioValue(Map<UUID, BigDecimal> holdingQty, Map<UUID, BigDecimal> holdingLastPrice) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map.Entry<UUID, BigDecimal> entry : holdingQty.entrySet()) {
+            BigDecimal qty = entry.getValue();
+            BigDecimal price = holdingLastPrice.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            if (qty.compareTo(BigDecimal.ZERO) > 0 && price.compareTo(BigDecimal.ZERO) > 0) {
+                total = total.add(qty.multiply(price));
+            }
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     private Set<UUID> getFilteredHoldingIds(UUID userId, AssetType assetType) {
