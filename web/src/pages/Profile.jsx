@@ -555,7 +555,9 @@ function TwoFactorAuth() {
 
 function DataRefresh() {
   const [syncing, setSyncing] = useState(false)
+  const [syncingBonds, setSyncingBonds] = useState(false)
   const [done, setDone] = useState(false)
+  const [doneBonds, setDoneBonds] = useState(false)
   const [error, setError] = useState('')
 
   const handleRefresh = async () => {
@@ -572,23 +574,58 @@ function DataRefresh() {
     }
   }
 
+  const handleRefreshBonds = async () => {
+    setSyncingBonds(true)
+    setError('')
+    setDoneBonds(false)
+    try {
+      await client.post('/symbols/refresh/bonds')
+      setDoneBonds(true)
+    } catch (e) {
+      setError('Failed to refresh bond list')
+    } finally {
+      setSyncingBonds(false)
+    }
+  }
+
   return (
-    <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-[var(--text)]">Market Data</h3>
-          <p className="text-sm text-[var(--text-muted)] mt-1">Refresh NSE equities and mutual fund symbol list</p>
+    <div className="space-y-4">
+      <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-[var(--text)]">Equities & Mutual Funds</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1">Refresh NSE equities and AMFI mutual fund symbol list</p>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium"
+          >
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {syncing ? 'Refreshing...' : 'Refresh Symbols'}
+          </button>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium"
-        >
-          {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {syncing ? 'Refreshing...' : 'Refresh Symbols'}
-        </button>
+        {done && <p className="text-sm text-green-400">Equities & MF symbols updated successfully</p>}
       </div>
-      {done && <p className="text-sm text-green-400">Symbols updated successfully</p>}
+
+      <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-[var(--text)]">Bonds & Debentures</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1">Refresh NSE bond/debenture list (~5,900 instruments with ISIN, coupon, maturity)</p>
+          </div>
+          <button
+            onClick={handleRefreshBonds}
+            disabled={syncingBonds}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium"
+          >
+            {syncingBonds ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {syncingBonds ? 'Refreshing...' : 'Refresh Bonds'}
+          </button>
+        </div>
+        {doneBonds && <p className="text-sm text-green-400">Bond symbols updated successfully</p>}
+      </div>
+
       {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   )

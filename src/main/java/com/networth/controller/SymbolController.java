@@ -29,4 +29,10 @@ public class SymbolController {
         symbolService.refreshAll();
         return ResponseEntity.ok(Map.of("message", "Symbols refreshed"));
     }
+
+    @PostMapping("/refresh/bonds")
+    public ResponseEntity<Map<String, String>> refreshBonds() {
+        symbolService.refreshBonds();
+        return ResponseEntity.ok(Map.of("message", "Bond symbols refreshed"));
+    }
 }

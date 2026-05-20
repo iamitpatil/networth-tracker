@@ -127,15 +127,18 @@ export default function Holdings() {
   )
   const isEquity = assetType === 'EQUITY'
   const isMF = assetType === 'MUTUAL_FUND'
-  const needsSymbol = isEquity || isMF
+  const isBond = assetType === 'BOND'
+  const needsSymbol = isEquity || isMF || isBond
 
   const filteredSymbols = useMemo(() => {
-    const list = symbols.filter((s) => s.category === (assetType === 'MUTUAL_FUND' ? 'MUTUAL_FUND' : 'EQUITY'))
-    if (!search) return list
+    const categoryMap = { 'MUTUAL_FUND': 'MUTUAL_FUND', 'BOND': 'BOND' }
+    const cat = categoryMap[assetType] || 'EQUITY'
+    const list = symbols.filter((s) => s.category === cat)
+    if (!search) return list.slice(0, 50) // Limit initial display for bonds (5900+)
     const q = search.toLowerCase()
     return list.filter(
       (s) => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
-    )
+    ).slice(0, 50)
   }, [search, symbols, assetType])
 
   const filteredHoldings = useMemo(() => {
@@ -247,8 +250,8 @@ export default function Holdings() {
 
   useEffect(() => {
     if (isMF) setForm((f) => ({ ...f, transactionType: 'SIP' }))
-    else if (isEquity) setForm((f) => ({ ...f, transactionType: 'BUY' }))
-  }, [assetType, isEquity, isMF])
+    else if (isEquity || isBond) setForm((f) => ({ ...f, transactionType: 'BUY' }))
+  }, [assetType, isEquity, isMF, isBond])
 
   useEffect(() => {
     if (!backfillStatus?.running) return
@@ -724,11 +727,15 @@ export default function Holdings() {
                           ) : (
                             filteredSymbols.map((s) => (
                               <div key={s.symbol} className="px-3 py-2 hover:bg-[var(--hover-bg)] cursor-pointer flex items-center gap-3 border-b border-[var(--border)]/30" onClick={() => handleSelectSymbol(s.symbol)}>
-                                <span className={`text-sm font-mono font-medium min-w-[140px] ${s.category === 'MUTUAL_FUND' ? 'text-green-300' : 'text-blue-300'}`}>
-                                  {s.category === 'MUTUAL_FUND' ? s.symbol.substring(0, 20) : s.symbol}
+                                <span className={`text-sm font-mono font-medium min-w-[100px] ${s.category === 'MUTUAL_FUND' ? 'text-green-300' : s.category === 'BOND' ? 'text-cyan-300' : 'text-blue-300'}`}>
+                                  {s.category === 'MUTUAL_FUND' ? s.symbol.substring(0, 16) : s.symbol.replace('.NS', '')}
                                 </span>
                                 <span className="text-xs text-[var(--text-muted)] flex-1 truncate">{s.name}</span>
-                                <span className="text-xs text-[var(--text-secondary)]">{s.sector || s.category}</span>
+                                {s.category === 'BOND' && s.sector?.includes('Coupon') ? (
+                                  <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded shrink-0">{s.sector.replace('Bond | ', '')}</span>
+                                ) : (
+                                  <span className="text-xs text-[var(--text-secondary)]">{s.sector || s.category}</span>
+                                )}
                               </div>
                             ))
                           )}

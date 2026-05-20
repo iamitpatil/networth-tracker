@@ -30,6 +30,7 @@ public class SymbolService {
     private final com.networth.service.portfolio.HoldingService holdingService;
 
     private static final String NSE_CSV_URL = "https://archives.nseindia.com/content/equities/EQUITY_L.csv";
+    private static final String NSE_DEBT_CSV_URL = "https://archives.nseindia.com/content/equities/DEBT.csv";
     private static final String MF_NAV_URL = "https://portal.amfiindia.com/spages/NAVAll.txt";
 
     // Remove @PostConstruct — symbols refreshed manually via POST /api/v1/symbols/refresh
@@ -42,6 +43,7 @@ public class SymbolService {
     public void refreshAll() {
         refreshEquities();
         refreshMutualFunds();
+        refreshBonds();
         // Backfill ISINs on holdings using updated symbols
         int fixed = holdingService.backfillMissingIsins();
         log.info("Symbol refresh complete (fixed {} holding ISINs)", fixed);
@@ -178,6 +180,70 @@ public class SymbolService {
             log.info("Refreshed {} mutual fund symbols", symbols.size());
         } catch (Exception e) {
             log.error("Failed to refresh mutual funds: {}", e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void refreshBonds() {
+        try {
+            URI uri = URI.create(NSE_DEBT_CSV_URL);
+            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            conn.setRequestProperty("Accept", "text/csv,application/csv");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(30000);
+
+            int status = conn.getResponseCode();
+            if (status != 200) {
+                log.warn("NSE DEBT CSV returned status {}", status);
+                return;
+            }
+
+            List<Symbol> symbols = new ArrayList<>();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String header = br.readLine(); // skip header
+                if (header == null) return;
+
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String[] cols = parseCsvLine(line);
+                    if (cols.length < 14) continue;
+
+                    String symbol = cols[0].trim();
+                    String name = cols[1].trim().replaceAll("^\"|\"$", "");
+                    String series = cols[2].trim();
+                    String faceValue = cols[3].trim();
+                    String ipRate = cols.length > 6 ? cols[6].trim() : "";
+                    String redemptionDate = cols.length > 9 ? cols[9].trim() : "";
+                    String isin = cols.length > 14 ? cols[14].trim().replaceAll("^\"|\"$", "") : null;
+
+                    if (symbol.isEmpty() || name.isEmpty()) continue;
+                    if (isin != null && (isin.isEmpty() || isin.length() != 12)) isin = null;
+
+                    // Build sector string with bond metadata for frontend display
+                    String sector = "Bond";
+                    if (!ipRate.isEmpty()) sector += " | Coupon: " + ipRate + "%";
+                    if (!redemptionDate.isEmpty()) sector += " | Maturity: " + redemptionDate;
+                    if (!faceValue.isEmpty()) sector += " | FV: ₹" + faceValue;
+
+                    symbols.add(Symbol.builder()
+                            .symbol(symbol + ".NS")
+                            .name(name + (series.isEmpty() ? "" : " [" + series + "]"))
+                            .category("BOND")
+                            .sector(sector)
+                            .isin(isin)
+                            .build());
+                }
+            }
+
+            // Only delete existing bonds, not equities or MFs
+            List<Symbol> existingBonds = symbolRepository.findByCategory("BOND");
+            symbolRepository.deleteAll(existingBonds);
+            symbolRepository.saveAll(symbols);
+            log.info("Refreshed {} NSE bond/debenture symbols", symbols.size());
+        } catch (Exception e) {
+            log.error("Failed to refresh bonds: {}", e.getMessage());
         }
     }
 
