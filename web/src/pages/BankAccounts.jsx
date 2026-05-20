@@ -211,8 +211,12 @@ export default function BankAccounts() {
               <div key={a.id} className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)] hover:border-blue-500/30 transition">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-blue-400" />
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center overflow-hidden">
+                      {bankNames.find(b => b.value === a.bankName)?.metadata?.logo ? (
+                        <img src={bankNames.find(b => b.value === a.bankName).metadata.logo} alt="" className="w-7 h-7 object-contain"
+                          onError={(e) => { e.target.style.display='none'; e.target.parentElement.querySelector('svg').style.display='block' }} />
+                      ) : null}
+                      <Building2 className={`w-5 h-5 text-blue-400 ${bankNames.find(b => b.value === a.bankName)?.metadata?.logo ? 'hidden' : ''}`} />
                     </div>
                     <div>
                       <p className="font-semibold">{a.accountName}</p>
