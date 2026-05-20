@@ -18,9 +18,7 @@ const TABS = [
 
 const fmt = (v) => v != null ? `₹${Number(v).toLocaleString('en-IN')}` : '—'
 
-const CARD_NETWORKS = ['VISA', 'Mastercard', 'RuPay', 'AMEX']
-const CARD_ISSUERS = ['HDFC Bank', 'ICICI Bank', 'SBI Card', 'Axis Bank', 'Kotak Bank', 'IDFC First', 'IndusInd Bank', 'RBL Bank', 'Yes Bank', 'Amex India', 'Citi Bank', 'Standard Chartered', 'HSBC']
-const NPS_FUND_MANAGERS = ['SBI Pension Fund', 'LIC Pension Fund', 'HDFC Pension Fund', 'UTI Retirement Solutions', 'Kotak Mahindra Pension Fund', 'Birla Sun Life Pension', 'ICICI Prudential Pension Fund']
+import { useReferenceData } from '../hooks/useReferenceData'
 
 export default function AccountsHub() {
   const [activeTab, setActiveTab] = useState('bank')
@@ -385,17 +383,20 @@ function Select({ label, value, onChange, options, required }) {
 
 function CreditCardForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
+  const { options: issuers } = useReferenceData('CARD_ISSUER')
+  const { options: networks } = useReferenceData('CARD_NETWORK')
+  const { options: rewardTypes } = useReferenceData('CARD_REWARD_TYPE')
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Select label="Card Issuer *" value={form.cardIssuer} onChange={v => s('cardIssuer', v)} options={CARD_ISSUERS} required />
+        <Select label="Card Issuer *" value={form.cardIssuer} onChange={v => s('cardIssuer', v)} options={issuers} required />
         <Input label="Card Name" value={form.cardName} onChange={v => s('cardName', v)} placeholder="e.g. Regalia, Simply Click" />
-        <Select label="Network" value={form.cardNetwork} onChange={v => s('cardNetwork', v)} options={CARD_NETWORKS} />
+        <Select label="Network" value={form.cardNetwork} onChange={v => s('cardNetwork', v)} options={networks} />
         <Input label="Last 4 Digits" value={form.cardLastFour} onChange={v => s('cardLastFour', v.slice(0,4))} placeholder="1234" />
         <Input label="Credit Limit" value={form.creditLimit} onChange={v => s('creditLimit', v)} type="number" placeholder="300000" />
         <Input label="Billing Cycle Day" value={form.billingCycleDay} onChange={v => s('billingCycleDay', v)} type="number" placeholder="1-28" />
         <Input label="Payment Due Day" value={form.paymentDueDay} onChange={v => s('paymentDueDay', v)} type="number" placeholder="15" />
-        <Select label="Reward Type" value={form.rewardType} onChange={v => s('rewardType', v)} options={['CASHBACK', 'POINTS', 'MILES']} />
+        <Select label="Reward Type" value={form.rewardType} onChange={v => s('rewardType', v)} options={rewardTypes} />
         <Input label="Annual Fee" value={form.annualFee} onChange={v => s('annualFee', v)} type="number" placeholder="499" />
       </div>
     </FormWrapper>
@@ -404,14 +405,18 @@ function CreditCardForm({ form, setForm, editingId, onSubmit, onCancel }) {
 
 function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
+  const { options: fundManagers } = useReferenceData('NPS_FUND_MANAGER')
+  const { options: tiers } = useReferenceData('NPS_TIER')
+  const { options: assetClasses } = useReferenceData('NPS_ASSET_CLASS')
+  const { options: schemes } = useReferenceData('NPS_SCHEME')
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="PRAN Number *" value={form.pranNumber} onChange={v => s('pranNumber', v.slice(0,12))} placeholder="12-digit PRAN" required />
-        <Select label="Fund Manager" value={form.fundManager} onChange={v => s('fundManager', v)} options={NPS_FUND_MANAGERS} />
-        <Select label="Tier *" value={form.tier} onChange={v => s('tier', v)} options={[{ value: 'TIER1', label: 'Tier I' }, { value: 'TIER2', label: 'Tier II' }]} required />
-        <Select label="Scheme" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={[{ value: 'ACTIVE', label: 'Active Choice' }, { value: 'AUTO', label: 'Auto Choice' }]} />
-        <Select label="Asset Class" value={form.assetClass} onChange={v => s('assetClass', v)} options={[{ value: 'E', label: 'E - Equity' }, { value: 'C', label: 'C - Corporate Bond' }, { value: 'G', label: 'G - Govt Securities' }, { value: 'A', label: 'A - Alternate' }]} />
+        <Select label="Fund Manager" value={form.fundManager} onChange={v => s('fundManager', v)} options={fundManagers} />
+        <Select label="Tier *" value={form.tier} onChange={v => s('tier', v)} options={tiers} required />
+        <Select label="Scheme" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={schemes} />
+        <Select label="Asset Class" value={form.assetClass} onChange={v => s('assetClass', v)} options={assetClasses} />
         <Input label="Opening Date" value={form.openingDate} onChange={v => s('openingDate', v)} type="date" />
         <Input label="Employer" value={form.employerName} onChange={v => s('employerName', v)} placeholder="Company name" />
         <Input label="Current Value" value={form.currentValue} onChange={v => s('currentValue', v)} type="number" placeholder="280000" />
@@ -422,11 +427,12 @@ function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
 
 function PpfForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
+  const { options: banks } = useReferenceData('BANK')
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="Account Number *" value={form.accountNumber} onChange={v => s('accountNumber', v)} placeholder="PPF A/C number" required />
-        <Input label="Bank / Post Office *" value={form.bankOrPostOffice} onChange={v => s('bankOrPostOffice', v)} placeholder="e.g. SBI, India Post" required />
+        <Select label="Bank / Post Office *" value={form.bankOrPostOffice} onChange={v => s('bankOrPostOffice', v)} options={banks} required />
         <Input label="Branch" value={form.branch} onChange={v => s('branch', v)} placeholder="Branch name" />
         <Input label="Opening Date" value={form.openingDate} onChange={v => s('openingDate', v)} type="date" />
         <Input label="Maturity Date" value={form.maturityDate} onChange={v => s('maturityDate', v)} type="date" />
@@ -459,13 +465,15 @@ function EpfForm({ form, setForm, editingId, onSubmit, onCancel }) {
 
 function BankForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
+  const { options: banks } = useReferenceData('BANK')
+  const { options: accountTypes } = useReferenceData('BANK_ACCOUNT_TYPE')
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="Account Name *" value={form.accountName} onChange={v => s('accountName', v)} placeholder="e.g. HDFC Savings" required />
-        <Input label="Bank Name *" value={form.bankName} onChange={v => s('bankName', v)} placeholder="e.g. HDFC Bank" required />
+        <Select label="Bank Name *" value={form.bankName} onChange={v => s('bankName', v)} options={banks} required />
         <Input label="Account Number" value={form.accountNumber} onChange={v => s('accountNumber', v)} placeholder="A/C number" />
-        <Select label="Type" value={form.accountType} onChange={v => s('accountType', v)} options={['SAVINGS', 'CURRENT', 'FD', 'NRE', 'NRO']} />
+        <Select label="Type" value={form.accountType} onChange={v => s('accountType', v)} options={accountTypes} />
         <Input label="IFSC Code" value={form.ifscCode} onChange={v => s('ifscCode', v)} placeholder="HDFC0001234" />
         <Input label="Branch" value={form.branch} onChange={v => s('branch', v)} placeholder="Branch name" />
         <Input label="Balance" value={form.balance} onChange={v => s('balance', v)} type="number" placeholder="285000" />
@@ -476,13 +484,14 @@ function BankForm({ form, setForm, editingId, onSubmit, onCancel }) {
 
 function DematForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
-  const brokers = ['Zerodha', 'Groww', 'Angel One', 'Upstox', 'ICICI Direct', 'HDFC Securities', 'Kotak Securities', 'Axis Direct', '5Paisa', 'Motilal Oswal', 'Sharekhan', 'Paytm Money', 'Dhan', 'INDmoney', 'Kite by Zerodha']
+  const { options: brokers } = useReferenceData('BROKER')
+  const { options: dematTypes } = useReferenceData('DEMAT_ACCOUNT_TYPE')
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Select label="Broker *" value={form.brokerName} onChange={v => s('brokerName', v)} options={brokers} required />
         <Input label="Account Number" value={form.accountNumber} onChange={v => s('accountNumber', v)} placeholder="Demat A/C number" />
-        <Select label="Type" value={form.accountType} onChange={v => s('accountType', v)} options={['Equity', 'Commodity', 'Derivatives', 'Mutual Funds']} />
+        <Select label="Type" value={form.accountType} onChange={v => s('accountType', v)} options={dematTypes} />
         <Input label="Description" value={form.description} onChange={v => s('description', v)} placeholder="Notes" />
       </div>
     </FormWrapper>

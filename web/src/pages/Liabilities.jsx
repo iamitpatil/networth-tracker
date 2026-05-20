@@ -3,6 +3,7 @@ import client from '../api/client'
 import { toast } from 'sonner'
 import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, ChevronDown, ChevronUp, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3, Upload, FileText, PieChart, Loader2, Receipt, Banknote, ArrowUpRight, ArrowDownRight, Eye } from 'lucide-react'
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { useReferenceData } from '../hooks/useReferenceData'
 
 const LIABILITY_CATEGORIES = [
   {
@@ -68,6 +69,7 @@ const SPEND_CATEGORIES = {
 }
 
 export default function Liabilities() {
+  const { options: lenders } = useReferenceData('LOAN_LENDER')
   const [totalLiabilities, setTotalLiabilities] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -753,9 +755,11 @@ export default function Liabilities() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-[var(--text-muted)] mb-1">Lender</label>
-                <input type="text" value={form.lender} onChange={(e) => setForm({ ...form, lender: e.target.value })}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50"
-                  placeholder="e.g., HDFC Bank" required />
+                <select value={form.lender} onChange={(e) => setForm({ ...form, lender: e.target.value })}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" required>
+                  <option value="">Select lender...</option>
+                  {lenders.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                </select>
               </div>
               <div>
                 <label className="block text-sm text-[var(--text-muted)] mb-1">Original Amount</label>

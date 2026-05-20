@@ -106,6 +106,9 @@ public class SymbolService {
     }
 
     private void populateAliases(List<Symbol> symbols) {
+        // Clear existing aliases before re-populating to avoid unique constraint violations
+        symbolAliasRepository.deleteAll();
+
         List<SymbolAlias> aliases = symbols.stream()
                 .filter(s -> s.getCategory().equals("EQUITY"))
                 .flatMap(s -> {
