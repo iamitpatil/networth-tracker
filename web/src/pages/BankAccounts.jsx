@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import client from '../api/client'
 import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Download, Search } from 'lucide-react'
+import { useReferenceData } from '../hooks/useReferenceData'
 
 export default function BankAccounts() {
+  const { options: bankNames } = useReferenceData('BANK')
+  const { options: accountTypes } = useReferenceData('BANK_ACCOUNT_TYPE')
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -141,7 +144,17 @@ export default function BankAccounts() {
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Bank Name</label>
-                  <input type="text" value={form.bankName || ''} onChange={(e) => setForm({ ...form, bankName: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required />
+                  <div className="relative">
+                    {form.bankName && bankNames.find(b => b.value === form.bankName)?.metadata?.logo && (
+                      <img src={bankNames.find(b => b.value === form.bankName).metadata.logo} alt=""
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded object-contain" onError={(e) => e.target.style.display='none'} />
+                    )}
+                    <select value={form.bankName || ''} onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                      className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg ${form.bankName && bankNames.find(b => b.value === form.bankName)?.metadata?.logo ? 'pl-9' : 'px-3'} pr-3 py-2.5`} required>
+                      <option value="">Select bank...</option>
+                      {bankNames.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Account Number</label>
@@ -150,11 +163,17 @@ export default function BankAccounts() {
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Account Type</label>
                   <select value={form.accountType || 'SAVINGS'} onChange={(e) => setForm({ ...form, accountType: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                    <option value="SAVINGS">Savings</option>
-                    <option value="CURRENT">Current</option>
-                    <option value="FD">Fixed Deposit</option>
-                    <option value="NRE">NRE</option>
-                    <option value="NRO">NRO</option>
+                    {accountTypes.length > 0 ? accountTypes.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    )) : (
+                      <>
+                        <option value="SAVINGS">Savings</option>
+                        <option value="CURRENT">Current</option>
+                        <option value="FD">Fixed Deposit</option>
+                        <option value="NRE">NRE</option>
+                        <option value="NRO">NRO</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>

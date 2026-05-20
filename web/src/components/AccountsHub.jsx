@@ -28,6 +28,15 @@ export default function AccountsHub() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({})
 
+  const { options: bankRef } = useReferenceData('BANK')
+  const { options: brokerRef } = useReferenceData('BROKER')
+  const { options: cardIssuerRef } = useReferenceData('CARD_ISSUER')
+
+  const getLogo = (category, name) => {
+    const refs = category === 'BANK' ? bankRef : category === 'BROKER' ? brokerRef : category === 'CARD_ISSUER' ? cardIssuerRef : []
+    return refs.find(r => r.value === name)?.metadata?.logo || null
+  }
+
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
@@ -150,14 +159,14 @@ export default function AccountsHub() {
           {activeTab === 'bank' && (data?.bankAccounts || []).map(a => (
             <AccountRow key={a.id} icon={Landmark} color="blue" title={a.accountName} subtitle={`${a.bankName} • ${a.accountType || 'SAVINGS'}`}
               detail={fmt(a.balance)} extra={a.accountNumber ? `****${a.accountNumber.slice(-4)}` : ''}
-              accountType="BANK" accountId={a.id}
+              accountType="BANK" accountId={a.id} logoUrl={getLogo('BANK', a.bankName)}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleBankDelete(a.id)} />
           ))}
           {activeTab === 'demat' && (data?.dematAccounts || []).map(a => (
             <AccountRow key={a.id} icon={Building2} color="indigo" title={a.brokerName} subtitle={a.accountType || 'Equity'}
               detail={a.isDefault ? 'Default' : ''} extra={a.accountNumber || ''}
-              accountType="DEMAT" accountId={a.id}
+              accountType="DEMAT" accountId={a.id} logoUrl={getLogo('BROKER', a.brokerName)}
               onEdit={() => { setForm({ brokerName: a.brokerName, accountType: a.accountType, description: a.description, isDefault: a.isDefault }); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDematDelete(a.id)} />
           ))}
@@ -167,7 +176,7 @@ export default function AccountsHub() {
               detail={a.creditLimit ? `Limit: ${fmt(a.creditLimit)}` : ''}
               extra={a.rewardType ? `${a.rewardType}` : ''}
               badge={a.isActive ? null : 'Inactive'}
-              accountType="CREDIT_CARD" accountId={a.id}
+              accountType="CREDIT_CARD" accountId={a.id} logoUrl={getLogo('CARD_ISSUER', a.cardIssuer)}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('credit-cards', a.id, `${a.cardIssuer} card`)} />
           ))}
@@ -216,7 +225,7 @@ export default function AccountsHub() {
   )
 }
 
-function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, onEdit, onDelete, accountType, accountId }) {
+function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, onEdit, onDelete, accountType, accountId, logoUrl }) {
   const [showDocs, setShowDocs] = useState(false)
   const [docs, setDocs] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
@@ -274,8 +283,11 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
   return (
     <div>
       <div className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--hover-bg)] transition">
-        <div className={`w-9 h-9 rounded-lg bg-${color}-500/10 flex items-center justify-center shrink-0`}>
-          <Icon className={`w-4.5 h-4.5 text-${color}-400`} />
+        <div className={`w-9 h-9 rounded-lg bg-${color}-500/10 flex items-center justify-center shrink-0 overflow-hidden`}>
+          {logoUrl ? (
+            <img src={logoUrl} alt="" className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block' }} />
+          ) : null}
+          <Icon className={`w-4.5 h-4.5 text-${color}-400 ${logoUrl ? 'hidden' : ''}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -368,15 +380,22 @@ function Input({ label, value, onChange, type = 'text', placeholder, required })
   )
 }
 
-function Select({ label, value, onChange, options, required }) {
+function Select({ label, value, onChange, options, required, showLogo }) {
+  const selected = options.find(o => (typeof o === 'string' ? o : o.value) === value)
+  const logoUrl = selected?.metadata?.logo
   return (
     <div>
       <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
-      <select value={value || ''} onChange={(e) => onChange(e.target.value)} required={required}
-        className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50">
-        <option value="">Select...</option>
-        {options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
-      </select>
+      <div className="relative">
+        {showLogo && logoUrl && (
+          <img src={logoUrl} alt="" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded object-contain" onError={(e) => e.target.style.display='none'} />
+        )}
+        <select value={value || ''} onChange={(e) => onChange(e.target.value)} required={required}
+          className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg ${showLogo && logoUrl ? 'pl-9' : 'px-3'} pr-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50`}>
+          <option value="">Select...</option>
+          {options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
+        </select>
+      </div>
     </div>
   )
 }
@@ -389,9 +408,9 @@ function CreditCardForm({ form, setForm, editingId, onSubmit, onCancel }) {
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Select label="Card Issuer *" value={form.cardIssuer} onChange={v => s('cardIssuer', v)} options={issuers} required />
+        <Select label="Card Issuer *" value={form.cardIssuer} onChange={v => s('cardIssuer', v)} options={issuers} required showLogo />
         <Input label="Card Name" value={form.cardName} onChange={v => s('cardName', v)} placeholder="e.g. Regalia, Simply Click" />
-        <Select label="Network" value={form.cardNetwork} onChange={v => s('cardNetwork', v)} options={networks} />
+        <Select label="Network" value={form.cardNetwork} onChange={v => s('cardNetwork', v)} options={networks} showLogo />
         <Input label="Last 4 Digits" value={form.cardLastFour} onChange={v => s('cardLastFour', v.slice(0,4))} placeholder="1234" />
         <Input label="Credit Limit" value={form.creditLimit} onChange={v => s('creditLimit', v)} type="number" placeholder="300000" />
         <Input label="Billing Cycle Day" value={form.billingCycleDay} onChange={v => s('billingCycleDay', v)} type="number" placeholder="1-28" />
@@ -471,7 +490,7 @@ function BankForm({ form, setForm, editingId, onSubmit, onCancel }) {
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="Account Name *" value={form.accountName} onChange={v => s('accountName', v)} placeholder="e.g. HDFC Savings" required />
-        <Select label="Bank Name *" value={form.bankName} onChange={v => s('bankName', v)} options={banks} required />
+        <Select label="Bank Name *" value={form.bankName} onChange={v => s('bankName', v)} options={banks} required showLogo />
         <Input label="Account Number" value={form.accountNumber} onChange={v => s('accountNumber', v)} placeholder="A/C number" />
         <Select label="Type" value={form.accountType} onChange={v => s('accountType', v)} options={accountTypes} />
         <Input label="IFSC Code" value={form.ifscCode} onChange={v => s('ifscCode', v)} placeholder="HDFC0001234" />
@@ -489,7 +508,7 @@ function DematForm({ form, setForm, editingId, onSubmit, onCancel }) {
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Select label="Broker *" value={form.brokerName} onChange={v => s('brokerName', v)} options={brokers} required />
+        <Select label="Broker *" value={form.brokerName} onChange={v => s('brokerName', v)} options={brokers} required showLogo />
         <Input label="Account Number" value={form.accountNumber} onChange={v => s('accountNumber', v)} placeholder="Demat A/C number" />
         <Select label="Type" value={form.accountType} onChange={v => s('accountType', v)} options={dematTypes} />
         <Input label="Description" value={form.description} onChange={v => s('description', v)} placeholder="Notes" />
