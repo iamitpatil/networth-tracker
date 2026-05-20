@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import client from '../api/client'
 import { toast } from 'sonner'
-import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, ChevronDown, ChevronUp, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3, Upload, FileText, PieChart, Loader2, Receipt } from 'lucide-react'
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, ChevronDown, ChevronUp, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3, Upload, FileText, PieChart, Loader2, Receipt, Banknote, ArrowUpRight, ArrowDownRight, Eye } from 'lucide-react'
+import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 
 const LIABILITY_CATEGORIES = [
   {
@@ -82,6 +82,11 @@ export default function Liabilities() {
   const [ccPassword, setCcPassword] = useState('')
   const [ccPendingFile, setCcPendingFile] = useState(null)
   const ccFileRef = useRef(null)
+  const [spendReports, setSpendReports] = useState([])
+  const [spendTrend, setSpendTrend] = useState([])
+  const [selectedMonth, setSelectedMonth] = useState(null)
+  const [monthAnalysis, setMonthAnalysis] = useState(null)
+  const [loadingMonth, setLoadingMonth] = useState(false)
   const [form, setForm] = useState({
     liabilityType: 'home_loan',
     lender: '',
@@ -99,7 +104,24 @@ export default function Liabilities() {
       .then((res) => setLocalLiabilities(res.data || []))
       .catch(() => {})
       .finally(() => setLoading(false))
+    // Load spend history
+    loadSpendHistory()
   }, [])
+
+  const loadSpendHistory = () => {
+    client.get('/liabilities/cc-spend/reports').then(r => setSpendReports(r.data || [])).catch(() => {})
+    client.get('/liabilities/cc-spend/trend').then(r => setSpendTrend(r.data || [])).catch(() => {})
+  }
+
+  const loadMonthDetail = async (month) => {
+    setSelectedMonth(month)
+    setLoadingMonth(true)
+    try {
+      const { data } = await client.get(`/liabilities/cc-spend/month/${month}`)
+      setMonthAnalysis(data)
+    } catch { setMonthAnalysis(null) }
+    finally { setLoadingMonth(false) }
+  }
 
   // Group liabilities by category
   const grouped = useMemo(() => {
@@ -153,7 +175,12 @@ export default function Liabilities() {
       setCcPasswordNeeded(false)
       setCcPendingFile(null)
       setCcPassword('')
-      toast.success('Bill parsed successfully', { description: `${data.cardIssuer || 'Credit card'} — ${(data.transactions || []).length} transactions found` })
+      // Auto-save to spend history
+      try {
+        await client.post('/liabilities/cc-spend/save', data)
+        loadSpendHistory()
+      } catch { /* silently fail — analysis still shown */ }
+      toast.success('Bill parsed & saved', { description: `${data.cardIssuer || 'Credit card'} — ${(data.transactions || []).length} transactions found` })
     } catch (err) {
       const errData = err.response?.data
       if (errData?.error === 'PASSWORD_REQUIRED') {
@@ -206,6 +233,25 @@ export default function Liabilities() {
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value)
   }, [ccBillResult])
+
+  const handlePayBill = async (report) => {
+    const mode = await new Promise(resolve => {
+      const m = prompt(`Mark bill as paid?\n\n${report.cardIssuer || 'Credit Card'} ****${report.cardLastFour || ''}\nAmount: ₹${Number(report.totalAmountDue || 0).toLocaleString('en-IN')}\n\nEnter payment mode (UPI / NEFT / AUTO_DEBIT / ONLINE):`, 'UPI')
+      resolve(m)
+    })
+    if (mode === null) return
+    try {
+      await client.post(`/liabilities/cc-spend/${report.id}/pay`, {
+        paidAmount: report.totalAmountDue,
+        paidDate: new Date().toISOString().slice(0, 10),
+        paymentMode: mode.toUpperCase() || 'ONLINE',
+      })
+      toast.success('Bill marked as paid', { description: `${report.cardIssuer} ****${report.cardLastFour} — ${fmt(report.totalAmountDue)} via ${mode.toUpperCase()}` })
+      loadSpendHistory()
+    } catch (err) {
+      toast.error('Failed to mark as paid', { description: err.response?.data?.message || err.message })
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -543,6 +589,138 @@ export default function Liabilities() {
           </div>
         )}
       </div>
+
+      {/* Spend History — Cred-like monthly tracker */}
+      {spendReports.length > 0 && (
+        <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-[var(--text)]">Monthly Spend History</p>
+                <p className="text-xs text-[var(--text-muted)]">{spendReports.length} statement{spendReports.length !== 1 ? 's' : ''} tracked</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Monthly trend bar chart */}
+          {spendTrend.length > 1 && (
+            <div className="px-4 pb-2">
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[...spendTrend].reverse()}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={m => { const [y,mo] = (m||'').split('-'); return ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo] || m }} />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={v => v >= 100000 ? `${(v/100000).toFixed(1)}L` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} width={45} />
+                    <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} labelFormatter={m => { const [y,mo] = (m||'').split('-'); return `${['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo]} ${y}` }} />
+                    <Bar dataKey="total" fill="#6366F1" radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Bill cards */}
+          <div className="border-t border-[var(--border)] divide-y divide-[var(--border)]">
+            {spendReports.map(report => {
+              const isPaid = report.paid === true
+              const isOverdue = !isPaid && report.dueDate && new Date(report.dueDate) < new Date()
+              const isExpanded = selectedMonth === report.statementMonth
+              return (
+                <div key={report.id} className={`${isPaid ? 'bg-green-500/[0.02]' : isOverdue ? 'bg-red-500/[0.03]' : ''}`}>
+                  <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-[var(--hover-bg)] transition"
+                    onClick={() => isExpanded ? setSelectedMonth(null) : loadMonthDetail(report.statementMonth)}>
+                    {/* Month circle */}
+                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 ${isPaid ? 'bg-green-500/10' : isOverdue ? 'bg-red-500/10' : 'bg-indigo-500/10'}`}>
+                      <span className={`text-xs font-bold ${isPaid ? 'text-green-400' : isOverdue ? 'text-red-400' : 'text-indigo-400'}`}>
+                        {['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+(report.statementMonth||'').split('-')[1]] || '?'}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-muted)]">{(report.statementMonth||'').split('-')[0]}</span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-[var(--text)]">{report.cardIssuer || 'Credit Card'}</p>
+                        {report.cardLastFour && <span className="text-xs text-[var(--text-muted)]">****{report.cardLastFour}</span>}
+                        {isPaid && <span className="text-[10px] bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded-full font-medium">PAID</span>}
+                        {isOverdue && <span className="text-[10px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded-full font-medium">OVERDUE</span>}
+                      </div>
+                      <div className="flex items-center gap-4 mt-0.5">
+                        <span className="text-xs text-[var(--text-muted)]">Due: {report.dueDate ? new Date(report.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}</span>
+                        {report.transactions && <span className="text-xs text-[var(--text-muted)]">{Array.isArray(report.transactions) ? report.transactions.length : 0} txns</span>}
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-bold ${isPaid ? 'text-green-400 line-through opacity-60' : 'text-[var(--text)]'}`}>{fmt(report.totalAmountDue)}</p>
+                      {isPaid && report.paidAmount && <p className="text-xs text-green-400">Paid {fmt(report.paidAmount)}</p>}
+                    </div>
+
+                    <div className="shrink-0">
+                      {!isPaid ? (
+                        <button onClick={(e) => { e.stopPropagation(); handlePayBill(report) }}
+                          className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition inline-flex items-center gap-1">
+                          <Banknote className="w-3.5 h-3.5" /> Pay
+                        </button>
+                      ) : (
+                        <CheckCircle className="w-5 h-5 text-green-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expanded month detail */}
+                  {isExpanded && monthAnalysis && !loadingMonth && (
+                    <div className="px-4 pb-4 space-y-3">
+                      {/* Category spend bars */}
+                      {monthAnalysis.categories && Object.keys(monthAnalysis.categories).length > 0 && (
+                        <div className="grid grid-cols-2 gap-2">
+                          {Object.entries(monthAnalysis.categories)
+                            .sort(([,a],[,b]) => Number(b) - Number(a))
+                            .map(([cat, amt]) => {
+                              const info = SPEND_CATEGORIES[cat] || SPEND_CATEGORIES.OTHER
+                              const pct = monthAnalysis.totalSpend > 0 ? (Number(amt) / Number(monthAnalysis.totalSpend) * 100) : 0
+                              return (
+                                <div key={cat} className="flex items-center gap-2 bg-[var(--bg)] rounded-lg p-2">
+                                  <span className="text-sm">{info.icon}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-[var(--text-muted)]">{info.label}</span>
+                                      <span className="font-medium text-[var(--text)]">{fmt(amt)}</span>
+                                    </div>
+                                    <div className="h-1 bg-[var(--border)] rounded-full mt-1">
+                                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, backgroundColor: info.color }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                        </div>
+                      )}
+                      {/* MoM change + top merchants */}
+                      <div className="flex items-center gap-4 text-xs">
+                        {monthAnalysis.monthOverMonthChange != null && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${Number(monthAnalysis.monthOverMonthChange) > 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                            {Number(monthAnalysis.monthOverMonthChange) > 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                            {Math.abs(Number(monthAnalysis.monthOverMonthChange))}% vs last month
+                          </span>
+                        )}
+                        {monthAnalysis.topMerchants?.length > 0 && (
+                          <span className="text-[var(--text-muted)]">Top: {monthAnalysis.topMerchants.slice(0,3).map(m => m.merchant).join(', ')}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {isExpanded && loadingMonth && (
+                    <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-[var(--text-muted)]" /></div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Add form */}
       {showForm && (

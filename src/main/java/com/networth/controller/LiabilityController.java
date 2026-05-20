@@ -7,6 +7,7 @@ import com.networth.service.EMIService;
 import com.networth.service.EMIService.EMIScheduleEntry;
 import com.networth.service.EMIService.LiabilityRequest;
 import com.networth.service.FamilyDataService;
+import com.networth.service.SpendAnalyticsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,7 @@ public class LiabilityController {
     private final FamilyDataService familyDataService;
     private final CreditCardBillParser creditCardBillParser;
     private final DocumentService documentService;
+    private final SpendAnalyticsService spendAnalyticsService;
 
     @GetMapping
     public ResponseEntity<List<Liability>> getUserLiabilities(
@@ -105,6 +107,76 @@ public class LiabilityController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to parse credit card bill", "message", e.getMessage()));
         }
+    }
+
+    // ── Credit Card Spend Analytics ──
+
+    @PostMapping("/cc-spend/save")
+    public ResponseEntity<Map<String, Object>> saveCcSpendReport(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody Map<String, Object> parsedBill) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        var report = spendAnalyticsService.saveReport(userId, parsedBill);
+        return ResponseEntity.ok(Map.of("id", report.getId(), "month", report.getStatementMonth(), "saved", true));
+    }
+
+    @GetMapping("/cc-spend/reports")
+    public ResponseEntity<List<com.networth.model.entity.CcSpendReport>> getCcSpendReports(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        return ResponseEntity.ok(spendAnalyticsService.getUserReports(userId));
+    }
+
+    @GetMapping("/cc-spend/trend")
+    public ResponseEntity<List<Map<String, Object>>> getCcSpendTrend(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        return ResponseEntity.ok(spendAnalyticsService.getMonthlyTrend(userId));
+    }
+
+    @GetMapping("/cc-spend/month/{month}")
+    public ResponseEntity<Map<String, Object>> getCcMonthAnalysis(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String month) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        return ResponseEntity.ok(spendAnalyticsService.getMonthAnalysis(userId, month));
+    }
+
+    @GetMapping("/cc-spend/cards")
+    public ResponseEntity<List<Map<String, String>>> getCcCards(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        return ResponseEntity.ok(spendAnalyticsService.getUserCards(userId));
+    }
+
+    @PostMapping("/cc-spend/{reportId}/pay")
+    public ResponseEntity<Map<String, Object>> markBillPaid(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String reportId,
+            @RequestBody Map<String, Object> request) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        BigDecimal paidAmount = request.get("paidAmount") != null
+                ? new BigDecimal(request.get("paidAmount").toString()) : null;
+        LocalDate paidDate = request.get("paidDate") != null
+                ? LocalDate.parse(request.get("paidDate").toString()) : null;
+        String paymentMode = request.get("paymentMode") != null
+                ? request.get("paymentMode").toString() : null;
+
+        var report = spendAnalyticsService.markBillPaid(userId, UUID.fromString(reportId), paidAmount, paidDate, paymentMode);
+        return ResponseEntity.ok(Map.of(
+                "id", report.getId(),
+                "paid", true,
+                "paidAmount", report.getPaidAmount(),
+                "paidDate", report.getPaidDate().toString(),
+                "paymentMode", report.getPaymentMode()
+        ));
+    }
+
+    @GetMapping("/cc-spend/payment-summary")
+    public ResponseEntity<Map<String, Object>> getPaymentSummary(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        return ResponseEntity.ok(spendAnalyticsService.getPaymentSummary(userId));
     }
 
     @DeleteMapping("/{id}")
