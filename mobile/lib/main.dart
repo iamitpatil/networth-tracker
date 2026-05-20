@@ -134,6 +134,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     } else {
       return LoginScreen(
         onLoginSuccess: _onAuthSuccess,
+        onShowRegister: () => setState(() => _showRegister = true),
       );
     }
   }
@@ -188,7 +189,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         actions: _selectedIndex == 0 ? [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {},
+            onPressed: () {
+              context.read<DataProvider>().loadDashboardData();
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout),

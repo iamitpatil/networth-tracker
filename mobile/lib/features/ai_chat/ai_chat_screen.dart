@@ -1,7 +1,5 @@
 // lib/features/ai_chat/ai_chat_screen.dart
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter_networth/providers/data_provider.dart';
 import 'package:flutter_networth/core/services/api_client.dart';
 import 'package:flutter_networth/data/models/app_models.dart';
 
@@ -39,14 +37,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
     });
 
     try {
-      // Simulate AI response - in production, call actual AI API
-      await Future.delayed(const Duration(seconds: 1));
+      final response = await ApiClient.post('/ai/chat', body: {'message': message});
+      final aiContent = response['response'] ?? response['content'] ?? 'Sorry, I could not generate a response.';
       
       setState(() {
         _messages.add(ChatMessage(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           role: 'assistant',
-          content: _generateResponse(message),
+          content: aiContent,
           timestamp: DateTime.now(),
         ));
         _isLoading = false;
@@ -62,62 +60,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ));
       });
     }
-  }
-
-  String _generateResponse(String question) {
-    final provider = context.read<DataProvider>();
-    final netWorth = provider.netWorthData?.netWorth ?? 0;
-    final holdingsCount = provider.holdingsCount;
-    final totalPnL = provider.totalPnL;
-
-    if (question.toLowerCase().contains('portfolio') || question.toLowerCase().contains('performing')) {
-      return '''Your portfolio is doing great! 
-
-Current Status:
-• Total Net Worth: ₹${(netWorth / 100000).toStringAsFixed(2)}L
-• Total Holdings: $holdingsCount
-• Overall P&L: ${totalPnL >= 0 ? '+' : ''}₹${(totalPnL / 1000).toStringAsFixed(1)}K
-
-Your investments are well-diversified across multiple asset classes.''';}
-    
-    if (question.toLowerCase().contains('save') || question.toLowerCase().contains('saving')) {
-      return '''Based on your current portfolio, here are my savings recommendations:
-
-1. You have a healthy net worth of ₹${(netWorth / 100000).toStringAsFixed(2)}L
-2. Consider increasing your emergency fund to cover 6 months of expenses
-3. Your current asset allocation looks balanced
-
-Would you like specific advice on increasing your savings rate?''';}
-    
-    if (question.toLowerCase().contains('asset') || question.toLowerCase().contains('allocation')) {
-      final allocation = provider.assetAllocation;
-      String breakdown = 'Your current asset allocation:\n\n';
-      for (var item in allocation) {
-        breakdown += '• ${item['name']}: ₹${(item['value'] / 100000).toStringAsFixed(2)}L\n';
-      }
-      breakdown += '\nThis is a good diversified mix!';
-      return breakdown;}
-    
-    if (question.toLowerCase().contains('tax') || question.toLowerCase().contains('saving')) {
-      return '''Here are some tax-saving tips for FY 2024-25:
-
-1. Maximize your Section 80C limit of ₹1.5L
-2. Consider NPS for additional ₹50K deduction under 80CCD(1B)
-3. Health insurance premiums under 80D
-4. ELSS mutual funds for tax saving with growth potential
-
-Would you like detailed guidance on any of these?''';}
-    
-    return '''Thanks for your question! 
-
-I'm your AI financial assistant. I can help you with:
-• Portfolio analysis and insights
-• Investment recommendations
-• Tax planning strategies
-• Financial goal tracking
-• Asset allocation review
-
-What would you like to know about your finances?''';
   }
 
   @override

@@ -1,6 +1,7 @@
 // lib/widgets/dialogs/add_transaction_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_networth/core/services/api_client.dart';
 import 'package:flutter_networth/data/models/app_models.dart';
 import 'package:flutter_networth/providers/data_provider.dart';
 
@@ -60,18 +61,17 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
     setState(() => _isLoading = true);
 
     try {
-      // TODO: Implement actual API call when backend supports it
-      // For now, just show success
+      final body = {
+        'holdingId': widget.holding?.id,
+        'type': _transactionType,
+        'quantity': double.parse(_quantityController.text),
+        'price': double.parse(_priceController.text),
+        'transactionDate': '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
+      };
+      await ApiClient.post('/portfolio/transactions', body: body);
+
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${_transactionType == 'BUY' ? 'Bought' : 'Sold'} ${_quantityController.text} units @ ₹${_priceController.text}',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {

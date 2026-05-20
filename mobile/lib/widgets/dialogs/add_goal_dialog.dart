@@ -1,6 +1,7 @@
 // lib/widgets/dialogs/add_goal_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_networth/core/services/api_client.dart';
 
 class AddGoalDialog extends StatefulWidget {
   const AddGoalDialog({super.key});
@@ -47,16 +48,16 @@ class _AddGoalDialogState extends State<AddGoalDialog> {
     setState(() => _isLoading = true);
 
     try {
-      await Future.delayed(const Duration(seconds: 1)); // Simulate API
+      final body = {
+        'name': _nameController.text,
+        'targetAmount': double.parse(_targetAmountController.text),
+        'targetDate': '${_targetDate.year}-${_targetDate.month.toString().padLeft(2, '0')}-${_targetDate.day.toString().padLeft(2, '0')}',
+        'goalType': _selectedGoalType,
+      };
+      await ApiClient.post('/goals', body: body);
 
       if (mounted) {
-        Navigator.pop(context, {
-          'goalType': _selectedGoalType,
-          'name': _nameController.text,
-          'targetAmount': double.parse(_targetAmountController.text),
-          'currentAmount': double.parse(_currentAmountController.text),
-          'targetDate': _targetDate.toIso8601String(),
-        });
+        Navigator.pop(context, body);
       }
     } catch (e) {
       if (mounted) {
