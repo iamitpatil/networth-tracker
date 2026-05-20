@@ -88,6 +88,18 @@ public class GoalService {
             throw new AccessDeniedException("Holding", holdingId.toString());
         }
 
+        // Check if holding is already linked to another goal
+        List<GoalHolding> existingLinks = goalHoldingRepository.findByHoldingId(holdingId);
+        for (GoalHolding existing : existingLinks) {
+            if (!existing.getGoalId().equals(goalId)) {
+                String otherGoalName = goalRepository.findById(existing.getGoalId())
+                        .map(Goal::getName).orElse("another goal");
+                throw new IllegalArgumentException(
+                        "This holding is already linked to \"" + otherGoalName + "\". "
+                        + "Unlink it first before linking to a different goal.");
+            }
+        }
+
         // Clamp allocation to 1-100
         if (allocationPct == null || allocationPct.compareTo(BigDecimal.ZERO) <= 0) {
             allocationPct = BigDecimal.valueOf(100);
@@ -96,7 +108,7 @@ public class GoalService {
             allocationPct = BigDecimal.valueOf(100);
         }
 
-        // Upsert: update if already linked, create if not
+        // Upsert: update allocation if already linked to this goal, create if not
         GoalHolding link = goalHoldingRepository.findByGoalIdAndHoldingId(goalId, holdingId)
                 .orElse(GoalHolding.builder().goalId(goalId).holdingId(holdingId).build());
         link.setAllocationPct(allocationPct);

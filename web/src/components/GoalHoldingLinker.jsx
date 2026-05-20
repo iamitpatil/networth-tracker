@@ -42,7 +42,8 @@ export default function GoalHoldingLinker({ goal, onClose, onUpdate }) {
       onUpdate?.()
       toast.success(`${holding.symbol} linked to goal`)
     } catch (err) {
-      toast.error('Failed to link', { description: err.message })
+      const msg = err.response?.data?.message || err.message
+      toast.error('Cannot link holding', { description: msg })
     } finally {
       setLinking(null)
     }
