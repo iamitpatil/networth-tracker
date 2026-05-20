@@ -5,8 +5,9 @@ import 'package:flutter_networth/data/models/app_models.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
+  final VoidCallback? onShowRegister;
 
-  const LoginScreen({super.key, required this.onLoginSuccess});
+  const LoginScreen({super.key, required this.onLoginSuccess, this.onShowRegister});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -211,6 +212,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               
+              const SizedBox(height: 16),
+
+              // Register link
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Don't have an account?",
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  TextButton(
+                    onPressed: () => widget.onShowRegister?.call(),
+                    child: const Text(
+                      'Create one',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF3B82F6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 24),
               
               // Demo credentials

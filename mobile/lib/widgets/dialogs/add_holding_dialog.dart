@@ -1,6 +1,7 @@
 // lib/widgets/dialogs/add_holding_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_networth/core/services/api_client.dart';
 import 'package:flutter_networth/data/models/app_models.dart';
 
 class AddHoldingDialog extends StatefulWidget {
@@ -38,17 +39,17 @@ class _AddHoldingDialogState extends State<AddHoldingDialog> {
     setState(() => _isLoading = true);
 
     try {
-      // TODO: Call API to add holding
-      await Future.delayed(const Duration(seconds: 1)); // Simulate API call
+      final body = {
+        'assetType': _selectedAssetType,
+        'symbol': _symbolController.text.toUpperCase(),
+        'name': _nameController.text,
+        'quantity': double.parse(_quantityController.text),
+        'averageBuyPrice': double.parse(_avgPriceController.text),
+      };
+      await ApiClient.post('/portfolio/holdings', body: body);
 
       if (mounted) {
-        Navigator.pop(context, {
-          'assetType': _selectedAssetType,
-          'symbol': _symbolController.text.toUpperCase(),
-          'name': _nameController.text,
-          'quantity': double.parse(_quantityController.text),
-          'averageBuyPrice': double.parse(_avgPriceController.text),
-        });
+        Navigator.pop(context, body);
       }
     } catch (e) {
       if (mounted) {
