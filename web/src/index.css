@@ -117,6 +117,53 @@ body {
 }
 
 /* Override Tailwind utility classes for theming */
+/* Sonner toast type-specific colors */
+.sonner-toast {
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+.sonner-success {
+  background: #052e16 !important;
+  border-color: #166534 !important;
+  color: #bbf7d0 !important;
+}
+.sonner-error {
+  background: #450a0a !important;
+  border-color: #991b1b !important;
+  color: #fecaca !important;
+}
+.sonner-warning {
+  background: #451a03 !important;
+  border-color: #92400e !important;
+  color: #fed7aa !important;
+}
+.sonner-info {
+  background: #0c1a3d !important;
+  border-color: #1e40af !important;
+  color: #bfdbfe !important;
+}
+[data-theme="light"] .sonner-success {
+  background: #f0fdf4 !important;
+  border-color: #86efac !important;
+  color: #166534 !important;
+}
+[data-theme="light"] .sonner-error {
+  background: #fef2f2 !important;
+  border-color: #fca5a5 !important;
+  color: #991b1b !important;
+}
+[data-theme="light"] .sonner-warning {
+  background: #fffbeb !important;
+  border-color: #fcd34d !important;
+  color: #92400e !important;
+}
+[data-theme="light"] .sonner-info {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1e40af !important;
+}
+
 .bg-slate-800 { background-color: var(--slate-800) !important; }
 .bg-slate-700 { background-color: var(--slate-700) !important; }
 .bg-slate-600 { background-color: var(--slate-600) !important; }

@@ -67,15 +67,16 @@ createRoot(document.getElementById('root')).render(
         </Routes>
         <Toaster
           position="top-right"
-          theme="dark"
           richColors
           closeButton
           duration={4000}
           toastOptions={{
-            style: {
-              background: 'var(--bg-card)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
+            classNames: {
+              toast: 'sonner-toast',
+              success: 'sonner-success',
+              error: 'sonner-error',
+              warning: 'sonner-warning',
+              info: 'sonner-info',
             },
           }}
         />
