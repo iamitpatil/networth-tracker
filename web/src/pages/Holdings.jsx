@@ -1015,6 +1015,68 @@ export default function Holdings() {
             </button>
           ))}
         </div>
+
+        {/* Per-type breakup when specific tab selected */}
+        {filter !== 'all' && filteredHoldings.length > 0 && (
+          <div className="px-4 py-3 border-b border-[var(--border)] bg-[var(--bg)]/30">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div className="bg-[var(--bg-card)] rounded-lg p-2.5 border border-[var(--border)]">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Holdings</p>
+                <p className="text-lg font-bold text-[var(--text)]">{filteredHoldings.length}</p>
+              </div>
+              <div className="bg-[var(--bg-card)] rounded-lg p-2.5 border border-[var(--border)]">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Invested</p>
+                <p className="text-lg font-bold text-[var(--text)]">{totalInvested >= 100000 ? `₹${(totalInvested/100000).toFixed(1)}L` : `₹${totalInvested.toLocaleString('en-IN')}`}</p>
+              </div>
+              <div className="bg-[var(--bg-card)] rounded-lg p-2.5 border border-[var(--border)]">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Current Value</p>
+                <p className="text-lg font-bold text-[var(--text)]">{totalValue >= 100000 ? `₹${(totalValue/100000).toFixed(1)}L` : `₹${totalValue.toLocaleString('en-IN')}`}</p>
+              </div>
+              <div className="bg-[var(--bg-card)] rounded-lg p-2.5 border border-[var(--border)]">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">P&L</p>
+                <p className={`text-lg font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {totalPnL >= 0 ? '+' : ''}{totalPnL >= 100000 ? `₹${(totalPnL/100000).toFixed(1)}L` : `₹${totalPnL.toLocaleString('en-IN')}`}
+                  <span className="text-xs ml-1 opacity-70">({totalInvested > 0 ? ((totalPnL/totalInvested)*100).toFixed(1) : 0}%)</span>
+                </p>
+              </div>
+            </div>
+            {/* Individual holding allocation bars */}
+            <div className="space-y-1.5">
+              {filteredHoldings
+                .sort((a, b) => (b.currentValue || 0) - (a.currentValue || 0))
+                .map((h) => {
+                  const pct = totalValue > 0 ? ((h.currentValue || 0) / totalValue * 100) : 0
+                  const pnl = (h.currentValue || 0) - ((h.quantity || 0) * (h.averageBuyPrice || 0))
+                  const pnlPct = ((h.quantity || 0) * (h.averageBuyPrice || 0)) > 0 ? (pnl / ((h.quantity || 0) * (h.averageBuyPrice || 0))) * 100 : 0
+                  const colorClass = ASSET_COLORS[h.assetType] || ''
+                  return (
+                    <div key={h.id} className="flex items-center gap-3 py-1">
+                      <div className="w-28 sm:w-36 truncate">
+                        <p className="text-xs font-medium text-[var(--text)] truncate">{h.symbol}</p>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="h-2 bg-[var(--border)] rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${pnl >= 0 ? 'bg-blue-500' : 'bg-blue-400'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                        </div>
+                      </div>
+                      <div className="w-14 text-right">
+                        <span className="text-xs font-medium text-[var(--text)]">{pct.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-24 text-right">
+                        <span className="text-xs text-[var(--text-muted)]">₹{(h.currentValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                      <div className="w-20 text-right">
+                        <span className={`text-xs font-medium ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {pnl >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto -mx-4 sm:mx-0">
         <table className="w-full min-w-[800px]">
           <thead className="bg-[var(--bg)]/50 text-left sticky top-0 z-10">
