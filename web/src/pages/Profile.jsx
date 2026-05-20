@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Building2, ArrowLeft, Palette, Upload, Trash2, Check, Plus, X, FolderOpen, Database, RefreshCw, Loader2, Pencil, ShieldCheck } from 'lucide-react'
+import { Building2, ArrowLeft, Palette, Upload, Trash2, Check, Plus, X, FolderOpen, Database, RefreshCw, Loader2, Pencil, ShieldCheck, Wallet } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import DematAccounts from './DematAccounts'
 import Documents from './Documents'
+import AccountsHub from '../components/AccountsHub'
 
 const DEFAULT_COLORS = {
   bg: '#0f172a', 'bg-card': '#1e293b', 'bg-card-hover': '#1e293b',
@@ -42,7 +43,7 @@ function hexToRgba(hex, alpha) {
 }
 
 const TABS = [
-  { id: 'demat', label: 'Demat Accounts', icon: Building2, color: 'var(--primary)' },
+  { id: 'accounts', label: 'My Accounts', icon: Wallet, color: 'var(--primary)' },
   { id: '2fa', label: 'Two-Factor Auth', icon: ShieldCheck, color: 'var(--green)' },
   { id: 'documents', label: 'Documents', icon: FolderOpen, color: 'var(--amber)' },
   { id: 'themes', label: 'Themes', icon: Palette, color: 'var(--green)' },
@@ -110,7 +111,7 @@ export default function Profile() {
   const { user } = useAuth()
   const { themes, currentThemeId, setThemeById, setFallback, fallbackKey } = useTheme()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('demat')
+  const [activeTab, setActiveTab] = useState('accounts')
   const [showUpload, setShowUpload] = useState(false)
   const [editingTheme, setEditingTheme] = useState(null)
   const [themeName, setThemeName] = useState('')
@@ -212,7 +213,7 @@ export default function Profile() {
       </div>
 
       <div>
-        {activeTab === 'demat' && <DematAccounts />}
+        {activeTab === 'accounts' && <AccountsHub />}
         {activeTab === '2fa' && <TwoFactorAuth />}
         {activeTab === 'documents' && <Documents />}
         {activeTab === 'themes' && (
