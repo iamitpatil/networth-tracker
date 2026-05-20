@@ -33,6 +33,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeFeature, setActiveFeature] = useState(0)
+  const [retrySeconds, setRetrySeconds] = useState(0)
   const { login } = useAuth()
   const navigate = useNavigate()
   const totpRef = useRef(null)
@@ -40,6 +41,18 @@ export default function Login() {
   useEffect(() => {
     if (needs2FA && totpRef.current) totpRef.current.focus()
   }, [needs2FA])
+
+  // Countdown timer for rate limiting
+  useEffect(() => {
+    if (retrySeconds <= 0) return
+    const t = setInterval(() => {
+      setRetrySeconds(s => {
+        if (s <= 1) { setError(''); return 0 }
+        return s - 1
+      })
+    }, 1000)
+    return () => clearInterval(t)
+  }, [retrySeconds])
 
   // Auto-rotate featured highlight
   useEffect(() => {
@@ -56,9 +69,14 @@ export default function Login() {
       navigate('/dashboard')
     } catch (err) {
       const msg = err.response?.data?.message || err.message || ''
+      const retryAfter = err.response?.data?.retryAfterSeconds
       if (msg.toLowerCase().includes('two-factor') && msg.toLowerCase().includes('required')) {
         setNeeds2FA(true)
         setError('')
+      } else if (retryAfter > 0 || err.response?.status === 429) {
+        const secs = retryAfter || 300
+        setRetrySeconds(secs)
+        setError(`Too many login attempts. Please try again in ${Math.ceil(secs / 60)} minute${secs > 60 ? 's' : ''}.`)
       } else {
         setError(msg || 'Invalid email or password')
       }
@@ -161,11 +179,18 @@ export default function Login() {
           </div>
 
           {error && (
-            <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">
-              <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-red-400 text-xs font-bold">!</span>
+            <div className={`mb-5 p-3.5 ${retrySeconds > 0 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'} border rounded-xl flex items-start gap-3`}>
+              <div className={`w-5 h-5 rounded-full ${retrySeconds > 0 ? 'bg-amber-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0 mt-0.5`}>
+                <span className={`${retrySeconds > 0 ? 'text-amber-400' : 'text-red-400'} text-xs font-bold`}>{retrySeconds > 0 ? '⏳' : '!'}</span>
               </div>
-              <p className="text-sm text-red-400">{error}</p>
+              <div>
+                <p className={`text-sm ${retrySeconds > 0 ? 'text-amber-400' : 'text-red-400'}`}>{error}</p>
+                {retrySeconds > 0 && (
+                  <p className="text-xs text-amber-400/70 mt-1 font-mono">
+                    Retry in {Math.floor(retrySeconds / 60)}:{(retrySeconds % 60).toString().padStart(2, '0')}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -231,11 +256,13 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || retrySeconds > 0}
               className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-medium py-3 rounded-xl transition-all disabled:opacity-60 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 active:scale-[0.98]"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : retrySeconds > 0 ? (
+                <span>Locked ({Math.floor(retrySeconds / 60)}:{(retrySeconds % 60).toString().padStart(2, '0')})</span>
               ) : (
                 <>
                   {needs2FA ? 'Verify & Sign In' : 'Sign In'} <ArrowRight className="w-4 h-4" />

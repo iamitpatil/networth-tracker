@@ -49,11 +49,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException e) {
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of(
-                "error", "Too Many Requests",
-                "message", e.getMessage(),
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        var body = new java.util.HashMap<String, Object>();
+        body.put("error", "Too Many Requests");
+        body.put("message", e.getMessage());
+        body.put("retryAfterSeconds", e.getRetryAfterSeconds());
+        body.put("timestamp", LocalDateTime.now().toString());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
+                .body(body);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

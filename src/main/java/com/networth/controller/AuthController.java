@@ -62,8 +62,12 @@ public class AuthController {
 
         if (!rateLimitService.isAllowed(ipKey, LOGIN_MAX_ATTEMPTS * 2, LOGIN_WINDOW_SECONDS)
                 || !rateLimitService.isAllowed(emailKey, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS)) {
+            long retryAfter = Math.max(
+                    rateLimitService.getRetryAfterSeconds(ipKey),
+                    rateLimitService.getRetryAfterSeconds(emailKey));
             throw new RateLimitExceededException(
-                    "Too many login attempts. Please wait and try again.");
+                    "Too many login attempts. Please try again in " + retryAfter + " seconds.",
+                    retryAfter);
         }
 
         try {

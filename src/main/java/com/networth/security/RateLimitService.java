@@ -71,4 +71,17 @@ public class RateLimitService {
             return maxAttempts;
         }
     }
+
+    /**
+     * Get seconds remaining until the rate limit window expires for a key.
+     * Returns 0 if key doesn't exist or has no TTL.
+     */
+    public long getRetryAfterSeconds(String key) {
+        try {
+            Long ttl = redisTemplate.getExpire(KEY_PREFIX + key, TimeUnit.SECONDS);
+            return (ttl != null && ttl > 0) ? ttl : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 }
