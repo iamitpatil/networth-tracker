@@ -59,6 +59,24 @@ class _TaxScreenState extends State<TaxScreen> {
     }
   }
 
+  Future<void> _compareRegimes() async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _RegimeComparisonSheet(
+        currentRegime: _taxRegime,
+        formatCurrency: _formatCurrency,
+        onSwitchRegime: (regime) {
+          Navigator.pop(ctx);
+          _updateRegime(regime);
+        },
+      ),
+    );
+  }
+
   Future<void> _updateRegime(String regime) async {
     try {
       await ApiClient.put('/tax/regime', body: {'regime': regime});
@@ -576,6 +594,21 @@ class _TaxScreenState extends State<TaxScreen> {
                 Expanded(child: _regimeButton('OLD', 'Higher slabs, 80C allowed')),
               ],
             ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _compareRegimes,
+                icon: const Icon(Icons.compare_arrows),
+                label: const Text('Compare Regimes'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.purple,
+                  side: BorderSide(color: Colors.purple[300]!),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -722,6 +755,234 @@ class _TaxScreenState extends State<TaxScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RegimeComparisonSheet extends StatefulWidget {
+  final String currentRegime;
+  final String Function(double) formatCurrency;
+  final void Function(String regime) onSwitchRegime;
+
+  const _RegimeComparisonSheet({
+    required this.currentRegime,
+    required this.formatCurrency,
+    required this.onSwitchRegime,
+  });
+
+  @override
+  State<_RegimeComparisonSheet> createState() => _RegimeComparisonSheetState();
+}
+
+class _RegimeComparisonSheetState extends State<_RegimeComparisonSheet> {
+  Map<String, dynamic>? _comparison;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComparison();
+  }
+
+  Future<void> _loadComparison() async {
+    try {
+      final result = await ApiClient.post('/tax/regime/compare');
+      if (mounted) {
+        setState(() {
+          _comparison = result is Map ? Map<String, dynamic>.from(result) : null;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  double _safeDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Tax Regime Comparison',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 20),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 8),
+                  Text('Failed to load comparison: $_error', textAlign: TextAlign.center),
+                ],
+              ),
+            )
+          else if (_comparison != null) ...[
+            // Side-by-side cards
+            Row(
+              children: [
+                Expanded(
+                  child: _buildRegimeCard(
+                    'Old Regime',
+                    _safeDouble(_comparison!['oldRegimeTax']),
+                    _comparison!['recommendation'] == 'OLD',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildRegimeCard(
+                    'New Regime',
+                    _safeDouble(_comparison!['newRegimeTax']),
+                    _comparison!['recommendation'] == 'NEW',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Recommendation banner
+            () {
+              final savings = _safeDouble(_comparison!['savings']);
+              final recommendation = _comparison!['recommendation']?.toString() ?? '';
+              final hasSavings = savings > 0;
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: hasSavings ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: hasSavings ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      hasSavings ? Icons.check_circle : Icons.info,
+                      color: hasSavings ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        hasSavings
+                            ? '$recommendation regime saves you ${widget.formatCurrency(savings)}'
+                            : 'Both regimes result in the same tax',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: hasSavings ? Colors.green[800] : Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }(),
+            const SizedBox(height: 16),
+            // Switch button if not on recommended regime
+            () {
+              final recommendation = _comparison!['recommendation']?.toString() ?? '';
+              if (recommendation.isNotEmpty && recommendation != widget.currentRegime) {
+                return SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => widget.onSwitchRegime(recommendation),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: Text('Switch to $recommendation Regime'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            }(),
+          ],
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegimeCard(String title, double taxAmount, bool isRecommended) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isRecommended ? Colors.green.withOpacity(0.05) : Colors.grey.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isRecommended ? Colors.green : Colors.grey[300]!,
+          width: isRecommended ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: isRecommended ? Colors.green[800] : Colors.grey[700],
+                ),
+              ),
+              if (isRecommended) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.star, size: 16, color: Colors.green[600]),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.formatCurrency(taxAmount),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: isRecommended ? Colors.green[700] : null,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Total Tax',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          ),
+        ],
       ),
     );
   }

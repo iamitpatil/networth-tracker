@@ -1,5 +1,6 @@
 // lib/features/auth/login_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_networth/core/services/api_client.dart';
 import 'package:flutter_networth/data/models/app_models.dart';
 
@@ -16,13 +17,16 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _totpController = TextEditingController();
   bool _isLoading = false;
+  bool _needs2FA = false;
   String? _errorMessage;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _totpController.dispose();
     super.dispose();
   }
 
@@ -33,10 +37,15 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final response = await ApiClient.post('/auth/login', body: {
+      final body = <String, dynamic>{
         'email': _emailController.text,
         'password': _passwordController.text,
-      });
+      };
+      if (_needs2FA) {
+        body['twoFactorCode'] = _totpController.text;
+      }
+
+      final response = await ApiClient.post('/auth/login', body: body);
 
       await ApiClient.setToken(response['accessToken']);
       // Save user info from response
@@ -48,9 +57,16 @@ class _LoginScreenState extends State<LoginScreen> {
       
       widget.onLoginSuccess();
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Invalid email or password';
-      });
+      final errorMsg = e.toString().toLowerCase();
+      if (errorMsg.contains('two-factor') && errorMsg.contains('required')) {
+        setState(() {
+          _needs2FA = true;
+        });
+      } else {
+        setState(() {
+          _errorMessage = _needs2FA ? 'Invalid verification code' : 'Invalid email or password';
+        });
+      }
     } finally {
       setState(() {
         _isLoading = false;
@@ -154,6 +170,65 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
+
+              // 2FA TOTP field
+              if (_needs2FA) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    'Enter the 6-digit code from your authenticator app',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _totpController,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  maxLength: 6,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontFamily: 'monospace',
+                    letterSpacing: 8,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Verification Code',
+                    hintText: '000000',
+                    counterText: '',
+                    prefixIcon: const Icon(Icons.security),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
+                    ),
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _needs2FA = false;
+                        _totpController.clear();
+                        _errorMessage = null;
+                      });
+                    },
+                    child: const Text('Back to login'),
+                  ),
+                ),
+              ],
               
               if (_errorMessage != null) ...[
                 const SizedBox(height: 16),

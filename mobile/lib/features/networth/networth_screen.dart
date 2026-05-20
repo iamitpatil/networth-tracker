@@ -1,5 +1,6 @@
 // lib/features/networth/networth_screen.dart
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_networth/providers/data_provider.dart';
 import 'package:flutter_networth/data/models/app_models.dart';
@@ -13,12 +14,41 @@ class NetWorthScreen extends StatefulWidget {
 }
 
 class _NetWorthScreenState extends State<NetWorthScreen> {
+  List<Map<String, dynamic>> _netWorthHistory = [];
+  bool _historyLoading = true;
+  String? _historyError;
+  int _selectedDays = 90;
+
+  final List<Map<String, dynamic>> _periods = [
+    {'days': 30, 'label': '30D'},
+    {'days': 90, 'label': '90D'},
+    {'days': 365, 'label': '1Y'},
+  ];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DataProvider>().loadDashboardData();
+      _loadNetWorthHistory();
     });
+  }
+
+  Future<void> _loadNetWorthHistory() async {
+    setState(() {
+      _historyLoading = true;
+      _historyError = null;
+    });
+    try {
+      final data = await context.read<DataProvider>().loadNetWorthHistory(_selectedDays);
+      setState(() {
+        _netWorthHistory = List<Map<String, dynamic>>.from(data);
+      });
+    } catch (e) {
+      setState(() => _historyError = e.toString());
+    } finally {
+      setState(() => _historyLoading = false);
+    }
   }
 
   String _formatCurrency(double value) {
@@ -179,6 +209,11 @@ class _NetWorthScreenState extends State<NetWorthScreen> {
                   _buildHealthScoreCard(healthScore),
                 
                 const SizedBox(height: 24),
+
+                // Net Worth Trend Chart
+                _buildNetWorthTrendCard(),
+
+                const SizedBox(height: 24),
                 
                 // Asset Allocation Chart
                 Card(
@@ -298,6 +333,230 @@ class _NetWorthScreenState extends State<NetWorthScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  String _formatLakhs(double value) {
+    if (value >= 10000000) {
+      return '${(value / 10000000).toStringAsFixed(1)}Cr';
+    } else if (value >= 100000) {
+      return '${(value / 100000).toStringAsFixed(1)}L';
+    } else if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(0)}K';
+    } else {
+      return value.toStringAsFixed(0);
+    }
+  }
+
+  Widget _buildNetWorthTrendCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Net Worth Trend',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Period Selector
+            Row(
+              children: _periods.map((period) {
+                final isSelected = _selectedDays == period['days'];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedDays = period['days']);
+                      _loadNetWorthHistory();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.blue : Colors.grey[200],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        period['label'],
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.grey[700],
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            // Chart area
+            SizedBox(
+              height: 200,
+              child: _historyLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _historyError != null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline, size: 32, color: Colors.red),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Failed to load history',
+                                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _loadNetWorthHistory,
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _netWorthHistory.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No history data available',
+                                style: TextStyle(color: Colors.grey[500]),
+                              ),
+                            )
+                          : _buildNetWorthChart(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNetWorthChart() {
+    final spots = _netWorthHistory.asMap().entries.map((entry) {
+      return FlSpot(
+        entry.key.toDouble(),
+        (entry.value['netWorth'] ?? 0).toDouble(),
+      );
+    }).toList();
+
+    final values = spots.map((s) => s.y).toList();
+    final minY = values.reduce((a, b) => a < b ? a : b);
+    final maxY = values.reduce((a, b) => a > b ? a : b);
+    final range = maxY - minY;
+    final chartMinY = range > 0 ? minY - range * 0.05 : minY * 0.95;
+    final chartMaxY = range > 0 ? maxY + range * 0.05 : maxY * 1.05;
+    final yInterval = range > 0 ? range / 4 : maxY / 4;
+
+    return LineChart(
+      LineChartData(
+        minY: chartMinY,
+        maxY: chartMaxY,
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: Colors.blue,
+            barWidth: 2.5,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                colors: [
+                  Colors.blue.withOpacity(0.3),
+                  Colors.blue.withOpacity(0.0),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+        ],
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: yInterval > 0 ? yInterval : 1,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: Colors.grey[200]!,
+            strokeWidth: 1,
+          ),
+        ),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 48,
+              interval: yInterval > 0 ? yInterval : null,
+              getTitlesWidget: (value, meta) {
+                if (value == meta.min || value == meta.max) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Text(
+                    _formatLakhs(value),
+                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  ),
+                );
+              },
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: (_netWorthHistory.length / 5).ceilToDouble(),
+              getTitlesWidget: (value, meta) {
+                final idx = value.toInt();
+                if (idx < 0 || idx >= _netWorthHistory.length) {
+                  return const SizedBox.shrink();
+                }
+                final date = _netWorthHistory[idx]['date']?.toString() ?? '';
+                final parts = date.split('-');
+                if (parts.length >= 3) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '${parts[2]}/${parts[1]}',
+                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(
+          show: true,
+          border: Border(
+            bottom: BorderSide(color: Colors.grey[300]!),
+            left: BorderSide(color: Colors.grey[300]!),
+          ),
+        ),
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            tooltipBgColor: Colors.black87,
+            getTooltipItems: (touchedSpots) {
+              return touchedSpots.map((spot) {
+                final idx = spot.x.toInt();
+                if (idx < 0 || idx >= _netWorthHistory.length) {
+                  return const LineTooltipItem('', TextStyle());
+                }
+                final point = _netWorthHistory[idx];
+                return LineTooltipItem(
+                  '${point['date']}\n₹${_formatLakhs(spot.y)}',
+                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                );
+              }).toList();
+            },
+          ),
         ),
       ),
     );

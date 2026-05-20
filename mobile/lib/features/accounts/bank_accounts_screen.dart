@@ -65,6 +65,31 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     }
   }
 
+  Future<void> _showEditDialog(Map<String, dynamic> account) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _BankAccountDialog(existingAccount: account),
+    );
+    if (result != null) {
+      try {
+        final id = account['id']?.toString() ?? '';
+        await ApiClient.put('/bank-accounts/$id', body: result);
+        _loadAccounts();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bank account updated!'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteAccount(String id) async {
     try {
       await ApiClient.delete('/bank-accounts/$id');
@@ -162,10 +187,23 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                               _formatCurrency(((account['balance'] ?? 0) as num).toDouble()),
                               style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red, size: 18),
-                              onPressed: () => _deleteAccount(account['id']?.toString() ?? ''),
-                              padding: EdgeInsets.zero,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue, size: 18),
+                                  onPressed: () => _showEditDialog(account),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+                                  onPressed: () => _deleteAccount(account['id']?.toString() ?? ''),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -185,7 +223,8 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
 }
 
 class _BankAccountDialog extends StatefulWidget {
-  const _BankAccountDialog();
+  final Map<String, dynamic>? existingAccount;
+  const _BankAccountDialog({this.existingAccount});
 
   @override
   State<_BankAccountDialog> createState() => _BankAccountDialogState();
@@ -202,6 +241,23 @@ class _BankAccountDialogState extends State<_BankAccountDialog> {
 
   final _types = ['SAVINGS', 'CURRENT', 'FD', 'NRE', 'NRO'];
 
+  bool get _isEditing => widget.existingAccount != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingAccount != null) {
+      final a = widget.existingAccount!;
+      _accountNameController.text = a['accountName']?.toString() ?? '';
+      _bankNameController.text = a['bankName']?.toString() ?? '';
+      _accountNumberController.text = a['accountNumber']?.toString() ?? '';
+      _ifscController.text = a['ifscCode']?.toString() ?? '';
+      _balanceController.text = (a['balance'] ?? '').toString();
+      final type = a['accountType']?.toString() ?? 'SAVINGS';
+      _accountType = _types.contains(type) ? type : 'SAVINGS';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -216,7 +272,7 @@ class _BankAccountDialogState extends State<_BankAccountDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Add Bank Account', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(_isEditing ? 'Edit Bank Account' : 'Add Bank Account', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _accountNameController,

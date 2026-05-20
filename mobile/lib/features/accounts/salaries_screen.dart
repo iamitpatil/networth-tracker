@@ -58,6 +58,31 @@ class _SalariesScreenState extends State<SalariesScreen> {
     }
   }
 
+  Future<void> _showEditDialog(Map<String, dynamic> salary) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _SalaryDialog(existingSalary: salary),
+    );
+    if (result != null) {
+      try {
+        final id = salary['id']?.toString() ?? '';
+        await ApiClient.put('/salaries/$id', body: result);
+        _loadSalaries();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Salary updated!'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteSalary(String id) async {
     try {
       await ApiClient.delete('/salaries/$id');
@@ -170,10 +195,21 @@ class _SalariesScreenState extends State<SalariesScreen> {
                                     ))),
                                   ],
                                   const SizedBox(height: 8),
-                                  TextButton.icon(
-                                    onPressed: () => _deleteSalary(salary['id']?.toString() ?? ''),
-                                    icon: const Icon(Icons.delete, color: Colors.red),
-                                    label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: () => _showEditDialog(salary),
+                                        icon: const Icon(Icons.edit, color: Colors.blue),
+                                        label: const Text('Edit', style: TextStyle(color: Colors.blue)),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      TextButton.icon(
+                                        onPressed: () => _deleteSalary(salary['id']?.toString() ?? ''),
+                                        icon: const Icon(Icons.delete, color: Colors.red),
+                                        label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -207,7 +243,8 @@ class _SalariesScreenState extends State<SalariesScreen> {
 }
 
 class _SalaryDialog extends StatefulWidget {
-  const _SalaryDialog();
+  final Map<String, dynamic>? existingSalary;
+  const _SalaryDialog({this.existingSalary});
 
   @override
   State<_SalaryDialog> createState() => _SalaryDialogState();
@@ -219,6 +256,25 @@ class _SalaryDialogState extends State<_SalaryDialog> {
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime _payDate = DateTime.now();
+
+  bool get _isEditing => widget.existingSalary != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingSalary != null) {
+      final s = widget.existingSalary!;
+      _employerController.text = s['employerName']?.toString() ?? '';
+      _amountController.text = (s['amount'] ?? '').toString();
+      _notesController.text = s['notes']?.toString() ?? '';
+      final dateStr = s['payDate']?.toString();
+      if (dateStr != null) {
+        try {
+          _payDate = DateTime.parse(dateStr);
+        } catch (_) {}
+      }
+    }
+  }
 
   Future<void> _selectDate() async {
     final picked = await showDatePicker(
@@ -243,7 +299,7 @@ class _SalaryDialogState extends State<_SalaryDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Add Salary', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(_isEditing ? 'Edit Salary' : 'Add Salary', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _employerController,

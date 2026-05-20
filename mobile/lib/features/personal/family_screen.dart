@@ -79,6 +79,99 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
+  Future<void> _deleteFamily(String id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Family'),
+        content: Text('Are you sure you want to delete "$name"? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      try {
+        await ApiClient.delete('/families/$id');
+        _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Family deleted'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
+    }
+  }
+
+  Future<void> _leaveFamily(String id) async {
+    try {
+      await ApiClient.delete('/families/$id/leave');
+      _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Left family successfully'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _inviteMember(String familyId) async {
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Invite Member'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'Email address',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.emailAddress,
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Invite'),
+            ),
+          ],
+        );
+      },
+    );
+    if (email != null && email.isNotEmpty) {
+      try {
+        await ApiClient.post('/families/$familyId/invite', body: {'email': email});
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Invitation sent to $email'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to invite: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,32 +228,76 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     )
                   else
-                    ..._families.map((family) => Card(
-                      child: ExpansionTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.green.withOpacity(0.1),
-                          child: const Icon(Icons.family_restroom, color: Colors.green),
-                        ),
-                        title: Text(family['name']?.toString() ?? ''),
-                        subtitle: Text('${family['approvedCount'] ?? 0} members'),
-                        children: [
-                          if (family['members'] != null)
-                            ...((family['members'] as List?) ?? []).map((m) => ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.person),
-                              title: Text(m['userName']?.toString() ?? ''),
-                              subtitle: Text(m['userEmail']?.toString() ?? ''),
-                              trailing: Text(
-                                m['status']?.toString() ?? '',
-                                style: TextStyle(
-                                  color: m['status'] == 'APPROVED' ? Colors.green : Colors.orange,
-                                  fontSize: 12,
-                                ),
+                    ..._families.map((family) {
+                      final familyId = family['id']?.toString() ?? '';
+                      final isAdmin = family['isAdmin'] == true || family['isCreator'] == true;
+                      return Card(
+                        child: ExpansionTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.green.withOpacity(0.1),
+                            child: const Icon(Icons.family_restroom, color: Colors.green),
+                          ),
+                          title: Row(
+                            children: [
+                              Expanded(child: Text(family['name']?.toString() ?? '')),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                                tooltip: 'Delete family',
+                                onPressed: () => _deleteFamily(familyId, family['name']?.toString() ?? ''),
                               ),
-                            )),
-                        ],
-                      ),
-                    )),
+                            ],
+                          ),
+                          subtitle: Text('${family['approvedCount'] ?? 0} members'),
+                          children: [
+                            if (family['members'] != null)
+                              ...((family['members'] as List?) ?? []).map((m) => ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.person),
+                                title: Text(m['userName']?.toString() ?? ''),
+                                subtitle: Text(m['userEmail']?.toString() ?? ''),
+                                trailing: Text(
+                                  m['status']?.toString() ?? '',
+                                  style: TextStyle(
+                                    color: m['status'] == 'APPROVED' ? Colors.green : Colors.orange,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              )),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              child: Row(
+                                children: [
+                                  if (!isAdmin)
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () => _leaveFamily(familyId),
+                                        icon: const Icon(Icons.exit_to_app, size: 18),
+                                        label: const Text('Leave'),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.orange,
+                                          side: const BorderSide(color: Colors.orange),
+                                        ),
+                                      ),
+                                    ),
+                                  if (!isAdmin) const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _inviteMember(familyId),
+                                      icon: const Icon(Icons.person_add, size: 18),
+                                      label: const Text('Invite'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.blue,
+                                        side: const BorderSide(color: Colors.blue),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                 ],
               ),
             ),

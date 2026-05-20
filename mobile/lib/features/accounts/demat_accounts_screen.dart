@@ -53,6 +53,35 @@ class _DematAccountsScreenState extends State<DematAccountsScreen> {
     }
   }
 
+  Future<void> _showEditDialog(Map<String, dynamic> account) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _DematAccountDialog(
+        brokers: _brokers,
+        types: _types,
+        existingAccount: account,
+      ),
+    );
+    if (result != null) {
+      try {
+        final id = account['id']?.toString() ?? '';
+        await ApiClient.put('/demat-accounts/$id', body: result);
+        _loadAccounts();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Demat account updated!'), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteAccount(String id) async {
     try {
       await ApiClient.delete('/demat-accounts/$id');
@@ -120,9 +149,18 @@ class _DematAccountsScreenState extends State<DematAccountsScreen> {
                             Text(account['accountType']?.toString() ?? '', style: const TextStyle(fontSize: 12)),
                           ],
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _deleteAccount(account['id']?.toString() ?? ''),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                              onPressed: () => _showEditDialog(account),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                              onPressed: () => _deleteAccount(account['id']?.toString() ?? ''),
+                            ),
+                          ],
                         ),
                       ),
                     )),
@@ -166,7 +204,8 @@ class _DematAccountsScreenState extends State<DematAccountsScreen> {
 class _DematAccountDialog extends StatefulWidget {
   final List<String> brokers;
   final List<String> types;
-  const _DematAccountDialog({required this.brokers, required this.types});
+  final Map<String, dynamic>? existingAccount;
+  const _DematAccountDialog({required this.brokers, required this.types, this.existingAccount});
 
   @override
   State<_DematAccountDialog> createState() => _DematAccountDialogState();
@@ -179,6 +218,23 @@ class _DematAccountDialogState extends State<_DematAccountDialog> {
   String _broker = 'Zerodha';
   String _type = 'Equity';
   bool _isDefault = false;
+
+  bool get _isEditing => widget.existingAccount != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingAccount != null) {
+      final a = widget.existingAccount!;
+      _accountNumberController.text = a['accountNumber']?.toString() ?? '';
+      _descriptionController.text = a['description']?.toString() ?? '';
+      final broker = a['brokerName']?.toString() ?? 'Zerodha';
+      _broker = widget.brokers.contains(broker) ? broker : 'Other';
+      final type = a['accountType']?.toString() ?? 'Equity';
+      _type = widget.types.contains(type) ? type : 'Equity';
+      _isDefault = a['isDefault'] == true;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +249,7 @@ class _DematAccountDialogState extends State<_DematAccountDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Add Demat Account', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(_isEditing ? 'Edit Demat Account' : 'Add Demat Account', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _broker,

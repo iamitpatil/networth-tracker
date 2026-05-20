@@ -129,6 +129,17 @@ class DataProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateHolding(String id, Map<String, dynamic> data) async {
+    try {
+      await ApiClient.put('/portfolio/holdings/$id', body: data);
+      await loadHoldings();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<void> loadGoals() async {
     _isLoading = true;
     notifyListeners();
@@ -170,6 +181,17 @@ class DataProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateGoal(String id, Map<String, dynamic> data) async {
+    try {
+      await ApiClient.put('/goals/$id', body: data);
+      await loadGoals();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<void> loadLiabilities() async {
     _isLoading = true;
     notifyListeners();
@@ -185,6 +207,51 @@ class DataProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> addLiability(Map<String, dynamic> data) async {
+    try {
+      await ApiClient.post('/liabilities', body: data);
+      await loadLiabilities();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteLiability(String id) async {
+    try {
+      await ApiClient.delete('/liabilities/$id');
+      _liabilities.removeWhere((l) => l.id == id);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<List<dynamic>> loadNetWorthHistory(int days) async {
+    try {
+      final response = await ApiClient.get('/net-worth/history?days=$days');
+      return response is List ? response : [];
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<List<dynamic>> loadInvestmentOverTime(int days) async {
+    try {
+      final response = await ApiClient.get('/portfolio/investment-over-time?days=$days');
+      return response is List ? response : [];
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
     }
   }
 
