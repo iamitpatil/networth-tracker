@@ -639,7 +639,7 @@ export default function Holdings() {
   const totalPnL = filteredHoldings.reduce((s, h) => s + (h.unrealizedPnl || 0), 0)
   const totalInvested = filteredHoldings.reduce((s, h) => s + ((h.quantity || 0) * (h.averageBuyPrice || 0)), 0)
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <HoldingsSkeletonLoader />
 
   return (
     <div className="space-y-6">
@@ -1412,6 +1412,102 @@ export default function Holdings() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ShimmerBar({ className = '' }) {
+  return (
+    <div className={`relative overflow-hidden bg-[var(--border)] rounded ${className}`}>
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-[var(--hover-bg)] to-transparent" />
+    </div>
+  )
+}
+
+function HoldingsSkeletonLoader() {
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Header skeleton */}
+      <div className="flex items-center justify-between">
+        <div>
+          <ShimmerBar className="h-7 w-36 mb-2" />
+          <ShimmerBar className="h-4 w-56" />
+        </div>
+        <ShimmerBar className="h-10 w-32 rounded-lg" />
+      </div>
+
+      {/* Summary cards skeleton */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+            <ShimmerBar className="h-3 w-20 mb-3" />
+            <ShimmerBar className="h-6 w-28" />
+          </div>
+        ))}
+      </div>
+
+      {/* Charts skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
+          <ShimmerBar className="h-5 w-28 mb-4" />
+          <div className="flex justify-center py-6">
+            <div className="w-44 h-44 rounded-full border-[12px] border-[var(--border)] relative overflow-hidden">
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-[var(--hover-bg)] to-transparent" />
+            </div>
+          </div>
+          <div className="flex justify-center gap-4 mt-2">
+            {[0, 1, 2].map(i => <ShimmerBar key={i} className="h-3 w-16" />)}
+          </div>
+        </div>
+        <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
+          <ShimmerBar className="h-5 w-36 mb-4" />
+          <div className="h-56 flex items-end gap-2 px-4">
+            {[40, 55, 45, 65, 50, 70, 60, 75, 68, 80, 72, 85].map((h, i) => (
+              <div key={i} className="flex-1 relative overflow-hidden rounded-t" style={{ height: `${h}%` }}>
+                <div className="absolute inset-0 bg-[var(--border)]" />
+                <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-[var(--hover-bg)] to-transparent" style={{ animationDelay: `${i * 100}ms` }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Table skeleton */}
+      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
+        {/* Tab bar skeleton */}
+        <div className="px-4 py-3 border-b border-[var(--border)] flex gap-2">
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <ShimmerBar key={i} className="h-8 w-16 rounded-lg" />
+          ))}
+        </div>
+        {/* Table header */}
+        <div className="px-4 py-3 bg-[var(--bg)]/50 flex gap-4">
+          <ShimmerBar className="h-3 w-32" />
+          <ShimmerBar className="h-3 w-16" />
+          <ShimmerBar className="h-3 w-12" />
+          <ShimmerBar className="h-3 w-16 ml-auto" />
+          <ShimmerBar className="h-3 w-20" />
+          <ShimmerBar className="h-3 w-16" />
+        </div>
+        {/* Table rows */}
+        {[0, 1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="px-4 py-4 border-t border-[var(--border)] flex items-center gap-4" style={{ animationDelay: `${i * 80}ms` }}>
+            <div className="flex items-center gap-3 flex-1">
+              <ShimmerBar className="w-8 h-8 rounded-lg shrink-0" />
+              <div>
+                <ShimmerBar className="h-4 w-24 mb-1.5" />
+                <ShimmerBar className="h-3 w-36" />
+              </div>
+            </div>
+            <ShimmerBar className="h-5 w-12 rounded" />
+            <ShimmerBar className="h-4 w-12" />
+            <ShimmerBar className="h-4 w-16" />
+            <ShimmerBar className="h-4 w-20" />
+            <ShimmerBar className="h-4 w-16" />
+            <ShimmerBar className="h-4 w-8" />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
