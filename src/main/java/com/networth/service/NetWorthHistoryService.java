@@ -22,6 +22,20 @@ public class NetWorthHistoryService {
     private static final String HISTORY_KEY_PREFIX = "networth:history:";
     private static final long HISTORY_RETENTION_DAYS = 365;
 
+    /**
+     * Insert a historical snapshot for a specific date (used for demo data seeding).
+     */
+    public void insertSnapshot(UUID userId, String date, Map<String, Object> values) {
+        String key = HISTORY_KEY_PREFIX + userId;
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("date", date);
+        for (Map.Entry<String, Object> e : values.entrySet()) {
+            entry.put(e.getKey(), e.getValue().toString());
+        }
+        redisTemplate.opsForHash().put(key, date, entry);
+        redisTemplate.expire(key, HISTORY_RETENTION_DAYS, java.util.concurrent.TimeUnit.DAYS);
+    }
+
     public void snapshotNetWorth(UUID userId) {
         NetWorthResponse snapshot = netWorthService.calculateNetWorth(userId);
         String key = HISTORY_KEY_PREFIX + userId;

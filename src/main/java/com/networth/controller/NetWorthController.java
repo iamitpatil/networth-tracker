@@ -86,4 +86,25 @@ public class NetWorthController {
     public ResponseEntity<Map<String, Object>> getHealthScore(@AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(healthScoreService.calculateHealthScore(UUID.fromString(userDetails.getUsername())));
     }
+
+    /**
+     * Seed historical net worth snapshots for demo/testing purposes.
+     * Accepts a list of {date, totalAssets, equityValue, goldValue, debtValue, totalLiabilities, ...}
+     */
+    @PostMapping("/seed-history")
+    public ResponseEntity<Map<String, Object>> seedHistory(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody List<Map<String, Object>> snapshots) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        int count = 0;
+        for (Map<String, Object> snapshot : snapshots) {
+            String date = snapshot.get("date") != null ? snapshot.get("date").toString() : null;
+            if (date == null) continue;
+            historyService.insertSnapshot(userId, date, snapshot);
+            count++;
+        }
+        // Also take a fresh snapshot for today
+        historyService.snapshotNetWorth(userId);
+        return ResponseEntity.ok(Map.of("seeded", count, "message", "History snapshots seeded successfully"));
+    }
 }
