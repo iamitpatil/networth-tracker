@@ -1,6 +1,8 @@
 package com.networth.controller;
 
 import com.networth.model.entity.Liability;
+import com.networth.service.CreditCardBillParser;
+import com.networth.service.DocumentService;
 import com.networth.service.EMIService;
 import com.networth.service.EMIService.EMIScheduleEntry;
 import com.networth.service.EMIService.LiabilityRequest;
@@ -11,9 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,6 +29,8 @@ public class LiabilityController {
 
     private final EMIService emiService;
     private final FamilyDataService familyDataService;
+    private final CreditCardBillParser creditCardBillParser;
+    private final DocumentService documentService;
 
     @GetMapping
     public ResponseEntity<List<Liability>> getUserLiabilities(
@@ -77,6 +83,27 @@ public class LiabilityController {
         return ResponseEntity.ok(emiService.getLoanSummary(
                 UUID.fromString(userDetails.getUsername()),
                 UUID.fromString(id)));
+    }
+
+    @PostMapping("/parse-cc-bill")
+    public ResponseEntity<Map<String, Object>> parseCreditCardBill(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            UUID userId = UUID.fromString(userDetails.getUsername());
+            // Store the document
+            var doc = documentService.uploadDocument(userId, file, "CC_BILL",
+                    "Credit card bill upload", null, null, null);
+            // Parse via AI
+            Map<String, Object> parsed = creditCardBillParser.parseBill(file, userDetails.getUsername());
+            // Attach document reference
+            Map<String, Object> result = new HashMap<>(parsed);
+            result.put("documentId", doc.getId().toString());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to parse credit card bill", "message", e.getMessage()));
+        }
     }
 
     @DeleteMapping("/{id}")
