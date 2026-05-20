@@ -212,4 +212,20 @@ public class DocumentService {
         }
         return doc;
     }
+
+    /**
+     * Save/update a document entity (used for setting accountType/accountId after initial upload).
+     */
+    @Transactional
+    public Document save(Document doc) {
+        return documentRepository.save(doc);
+    }
+
+    /**
+     * Get documents linked to a specific account (generic).
+     */
+    @Transactional(readOnly = true)
+    public List<Document> getAccountDocuments(String accountType, UUID accountId) {
+        return documentRepository.findByAccountTypeAndAccountIdOrderByCreatedAtDesc(accountType, accountId);
+    }
 }

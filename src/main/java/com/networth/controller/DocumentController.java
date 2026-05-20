@@ -74,17 +74,34 @@ public class DocumentController {
             @RequestParam(required = false) String salaryId,
             @RequestParam(required = false) String form16Id,
             @RequestParam(required = false) String itrFilingId,
-            @RequestParam(required = false) String bankAccountId) {
+            @RequestParam(required = false) String bankAccountId,
+            @RequestParam(required = false) String accountType,
+            @RequestParam(required = false) String accountId) {
         try {
             Document doc = documentService.uploadDocument(
                     UUID.fromString(userDetails.getUsername()),
                     file, category, description,
                     dematAccountId, holdingId, salaryId,
                     form16Id, itrFilingId, bankAccountId);
+            // Set generic account link if provided
+            if (accountType != null && !accountType.isBlank() && accountId != null && !accountId.isBlank()) {
+                doc.setAccountType(accountType);
+                doc.setAccountId(UUID.fromString(accountId));
+                doc = documentService.save(doc);
+            }
             return ResponseEntity.status(HttpStatus.CREATED).body(doc);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    @GetMapping("/account/{accountType}/{accountId}")
+    public ResponseEntity<List<Document>> getAccountDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String accountType,
+            @PathVariable String accountId) {
+        return ResponseEntity.ok(documentService.getAccountDocuments(
+                accountType, UUID.fromString(accountId)));
     }
 
     @GetMapping("/{id}/download")

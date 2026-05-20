@@ -18,4 +18,8 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     long countByDematAccountId(UUID dematAccountId);
     long countByHoldingId(UUID holdingId);
     long countBySalaryId(UUID salaryId);
+
+    // Generic account-based queries
+    List<Document> findByAccountTypeAndAccountIdOrderByCreatedAtDesc(String accountType, UUID accountId);
+    long countByAccountTypeAndAccountId(String accountType, UUID accountId);
 }

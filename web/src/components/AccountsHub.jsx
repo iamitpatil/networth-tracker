@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import client from '../api/client'
 import { toast } from 'sonner'
 import {
   Landmark, Building2, CreditCard, Shield, PiggyBank, Briefcase,
-  Plus, Trash2, Pencil, X, ChevronDown, ChevronUp, Eye, EyeOff
+  Plus, Trash2, Pencil, X, ChevronDown, ChevronUp, Eye, EyeOff,
+  Upload, FileText, Download, Loader2, Paperclip
 } from 'lucide-react'
 
 const TABS = [
@@ -151,12 +152,14 @@ export default function AccountsHub() {
           {activeTab === 'bank' && (data?.bankAccounts || []).map(a => (
             <AccountRow key={a.id} icon={Landmark} color="blue" title={a.accountName} subtitle={`${a.bankName} • ${a.accountType || 'SAVINGS'}`}
               detail={fmt(a.balance)} extra={a.accountNumber ? `****${a.accountNumber.slice(-4)}` : ''}
+              accountType="BANK" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleBankDelete(a.id)} />
           ))}
           {activeTab === 'demat' && (data?.dematAccounts || []).map(a => (
             <AccountRow key={a.id} icon={Building2} color="indigo" title={a.brokerName} subtitle={a.accountType || 'Equity'}
               detail={a.isDefault ? 'Default' : ''} extra={a.accountNumber || ''}
+              accountType="DEMAT" accountId={a.id}
               onEdit={() => { setForm({ brokerName: a.brokerName, accountType: a.accountType, description: a.description, isDefault: a.isDefault }); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDematDelete(a.id)} />
           ))}
@@ -166,6 +169,7 @@ export default function AccountsHub() {
               detail={a.creditLimit ? `Limit: ${fmt(a.creditLimit)}` : ''}
               extra={a.rewardType ? `${a.rewardType}` : ''}
               badge={a.isActive ? null : 'Inactive'}
+              accountType="CREDIT_CARD" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('credit-cards', a.id, `${a.cardIssuer} card`)} />
           ))}
@@ -173,6 +177,7 @@ export default function AccountsHub() {
             <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
               subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}`}
               detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.assetClass ? `Class ${a.assetClass}` : ''}
+              accountType="NPS" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('nps', a.id, `NPS ${a.pranNumber}`)} />
           ))}
@@ -181,6 +186,7 @@ export default function AccountsHub() {
               subtitle={`A/C: ${a.accountNumber}${a.branch ? ` • ${a.branch}` : ''}`}
               detail={a.currentBalance ? fmt(a.currentBalance) : ''}
               extra={a.maturityDate ? `Matures: ${new Date(a.maturityDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}` : ''}
+              accountType="PPF" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('ppf', a.id, 'PPF account')} />
           ))}
@@ -189,6 +195,7 @@ export default function AccountsHub() {
               subtitle={`UAN: ${a.uanNumber || '—'}${a.pfNumber ? ` • PF: ${a.pfNumber}` : ''}`}
               detail={a.currentBalance ? fmt(a.currentBalance) : ''}
               extra={a.isActive ? 'Active' : 'Inactive'}
+              accountType="EPF" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('epf', a.id, 'EPF account')} />
           ))}
@@ -211,25 +218,130 @@ export default function AccountsHub() {
   )
 }
 
-function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, onEdit, onDelete }) {
+function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, onEdit, onDelete, accountType, accountId }) {
+  const [showDocs, setShowDocs] = useState(false)
+  const [docs, setDocs] = useState([])
+  const [loadingDocs, setLoadingDocs] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+
+  const loadDocs = async () => {
+    if (!accountType || !accountId) return
+    setLoadingDocs(true)
+    try {
+      const { data } = await client.get(`/documents/account/${accountType}/${accountId}`)
+      setDocs(data || [])
+    } catch { setDocs([]) }
+    finally { setLoadingDocs(false) }
+  }
+
+  const toggleDocs = () => {
+    if (!showDocs) loadDocs()
+    setShowDocs(!showDocs)
+  }
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('category', accountType)
+      formData.append('description', `${title} document`)
+      formData.append('accountType', accountType)
+      formData.append('accountId', accountId)
+      await client.post('/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      toast.success('Document uploaded')
+      loadDocs()
+    } catch (err) {
+      toast.error('Upload failed', { description: err.response?.data?.message || err.message })
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const handleDeleteDoc = async (docId) => {
+    if (!confirm('Delete this document?')) return
+    try {
+      await client.delete(`/documents/${docId}`)
+      setDocs(prev => prev.filter(d => d.id !== docId))
+      toast.success('Document deleted')
+    } catch (err) {
+      toast.error('Delete failed', { description: err.response?.data?.message || err.message })
+    }
+  }
+
   return (
-    <div className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--hover-bg)] transition">
-      <div className={`w-9 h-9 rounded-lg bg-${color}-500/10 flex items-center justify-center shrink-0`}>
-        <Icon className={`w-4.5 h-4.5 text-${color}-400`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-[var(--text)] truncate">{title}</p>
-          {badge && <span className="text-[10px] bg-[var(--hover-bg)] text-[var(--text-muted)] px-1.5 py-0.5 rounded">{badge}</span>}
+    <div>
+      <div className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--hover-bg)] transition">
+        <div className={`w-9 h-9 rounded-lg bg-${color}-500/10 flex items-center justify-center shrink-0`}>
+          <Icon className={`w-4.5 h-4.5 text-${color}-400`} />
         </div>
-        <p className="text-xs text-[var(--text-muted)] truncate">{subtitle}</p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-[var(--text)] truncate">{title}</p>
+            {badge && <span className="text-[10px] bg-[var(--hover-bg)] text-[var(--text-muted)] px-1.5 py-0.5 rounded">{badge}</span>}
+          </div>
+          <p className="text-xs text-[var(--text-muted)] truncate">{subtitle}</p>
+        </div>
+        {detail && <p className="text-sm font-semibold text-[var(--text)] shrink-0">{detail}</p>}
+        {extra && <span className="text-xs text-[var(--text-muted)] shrink-0">{extra}</span>}
+        <div className="flex items-center gap-1 shrink-0">
+          {accountType && accountId && (
+            <button onClick={toggleDocs} className={`p-1.5 rounded transition ${showDocs ? 'bg-blue-500/10 text-blue-400' : 'text-[var(--text-muted)] hover:text-blue-400 hover:bg-blue-500/10'}`}
+              title="Documents">
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={onEdit} className="p-1.5 rounded hover:bg-blue-500/10 text-[var(--text-muted)] hover:text-blue-400 transition"><Pencil className="w-3.5 h-3.5" /></button>
+          <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>
       </div>
-      {detail && <p className="text-sm font-semibold text-[var(--text)] shrink-0">{detail}</p>}
-      {extra && <span className="text-xs text-[var(--text-muted)] shrink-0">{extra}</span>}
-      <div className="flex items-center gap-1 shrink-0">
-        <button onClick={onEdit} className="p-1.5 rounded hover:bg-blue-500/10 text-[var(--text-muted)] hover:text-blue-400 transition"><Pencil className="w-3.5 h-3.5" /></button>
-        <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
-      </div>
+
+      {/* Documents section */}
+      {showDocs && (
+        <div className="px-4 pb-3 pl-16">
+          <div className="bg-[var(--bg)] rounded-lg border border-[var(--border)] p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-[var(--text-muted)]">Documents ({docs.length})</span>
+              <div>
+                <input ref={fileRef} type="file" onChange={handleUpload} className="hidden" />
+                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                  className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 transition">
+                  {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                  {uploading ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+            </div>
+            {loadingDocs && <div className="flex justify-center py-2"><Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" /></div>}
+            {!loadingDocs && docs.length === 0 && (
+              <p className="text-xs text-[var(--text-secondary)] text-center py-2">No documents attached. Upload passbook, statement, or any supporting file.</p>
+            )}
+            {docs.map(doc => (
+              <div key={doc.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-[var(--hover-bg)] transition group">
+                <FileText className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-[var(--text)] truncate">{doc.originalFilename}</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">
+                    {doc.fileSize ? `${(doc.fileSize / 1024).toFixed(0)} KB` : ''} 
+                    {doc.createdAt ? ` • ${new Date(doc.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
+                  </p>
+                </div>
+                <a href={`/api/v1/documents/${doc.id}/download`} target="_blank" rel="noreferrer"
+                  className="p-1 rounded text-[var(--text-muted)] hover:text-blue-400 opacity-0 group-hover:opacity-100 transition">
+                  <Download className="w-3 h-3" />
+                </a>
+                <button onClick={() => handleDeleteDoc(doc.id)}
+                  className="p-1 rounded text-[var(--text-muted)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

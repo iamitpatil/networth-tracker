@@ -41,6 +41,13 @@ public class Document {
     @Column(name = "bank_account_id")
     private UUID bankAccountId;
 
+    // Generic account linking (new approach — replaces per-entity FK columns)
+    @Column(name = "account_type", length = 50)
+    private String accountType; // BANK, DEMAT, CREDIT_CARD, NPS, PPF, EPF, HOLDING, SALARY, etc.
+
+    @Column(name = "account_id")
+    private UUID accountId;
+
     @Column(name = "original_filename", nullable = false)
     private String originalFilename;
 
