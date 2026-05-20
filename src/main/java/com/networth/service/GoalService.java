@@ -149,16 +149,16 @@ public class GoalService {
         if (goal == null || goal.getDeletedAt() != null) return;
 
         List<GoalHolding> links = goalHoldingRepository.findByGoalId(goalId);
-        if (links.isEmpty()) return; // Don't reset to 0 if no links — keep manual value
 
-        BigDecimal total = BigDecimal.ZERO;
-        for (GoalHolding link : links) {
-            holdingRepository.findById(link.getHoldingId()).ifPresent(h -> {
-                // Non-final variable workaround: use array
-            });
+        // If no holdings linked, reset progress to zero
+        if (links.isEmpty()) {
+            goal.setCurrentAmount(BigDecimal.ZERO);
+            goalRepository.save(goal);
+            return;
         }
 
-        // Recompute
+        // Recompute from linked holdings
+        BigDecimal total = BigDecimal.ZERO;
         for (GoalHolding link : links) {
             Optional<Holding> hOpt = holdingRepository.findById(link.getHoldingId());
             if (hOpt.isPresent()) {
