@@ -1,14 +1,34 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import client from '../api/client'
 import {
   Send, Sparkles, FileText, X, Check, Minimize2, Maximize2,
-  Loader2, User, RotateCcw, MessageSquare,
+  Loader2, User, RotateCcw, MessageSquare, CreditCard, Wallet,
+  Building2, Briefcase, Search, Play, ArrowRight,
 } from 'lucide-react'
 
+const TOOL_ICONS = {
+  classify_document: FileText,
+  extract_credit_card_bill: CreditCard,
+  extract_salary_slip: Wallet,
+  extract_bank_statement: Building2,
+  extract_cas: Briefcase,
+  extract_form16: FileText,
+  extract_generic: FileText,
+  resolve_entity: Search,
+  search_holdings: Search,
+  search_accounts: Search,
+  search_credit_cards: Search,
+  create_transaction: Play,
+  update_cc_spend: CreditCard,
+  update_salary: Wallet,
+}
+
 export default function FloatingChat() {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [messages, setMessages] = useState([])
@@ -16,8 +36,14 @@ export default function FloatingChat() {
   const [mode, setMode] = useState('advice')
   const [loading, setLoading] = useState(false)
   const [executing, setExecuting] = useState(null)
+  const [mcpTools, setMcpTools] = useState([])
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    client.get('/mcp/tools').then(({ data }) => setMcpTools(data)).catch(() => {})
+  }, [open])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -254,6 +280,30 @@ export default function FloatingChat() {
                           {p}
                         </button>
                       ))}
+                      {mcpTools.length > 0 && (
+                        <>
+                          <div className="pt-2">
+                            <p className="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">Quick Actions</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {mcpTools.slice(0, 6).map((tool) => {
+                              const Icon = TOOL_ICONS[tool.name] || Sparkles
+                              const label = tool.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                              return (
+                                <button
+                                  key={tool.name}
+                                  onClick={() => navigate('/smart-import')}
+                                  title={tool.description}
+                                  className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border border-[var(--border)] hover:border-blue-500/30 hover:bg-blue-500/5 transition"
+                                >
+                                  <Icon className="w-3 h-3 shrink-0 text-blue-400" />
+                                  <span className="truncate">{label}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : (
