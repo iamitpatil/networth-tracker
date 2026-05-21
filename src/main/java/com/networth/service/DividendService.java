@@ -38,6 +38,10 @@ public class DividendService {
 
                 String year = dividend.getPaymentDate() != null
                         ? String.valueOf(dividend.getPaymentDate().getYear())
+                        : dividend.getRecordDate() != null
+                        ? String.valueOf(dividend.getRecordDate().getYear())
+                        : dividend.getExDate() != null
+                        ? String.valueOf(dividend.getExDate().getYear())
                         : "unknown";
                 dividendsByYear.merge(year, dividend.getDividendAmount(), BigDecimal::add);
 

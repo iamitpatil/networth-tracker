@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
 import UpstoxSync from '../components/UpstoxSync'
@@ -106,6 +106,11 @@ export default function Holdings() {
   const [backfillStatus, setBackfillStatus] = useState(null)
   const [chartMode, setChartMode] = useState('recharts')
   const [newsHolding, setNewsHolding] = useState(null)
+  const [dividendSummary, setDividendSummary] = useState(null)
+  const [dividendHolding, setDividendHolding] = useState(null)
+  const [dividendRecords, setDividendRecords] = useState([])
+  const [dividendRecordsLoading, setDividendRecordsLoading] = useState(false)
+  const [calculatingDividends, setCalculatingDividends] = useState(false)
 
   const chartStats = useMemo(() => {
     if (!priceHistory.length) return null
@@ -231,11 +236,13 @@ export default function Holdings() {
       client.get('/demat-accounts'),
       client.get('/symbols'),
       client.get('/portfolio/investment-over-time?days=365'),
-    ]).then(([h, d, s, i]) => {
+      client.get('/dividends/summary'),
+    ]).then(([h, d, s, i, div]) => {
       setHoldings(h.data || [])
       setDematAccounts(d.data || [])
       setSymbols(s.data || [])
       setInvestmentHistory(i.data || [])
+      setDividendSummary(div.data || null)
     }).catch(console.error)
       .finally(() => setLoading(false))
   }, [])
@@ -605,6 +612,34 @@ export default function Holdings() {
     setPreviewDoc(null)
   }
 
+  const handleCalculateDividends = async () => {
+    setCalculatingDividends(true)
+    try {
+      const { data } = await client.post('/dividends/calculate')
+      toast.success(`Dividends calculated: ${data.newDividends} new, ${data.updatedDividends} updated`)
+      const { data: summary } = await client.get('/dividends/summary')
+      setDividendSummary(summary)
+    } catch (e) {
+      toast.error('Failed to calculate dividends')
+    } finally {
+      setCalculatingDividends(false)
+    }
+  }
+
+  const handleShowDividendDetail = async (holding) => {
+    setDividendHolding(holding)
+    setDividendRecordsLoading(true)
+    setDividendRecords([])
+    try {
+      const { data } = await client.get(`/dividends/holding/${holding.id}`)
+      setDividendRecords(data || [])
+    } catch (e) {
+      toast.error('Failed to load dividend records')
+    } finally {
+      setDividendRecordsLoading(false)
+    }
+  }
+
   // Context-aware allocation: by asset type when "All", by individual holding when specific tab
   const allocation = useMemo(() => {
     if (filter === 'all') {
@@ -934,7 +969,7 @@ export default function Holdings() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
           <p className="text-[var(--text-muted)] text-sm">Invested</p>
           <p className="text-xl font-bold mt-1">Rs. {totalInvested.toLocaleString('en-IN')}</p>
@@ -954,6 +989,29 @@ export default function Holdings() {
           <p className={`text-xl font-bold mt-1 ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {totalInvested > 0 ? ((totalPnL / totalInvested) * 100).toFixed(2) : 0}%
           </p>
+        </div>
+        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+          <div className="flex items-center justify-between">
+            <p className="text-[var(--text-muted)] text-sm">Dividends</p>
+            {dividendSummary && (
+              <button
+                onClick={handleCalculateDividends}
+                disabled={calculatingDividends}
+                className="text-[10px] text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                title="Recalculate dividends"
+              >
+                {calculatingDividends ? '...' : 'Refresh'}
+              </button>
+            )}
+          </div>
+          <p className="text-xl font-bold mt-1 text-green-400">
+            Rs. {dividendSummary ? Number(dividendSummary.totalDividends || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '-'}
+          </p>
+          {dividendSummary && dividendSummary.dividendYield > 0 && (
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Yield: {Number(dividendSummary.dividendYield).toFixed(2)}%
+            </p>
+          )}
         </div>
       </div>
 
@@ -1051,12 +1109,13 @@ export default function Holdings() {
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Value</th>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Day Chg %</th>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">P&L</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Dividends</th>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {groupedHoldings.length === 0 ? (
-              <tr><td colSpan="9" className="px-4 py-12 text-center text-[var(--text-secondary)]">No holdings yet. Add your first investment above.</td></tr>
+              <tr><td colSpan="10" className="px-4 py-12 text-center text-[var(--text-secondary)]">No holdings yet. Add your first investment above.</td></tr>
             ) : (
               groupedHoldings.flatMap((group) => {
                 const isExpanded = expandedGroups[group.key]
@@ -1126,6 +1185,28 @@ export default function Holdings() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {!group.isGroup && group.representative && (
+                        (() => {
+                          const symbol = group.symbol
+                          const divAmt = dividendSummary?.dividendsByStock?.[symbol]
+                          if (divAmt && Number(divAmt) > 0) {
+                            return (
+                              <button
+                                onClick={() => handleShowDividendDetail(group.representative)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-green-400 hover:text-green-300 transition"
+                                title="View dividend details"
+                              >
+                                <IndianRupee className="w-3 h-3" />
+                                {Number(divAmt).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              </button>
+                            )
+                          }
+                          return <span className="text-xs text-[var(--text-secondary)]">-</span>
+                        })()
+                      )}
+                      {group.isGroup && <span className="text-xs text-[var(--text-secondary)]">-</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       {!group.isGroup && (
                         <div className="flex items-center justify-end gap-1">
                           {(group.assetType === 'EQUITY' || group.assetType === 'ETF' || group.assetType === 'MUTUAL_FUND') && (
@@ -1178,6 +1259,7 @@ export default function Holdings() {
                       <td className={`px-4 py-2 text-right text-sm ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         Rs. {Math.abs(pnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </td>
+                      <td className="px-4 py-2"></td>
                       <td className="px-4 py-2"></td>
                     </tr>
                   )
@@ -1412,6 +1494,73 @@ export default function Holdings() {
           </div>
         </div>
       )}
+
+      {/* Dividend Detail Modal */}
+      {dividendHolding && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setDividendHolding(null); setDividendRecords([]) }}>
+          <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-lg font-semibold">{dividendHolding.symbol} - Dividends</h3>
+                <p className="text-sm text-[var(--text-muted)]">
+                  {dividendRecords.length} record{dividendRecords.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <button onClick={() => { setDividendHolding(null); setDividendRecords([]) }} className="text-[var(--text-secondary)] hover:text-[var(--text)] transition p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {dividendRecordsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+              </div>
+            ) : dividendRecords.length === 0 ? (
+              <div className="text-center py-12">
+                <IndianRupee className="w-12 h-12 mx-auto text-[var(--text-muted)] mb-3" />
+                <p className="text-[var(--text-secondary)]">No dividend records yet.</p>
+                <button
+                  onClick={() => { setDividendHolding(null); setDividendRecords([]); handleCalculateDividends() }}
+                  className="mt-3 text-sm text-blue-400 hover:text-blue-300 transition"
+                >
+                  Calculate dividends now
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {dividendRecords.map((rec, i) => (
+                  <div key={rec.id || i} className="flex items-center justify-between p-3 rounded-lg bg-[var(--input-bg)]/50">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="w-4 h-4 text-[var(--text-muted)]" />
+                      <div>
+                        <p className="text-sm font-medium">
+                          {rec.recordDate
+                            ? new Date(rec.recordDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })
+                            : rec.exDate
+                              ? new Date(rec.exDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : 'Unknown'}
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          {rec.dividendType || 'Dividend'} {rec.reinvested ? '(Reinvested)' : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-green-400">
+                      +Rs. {Number(rec.dividendAmount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20 mt-3">
+                  <p className="text-sm font-semibold">Total</p>
+                  <p className="text-sm font-bold text-green-400">
+                    Rs. {dividendRecords.reduce((s, r) => s + Number(r.dividendAmount || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1437,8 +1586,8 @@ function HoldingsSkeletonLoader() {
       </div>
 
       {/* Summary cards skeleton */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[0, 1, 2, 3].map(i => (
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {[0, 1, 2, 3, 4].map(i => (
           <div key={i} className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
             <ShimmerBar className="h-3 w-20 mb-3" />
             <ShimmerBar className="h-6 w-28" />
