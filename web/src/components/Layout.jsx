@@ -21,6 +21,7 @@ import {
   Bot,
   ChevronDown,
   Users,
+  Brain,
 } from 'lucide-react'
 import FloatingChat from './FloatingChat'
 import AppLogo from './AppLogo'
@@ -65,6 +66,7 @@ export default function Layout() {
       { to: '/goals', icon: <Target className="w-5 h-5" style={{color:'var(--green)'}} />, label: 'Goals' },
       { to: '/liabilities', icon: <TrendingUp className="w-5 h-5" style={{color:'var(--amber)'}} />, label: 'Liabilities' },
       { to: '/import', icon: <Upload className="w-5 h-5" style={{color:'var(--primary)'}} />, label: 'Import' },
+      { to: '/smart-import', icon: <Brain className="w-5 h-5" style={{color:'var(--primary)'}} />, label: 'Smart Import' },
     ]},
   ]
 
