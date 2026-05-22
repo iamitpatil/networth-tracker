@@ -3,7 +3,7 @@
 > **Status:** Production | **Last updated:** 2026-05-22
 > **Model:** Gemma 4 E4B (4.5B effective params, 128K context, native function calling + thinking)
 > **Stack:** Spring Boot + llama.cpp + React SSE
-> **Tools:** 32 tools across 6 classes + 3 expert agents
+> **Tools:** 46 tools across 6 classes + 8 expert agents
 
 ---
 
@@ -88,13 +88,13 @@ Browser (React)                Spring Boot (:8080)               Gemma 4 E4B (:8
      |<-----------------------------|   | Save session + traces         |
      |                              |                                   |
 
-Tool Classes (in-process, 32 tools):
+Tool Classes (in-process, 46 tools):
   DocumentClassificationTools  (1 tool)
   DocumentExtractionTools      (6 tools)
   EntityResolutionTools        (4 tools)
   ExecutionTools               (6 tools)
-  FinancialAnalyticsTools      (12 tools)
-  AgentTools                   (3 agents)
+  FinancialAnalyticsTools      (21 tools)
+  AgentTools                   (8 agents)
 ```
 
 ### Key Components
@@ -216,9 +216,9 @@ The `agentId` allows the frontend to associate events with the correct agent too
 
 ## 7. MCP Tools
 
-32 tools across 6 classes:
+46 tools across 6 classes:
 
-### Document Tools (7)
+### Document Tools (7) — `DocumentClassificationTools` + `DocumentExtractionTools`
 
 | Tool | Status | Description |
 |---|---|---|
@@ -230,7 +230,7 @@ The `agentId` allows the frontend to associate events with the correct agent too
 | `extract_form16` | Working | Form 16 extraction |
 | `extract_generic` | Working | Fallback extraction |
 
-### Search Tools (4)
+### Search Tools (4) — `EntityResolutionTools`
 
 | Tool | Status | Description |
 |---|---|---|
@@ -239,7 +239,7 @@ The `agentId` allows the frontend to associate events with the correct agent too
 | `search_credit_cards` | Working | Cards by issuer or last 4 |
 | `resolve_entity` | Working | Match entities to portfolio |
 
-### Execution Tools (6, HITL-Protected)
+### Execution Tools (6, HITL-Protected) — `ExecutionTools`
 
 | Tool | Status | Description |
 |---|---|---|
@@ -250,7 +250,7 @@ The `agentId` allows the frontend to associate events with the correct agent too
 | `update_holding` | Stub | Not implemented |
 | `link_document` | Stub | Not implemented |
 
-### Financial Analytics Tools (12)
+### Financial Analytics Tools (21) — `FinancialAnalyticsTools`
 
 | Tool | Status | Description |
 |---|---|---|
@@ -265,15 +265,29 @@ The `agentId` allows the frontend to associate events with the correct agent too
 | `get_goals` | Working | List financial goals |
 | `get_goal_progress` | Working | Goal progress with shortfall |
 | `get_liabilities` | Working | List loans |
-| `calculate_emi` | Working | EMI calculator (no user data needed) |
+| `calculate_emi` | Working | EMI calculator |
+| `get_sip_calendar` | Working | SIP schedule, upcoming/missed SIPs |
+| `get_spend_reports` | Working | All CC spend reports |
+| `get_monthly_spend` | Working | Month deep-dive with categories |
+| `get_spend_trend` | Working | Monthly spend totals for trends |
+| `get_payment_summary` | Working | Outstanding bills, due dates |
+| `search_news` | Working | Search news by keyword |
+| `get_portfolio_news` | Working | News for all held stocks |
+| `get_rebalancing_suggestions` | Working | Target vs current allocation |
+| `get_loan_summary` | Working | Loan detail with progress |
 
-### Expert Agent Tools (3)
+### Expert Agent Tools (8) — `AgentTools`
 
 | Tool | Description |
 |---|---|
 | `analyze_stock` | Deep stock analysis via sub-orchestrator |
 | `portfolio_doctor` | Full portfolio health check via sub-orchestrator |
 | `tax_advisor` | Tax planning via sub-orchestrator |
+| `goal_planner` | Financial goal planning via sub-orchestrator |
+| `debt_optimizer` | Debt reduction strategy via sub-orchestrator |
+| `spend_analyzer` | CC spend analysis via sub-orchestrator |
+| `market_scout` | Portfolio news scan via sub-orchestrator |
+| `sip_optimizer` | SIP review and optimization via sub-orchestrator |
 
 ---
 
@@ -317,11 +331,16 @@ Main orchestrator presents agent's analysis to user
 
 ### Agent Definitions
 
-| Agent | System Prompt Focus | Allowed Tools | Max Rounds |
+| Agent | Trigger Queries | Allowed Tools | Max Rounds |
 |---|---|---|---|
-| **Stock Analyst** | Single stock deep-dive: performance, news, risk, buy/hold/sell | search_holdings, search_accounts, get_portfolio_summary, get_net_worth, get_asset_allocation, get_sector_allocation, calculate_xirr, get_financial_health_score, search_credit_cards | 4 |
-| **Portfolio Doctor** | Comprehensive health check with action plan | search_holdings, search_accounts, search_credit_cards, get_net_worth, get_portfolio_summary, get_asset_allocation, get_sector_allocation, get_financial_health_score, calculate_xirr, get_goals, get_liabilities | 4 |
-| **Tax Advisor** | Tax planning: gains, harvesting, regime comparison | search_holdings, get_net_worth, get_portfolio_summary, calculate_capital_gains, compare_tax_regimes, get_goals, get_liabilities, get_financial_health_score | 4 |
+| **Stock Analyst** | "Analyze my INFY stock", "Should I sell TCS?" | search_holdings, search_accounts, get_portfolio_summary, get_net_worth, get_asset_allocation, get_sector_allocation, calculate_xirr, get_financial_health_score, search_credit_cards | 4 |
+| **Portfolio Doctor** | "Full portfolio review", "What should I change?" | search_holdings, search_accounts, search_credit_cards, get_net_worth, get_portfolio_summary, get_asset_allocation, get_sector_allocation, get_financial_health_score, calculate_xirr, get_goals, get_liabilities | 4 |
+| **Tax Advisor** | "Help minimize taxes", "Tax planning for this year" | search_holdings, get_net_worth, get_portfolio_summary, calculate_capital_gains, compare_tax_regimes, get_goals, get_liabilities, get_financial_health_score | 4 |
+| **Goal Planner** | "Am I on track for retirement?", "Create a savings plan" | get_goals, get_goal_progress, search_holdings, get_net_worth, get_portfolio_summary, get_sip_calendar, get_asset_allocation, get_financial_health_score | 4 |
+| **Debt Optimizer** | "How to become debt-free?", "Should I prepay my loan?" | get_liabilities, get_loan_summary, calculate_emi, get_net_worth, get_portfolio_summary, get_financial_health_score, search_accounts | 4 |
+| **Spend Analyzer** | "Where is my money going?", "Analyze my CC spending" | get_spend_reports, get_monthly_spend, get_spend_trend, get_payment_summary, search_credit_cards, get_net_worth | 4 |
+| **Market Scout** | "Any news about my stocks?", "Market update for my portfolio" | search_holdings, get_portfolio_news, search_news, get_portfolio_summary, get_sector_allocation | 4 |
+| **SIP Optimizer** | "Review my SIPs", "Optimize monthly investments" | get_sip_calendar, search_holdings, get_portfolio_summary, get_asset_allocation, get_goals, get_financial_health_score, get_rebalancing_suggestions | 4 |
 
 ### ThreadLocal Context (AgentContext)
 
@@ -493,8 +512,8 @@ agentSteps: [
 | `service/documentgraph/mcp/tools/DocumentExtractionTools.java` | 6 tools |
 | `service/documentgraph/mcp/tools/EntityResolutionTools.java` | 4 tools |
 | `service/documentgraph/mcp/tools/ExecutionTools.java` | 6 tools |
-| `service/documentgraph/mcp/tools/FinancialAnalyticsTools.java` | 12 tools |
-| `service/documentgraph/mcp/tools/AgentTools.java` | 3 expert agents |
+| `service/documentgraph/mcp/tools/FinancialAnalyticsTools.java` | 21 analytics tools |
+| `service/documentgraph/mcp/tools/AgentTools.java` | 8 expert agents |
 | `controller/AIChatController.java` | REST endpoints + PDF extraction |
 | `model/entity/AiChatSession.java` | Session entity |
 | `model/entity/AiPendingAction.java` | HITL entity |
@@ -533,3 +552,22 @@ agentSteps: [
 | 2026-05-22 | Collapsible reasoning (ReasoningCard) | Consistent with collapsible tool cards |
 | 2026-05-22 | Wrench icon for tools, Bot for agents | Universal icons, removed per-tool color maps |
 | 2026-05-22 | Synthetic round 2 reasoning | Shows activity when model skips thinking |
+| 2026-05-22 | 21 financial analytics tools | Net worth, health score, tax, goals, EMI, SIP calendar, spend reports, news, rebalancing |
+| 2026-05-22 | 8 expert agents as sub-orchestrators | AI-driven tool selection per agent, not hardcoded Java |
+| 2026-05-22 | AgentExecutor with own tool loop | Each agent runs up to 4 rounds, autonomously choosing tools |
+| 2026-05-22 | Agent tool results in SSE | agent_tool_end includes full result for UI display |
+| 2026-05-22 | 46 total tools | 7 doc + 4 search + 6 exec + 21 analytics + 8 agents |
+
+---
+
+## 17. Tool Count Progression
+
+```
+Phase 1 (May 21):  0 tools  — Hardcoded Java graph engine
+Phase 2 (May 21): 17 tools  — MCP @Tool annotations (doc + search + exec)
+Phase 3 (May 21): 17 tools  — AI-driven orchestrator with SSE streaming
++ Gemma 4 (May 22): 17 tools — Switched model, 128K context, thinking mode
++ Analytics (May 22): 29 tools — Added net worth, health score, tax, goals, EMI
++ Agents v1 (May 22): 32 tools — Stock analyst, portfolio doctor, tax advisor
++ Full suite (May 22): 46 tools — All 8 agents + SIP, spend, news, rebalancing tools
+```

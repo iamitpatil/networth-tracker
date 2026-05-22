@@ -34,7 +34,9 @@ public class McpAIChatService {
     private final AiConfig aiConfig;
 
     private static final Set<String> AGENT_TOOLS = Set.of(
-            "analyze_stock", "portfolio_doctor", "tax_advisor"
+            "analyze_stock", "portfolio_doctor", "tax_advisor",
+            "goal_planner", "debt_optimizer", "spend_analyzer",
+            "market_scout", "sip_optimizer"
     );
 
     private static final Set<String> EXECUTION_TOOLS = Set.of(
@@ -156,25 +158,39 @@ Always present 2-4 specific options so the user can choose.
 **Record Data (HITL — needs user approval):**
 - create_transaction, update_cc_spend, update_salary, update_account_balance
 
-**Expert Agents (deep multi-step analysis):**
-- analyze_stock — Deep-dive on a specific stock: performance, news, risk, buy/hold/sell
-- portfolio_doctor — Full portfolio health check with actionable rebalancing plan
-- tax_advisor — Comprehensive tax planning: capital gains, regime comparison, harvesting
+**Expert Agents (deep multi-step analysis — use for complex requests):**
+- analyze_stock — Deep-dive on a specific stock
+- portfolio_doctor — Full portfolio health check with action plan
+- tax_advisor — Comprehensive tax planning
+- goal_planner — Financial goal planning and tracking
+- debt_optimizer — Debt reduction strategy
+- spend_analyzer — Credit card spend analysis and budgeting
+- market_scout — Market news scan for portfolio holdings
+- sip_optimizer — SIP review and optimization
+
+**Additional Tools:**
+- get_sip_calendar, get_spend_reports, get_monthly_spend, get_spend_trend
+- get_payment_summary, search_news, get_portfolio_news
+- get_rebalancing_suggestions, get_loan_summary
 
 == INTENT → TOOL MAPPING ==
 
 1. **GREETING** → No tools. Respond conversationally.
 2. **NET WORTH / OVERVIEW** → get_net_worth, get_portfolio_summary
-3. **PORTFOLIO ANALYSIS** → search_holdings(query="",limit=50), get_asset_allocation, get_sector_allocation, calculate_xirr
-4. **DEEP PORTFOLIO REVIEW** → portfolio_doctor (use when user wants comprehensive review/action plan)
-5. **SPECIFIC STOCK ANALYSIS** → analyze_stock (use when user asks about a specific stock in detail)
-6. **TAX QUESTIONS** → tax_advisor for comprehensive advice, or calculate_capital_gains/compare_tax_regimes for specific queries
-7. **GOAL TRACKING** → get_goals, then get_goal_progress for specific goals
-8. **HEALTH CHECK** → get_financial_health_score
-9. **LOAN / EMI** → get_liabilities, calculate_emi
-10. **DOCUMENT PROCESSING** → classify → extract → resolve → present → ask to record
-11. **RECORD DATA** → Propose clearly, then call execution tool only after "yes"
-12. **AMBIGUOUS** → Ask clarifying question with 2-4 options. Do NOT guess.
+3. **PORTFOLIO ANALYSIS** → search_holdings, get_asset_allocation, get_sector_allocation
+4. **DEEP PORTFOLIO REVIEW** → portfolio_doctor agent
+5. **SPECIFIC STOCK ANALYSIS** → analyze_stock agent
+6. **TAX QUESTIONS** → tax_advisor agent (comprehensive) or calculate_capital_gains (quick)
+7. **GOAL PLANNING** → goal_planner agent (comprehensive) or get_goals (quick list)
+8. **DEBT / LOANS** → debt_optimizer agent (comprehensive) or get_liabilities (quick list)
+9. **SPENDING / BUDGET** → spend_analyzer agent (comprehensive) or get_spend_reports (quick)
+10. **MARKET NEWS** → market_scout agent (portfolio-wide) or search_news (specific topic)
+11. **SIP / MUTUAL FUNDS** → sip_optimizer agent (comprehensive) or get_sip_calendar (quick)
+12. **HEALTH CHECK** → get_financial_health_score
+13. **REBALANCING** → get_rebalancing_suggestions
+14. **DOCUMENT PROCESSING** → classify → extract → resolve → present → ask to record
+15. **RECORD DATA** → Propose clearly, then call execution tool only after "yes"
+16. **AMBIGUOUS** → Ask clarifying question with 2-4 options. Do NOT guess.
 
 == HITL RULES ==
 Execution tools (create_transaction, update_cc_spend, update_salary, update_account_balance):
@@ -1034,6 +1050,11 @@ All other tools: Call freely — they are read-only and safe.
         ));
         toolParams.put("portfolio_doctor", List.of());
         toolParams.put("tax_advisor", List.of());
+        toolParams.put("goal_planner", List.of());
+        toolParams.put("debt_optimizer", List.of());
+        toolParams.put("spend_analyzer", List.of());
+        toolParams.put("market_scout", List.of());
+        toolParams.put("sip_optimizer", List.of());
 
         // ── Financial Analytics Tools ──
         toolParams.put("get_net_worth", List.of());
@@ -1059,6 +1080,24 @@ All other tools: Call freely — they are read-only and safe.
                 param("principal", "number", "Loan principal amount in INR", true),
                 param("annualRate", "number", "Annual interest rate (e.g. 8.5 for 8.5%)", true),
                 param("tenureMonths", "number", "Loan tenure in months", true)
+        ));
+        toolParams.put("get_sip_calendar", List.of());
+        toolParams.put("get_spend_reports", List.of());
+        toolParams.put("get_monthly_spend", List.of(
+                param("month", "string", "Month in YYYY-MM format", true)
+        ));
+        toolParams.put("get_spend_trend", List.of());
+        toolParams.put("get_payment_summary", List.of());
+        toolParams.put("search_news", List.of(
+                param("query", "string", "Search query (stock name, topic)", true),
+                param("limit", "integer", "Max results", false)
+        ));
+        toolParams.put("get_portfolio_news", List.of());
+        toolParams.put("get_rebalancing_suggestions", List.of(
+                param("riskProfile", "string", "Risk profile: conservative, moderate, or aggressive", true)
+        ));
+        toolParams.put("get_loan_summary", List.of(
+                param("liabilityId", "string", "Loan/Liability ID (UUID)", true)
         ));
 
         List<Map<String, Object>> result = new ArrayList<>();

@@ -5,7 +5,11 @@ import com.networth.model.entity.Liability;
 import com.networth.service.EMIService;
 import com.networth.service.GoalService;
 import com.networth.service.HealthScoreService;
+import com.networth.service.RebalancingService;
+import com.networth.service.SIPCalendarService;
+import com.networth.service.SpendAnalyticsService;
 import com.networth.service.analytics.AnalyticsService;
+import com.networth.service.market.NewsService;
 import com.networth.service.networth.NetWorthService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.PortfolioSummaryService;
@@ -35,6 +39,10 @@ public class FinancialAnalyticsTools {
     private final TaxRegimeCalculator taxRegimeCalculator;
     private final GoalService goalService;
     private final EMIService emiService;
+    private final SIPCalendarService sipCalendarService;
+    private final SpendAnalyticsService spendAnalyticsService;
+    private final NewsService newsService;
+    private final RebalancingService rebalancingService;
 
     // ── Net Worth & Overview ─────────────────────────────────────
 
@@ -254,6 +262,127 @@ public class FinancialAnalyticsTools {
             return result;
         } catch (Exception e) {
             return errorResult("Failed to calculate EMI", e);
+        }
+    }
+
+    // ── SIP ──────────────────────────────────────────────────────
+
+    @Tool(name = "get_sip_calendar", description = "Get SIP (Systematic Investment Plan) calendar: upcoming SIPs, missed SIPs, total monthly SIP amount, and per-holding SIP details")
+    public Map<String, Object> getSipCalendar(
+            @ToolParam(description = "User ID (UUID)") String userId) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            return sipCalendarService.getSIPCalendar(uid);
+        } catch (Exception e) {
+            return errorResult("Failed to get SIP calendar", e);
+        }
+    }
+
+    // ── Spend Analytics ─────────────────────────────────────────
+
+    @Tool(name = "get_spend_reports", description = "Get all credit card spend reports for the user, newest first. Shows card issuer, total due, transactions per statement.")
+    public List<Map<String, Object>> getSpendReports(
+            @ToolParam(description = "User ID (UUID)") String userId) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            return spendAnalyticsService.getUserReports(uid).stream().map(r -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", r.getId().toString());
+                m.put("cardIssuer", r.getCardIssuer());
+                m.put("cardLastFour", r.getCardLastFour());
+                m.put("statementMonth", r.getStatementMonth());
+                m.put("totalAmountDue", r.getTotalAmountDue());
+                m.put("newCharges", r.getNewCharges());
+                m.put("paid", r.getPaid());
+                m.put("transactionCount", r.getTransactions() != null ? r.getTransactions().size() : 0);
+                return m;
+            }).collect(Collectors.toList());
+        } catch (Exception e) {
+            return List.of(errorResult("Failed to get spend reports", e));
+        }
+    }
+
+    @Tool(name = "get_monthly_spend", description = "Get detailed spend analysis for a specific month: category breakdown, top merchants, month-over-month change, per-card split")
+    public Map<String, Object> getMonthlySpend(
+            @ToolParam(description = "User ID (UUID)") String userId,
+            @ToolParam(description = "Month in YYYY-MM format, e.g. 2025-01") String month) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            return spendAnalyticsService.getMonthAnalysis(uid, month);
+        } catch (Exception e) {
+            return errorResult("Failed to get monthly spend", e);
+        }
+    }
+
+    @Tool(name = "get_spend_trend", description = "Get monthly spend totals over time for trend analysis")
+    public List<Map<String, Object>> getSpendTrend(
+            @ToolParam(description = "User ID (UUID)") String userId) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            return spendAnalyticsService.getMonthlyTrend(uid);
+        } catch (Exception e) {
+            return List.of(errorResult("Failed to get spend trend", e));
+        }
+    }
+
+    @Tool(name = "get_payment_summary", description = "Get CC payment summary: total billed, total paid, current outstanding, unpaid bills count, next due date")
+    public Map<String, Object> getPaymentSummary(
+            @ToolParam(description = "User ID (UUID)") String userId) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            return spendAnalyticsService.getPaymentSummary(uid);
+        } catch (Exception e) {
+            return errorResult("Failed to get payment summary", e);
+        }
+    }
+
+    // ── News & Market ───────────────────────────────────────────
+
+    @Tool(name = "search_news", description = "Search financial news by keyword. Returns headlines, sources, and links.")
+    public List<Map<String, Object>> searchNews(
+            @ToolParam(description = "Search query (stock name, topic, etc.)") String query,
+            @ToolParam(description = "Maximum results to return", required = false) Integer limit) {
+        try {
+            return newsService.searchNews(query, limit != null && limit > 0 ? limit : 5);
+        } catch (Exception e) {
+            return List.of(errorResult("Failed to search news", e));
+        }
+    }
+
+    @Tool(name = "get_portfolio_news", description = "Get recent news for all stocks in the user's portfolio")
+    public List<Map<String, Object>> getPortfolioNews(
+            @ToolParam(description = "User ID (UUID)") String userId) {
+        try {
+            return newsService.getNewsForHoldings(userId, 3);
+        } catch (Exception e) {
+            return List.of(errorResult("Failed to get portfolio news", e));
+        }
+    }
+
+    // ── Rebalancing ─────────────────────────────────────────────
+
+    @Tool(name = "get_rebalancing_suggestions", description = "Get portfolio rebalancing suggestions based on risk profile (conservative/moderate/aggressive). Shows target vs current allocation with buy/sell recommendations.")
+    public List<Map<String, Object>> getRebalancingSuggestions(
+            @ToolParam(description = "User ID (UUID)") String userId,
+            @ToolParam(description = "Risk profile: conservative, moderate, or aggressive") String riskProfile) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            return rebalancingService.getRebalancingSuggestions(uid, riskProfile != null ? riskProfile : "moderate");
+        } catch (Exception e) {
+            return List.of(errorResult("Failed to get rebalancing suggestions", e));
+        }
+    }
+
+    @Tool(name = "get_loan_summary", description = "Get detailed summary of a specific loan: outstanding amount, total interest, progress percentage, remaining months")
+    public Map<String, Object> getLoanSummary(
+            @ToolParam(description = "User ID (UUID)") String userId,
+            @ToolParam(description = "Liability/Loan ID (UUID)") String liabilityId) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            UUID lid = UUID.fromString(liabilityId);
+            return emiService.getLoanSummary(uid, lid);
+        } catch (Exception e) {
+            return errorResult("Failed to get loan summary", e);
         }
     }
 

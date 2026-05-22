@@ -209,6 +209,27 @@ public class AgentExecutor {
                 "properties", Map.of(
                         "goalId", Map.of("type", "string", "description", "Goal ID (UUID)")),
                 "required", List.of("goalId")));
+        paramSchemas.put("get_monthly_spend", Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "month", Map.of("type", "string", "description", "Month in YYYY-MM format")),
+                "required", List.of("month")));
+        paramSchemas.put("search_news", Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "query", Map.of("type", "string", "description", "Search keyword"),
+                        "limit", Map.of("type", "integer", "description", "Max results")),
+                "required", List.of("query")));
+        paramSchemas.put("get_rebalancing_suggestions", Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "riskProfile", Map.of("type", "string", "description", "conservative, moderate, or aggressive")),
+                "required", List.of("riskProfile")));
+        paramSchemas.put("get_loan_summary", Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "liabilityId", Map.of("type", "string", "description", "Loan ID (UUID)")),
+                "required", List.of("liabilityId")));
 
         // Default: no params needed (userId is injected automatically)
         Map<String, Object> emptyParams = Map.of("type", "object", "properties", Map.of(), "required", List.of());
