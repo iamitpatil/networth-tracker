@@ -7,6 +7,15 @@ import {
   Upload, FileText, Download, Loader2, Paperclip
 } from 'lucide-react'
 import { ConfirmDialog } from './ui/Modal'
+import { useFeature } from '../context/FeatureFlagContext'
+
+const BROKER_DOMAINS = {
+  'Upstox': 'upstox.com', 'Zerodha': 'zerodha.com',
+}
+const getBrokerLogo = (name) => {
+  const domain = BROKER_DOMAINS[name]
+  return domain ? `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : null
+}
 
 const TABS = [
   { id: 'bank', label: 'Bank', icon: Landmark, color: 'blue' },
@@ -34,12 +43,78 @@ export default function AccountsHub() {
   const { options: brokerRef } = useReferenceData('BROKER')
   const { options: cardIssuerRef } = useReferenceData('CARD_ISSUER')
 
+  // Broker import state
+  const upstoxEnabled = useFeature('upstox-import')
+  const zerodhaEnabled = useFeature('zerodha-import')
+  const hasBrokers = upstoxEnabled || zerodhaEnabled
+  const [importOpen, setImportOpen] = useState(false)
+  const [brokerStatus, setBrokerStatus] = useState({})
+  const [syncingBroker, setSyncingBroker] = useState(null)
+  const importRef = useRef(null)
+
   const getLogo = (category, name) => {
     const refs = category === 'BANK' ? bankRef : category === 'BROKER' ? brokerRef : category === 'CARD_ISSUER' ? cardIssuerRef : []
     return refs.find(r => r.value === name)?.metadata?.logo || null
   }
 
   useEffect(() => { loadAll() }, [])
+
+  // Fetch broker statuses
+  useEffect(() => {
+    if (!hasBrokers) return
+    const fetches = []
+    if (upstoxEnabled) fetches.push(client.get('/brokers/upstox/status').then(r => ['upstox', r.data]).catch(() => ['upstox', { connected: false }]))
+    if (zerodhaEnabled) fetches.push(client.get('/brokers/zerodha/status').then(r => ['zerodha', r.data]).catch(() => ['zerodha', { connected: false }]))
+    Promise.all(fetches).then(results => {
+      const map = {}
+      results.forEach(([key, val]) => { map[key] = val })
+      setBrokerStatus(map)
+    })
+  }, [hasBrokers, upstoxEnabled, zerodhaEnabled])
+
+  // Handle broker OAuth callbacks
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (code && upstoxEnabled) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSyncingBroker('upstox')
+      client.post('/brokers/upstox/callback', { code })
+        .then(res => {
+          if (res.data?.success) {
+            toast.success('Upstox connected', { description: res.data.brokerUserName || '' })
+            setBrokerStatus(prev => ({ ...prev, upstox: { connected: true, status: 'ACTIVE', brokerUserName: res.data.brokerUserName } }))
+            loadAll()
+          } else toast.error('Upstox connection failed', { description: res.data?.message })
+        })
+        .catch(err => toast.error('Connection failed', { description: err.message }))
+        .finally(() => setSyncingBroker(null))
+      return
+    }
+    const requestToken = params.get('request_token')
+    if (requestToken && params.get('status') === 'success' && zerodhaEnabled) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSyncingBroker('zerodha')
+      client.post('/brokers/zerodha/callback', { request_token: requestToken })
+        .then(res => {
+          if (res.data?.success) {
+            toast.success('Zerodha connected', { description: res.data.brokerUserName || '' })
+            setBrokerStatus(prev => ({ ...prev, zerodha: { connected: true, status: 'ACTIVE', brokerUserName: res.data.brokerUserName } }))
+            loadAll()
+          } else toast.error('Zerodha connection failed', { description: res.data?.message })
+        })
+        .catch(err => toast.error('Connection failed', { description: err.message }))
+        .finally(() => setSyncingBroker(null))
+    }
+  }, [])
+
+  // Close import dropdown on outside click
+  useEffect(() => {
+    if (!importOpen) return
+    const handleClick = (e) => { if (importRef.current && !importRef.current.contains(e.target)) setImportOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [importOpen])
 
   const loadAll = async () => {
     try {
@@ -49,6 +124,93 @@ export default function AccountsHub() {
   }
 
   const resetForm = () => { setForm({}); setShowForm(false); setEditingId(null) }
+
+  const handleBrokerConnect = async (broker) => {
+    try {
+      const { data } = await client.get(`/brokers/${broker}/auth-url`)
+      window.location.href = data.url
+    } catch (err) { toast.error('Failed to get auth URL', { description: err.message }) }
+  }
+
+  const handleBrokerSync = async (broker) => {
+    setSyncingBroker(broker)
+    try {
+      const { data } = await client.post(`/brokers/${broker}/sync`)
+      if (data.success) {
+        toast.success(`${broker === 'upstox' ? 'Upstox' : 'Zerodha'} synced`, { description: data.message })
+        setBrokerStatus(prev => ({ ...prev, [broker]: { ...prev[broker], lastSyncedAt: new Date().toISOString() } }))
+        loadAll()
+      } else {
+        toast.error('Sync failed', { description: data.message })
+        if (data.message?.includes('expired') || data.message?.includes('reconnect'))
+          setBrokerStatus(prev => ({ ...prev, [broker]: { ...prev[broker], status: 'TOKEN_EXPIRED' } }))
+      }
+    } catch (err) { toast.error('Sync failed', { description: err.message }) }
+    finally { setSyncingBroker(null) }
+  }
+
+  const handleBrokerDisconnect = (broker) => {
+    const name = broker === 'upstox' ? 'Upstox' : 'Zerodha'
+    setConfirmDialog({
+      open: true, title: `Disconnect ${name}?`, description: 'Your imported holdings will remain.',
+      onConfirm: async () => {
+        try {
+          await client.post(`/brokers/${broker}/disconnect`)
+          setBrokerStatus(prev => ({ ...prev, [broker]: { connected: false } }))
+          toast.success(`${name} disconnected`)
+        } catch (err) { toast.error('Failed to disconnect', { description: err.message }) }
+      },
+    })
+  }
+
+  const renderBrokerRow = (brokerId, brokerName) => {
+    const s = brokerStatus[brokerId] || {}
+    const isConnected = s.connected && s.status === 'ACTIVE'
+    const isExpired = s.connected && s.status === 'TOKEN_EXPIRED'
+    const isSyncing = syncingBroker === brokerId
+    return (
+      <div key={brokerId} className="px-4 py-3 hover:bg-[var(--hover-bg)] transition">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <img src={getBrokerLogo(brokerName)} alt={brokerName} className="w-7 h-7 rounded-md object-contain bg-white p-0.5"
+                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+              <div className="w-7 h-7 rounded-md bg-[var(--hover-bg)] items-center justify-center text-[var(--text-muted)] hidden">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--bg-card)] ${isConnected ? 'bg-green-400' : isExpired ? 'bg-amber-400' : 'bg-[var(--text-secondary)]'}`} />
+            </div>
+            <div>
+              <p className="text-sm font-medium">{brokerName}</p>
+              <p className="text-xs text-[var(--text-muted)]">
+                {isConnected && s.brokerUserName ? s.brokerUserName : isExpired ? 'Session expired' : 'Not connected'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {isConnected && (
+              <>
+                <button onClick={() => { setImportOpen(false); handleBrokerSync(brokerId) }} disabled={isSyncing}
+                  className="px-2.5 py-1 rounded-md text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition disabled:opacity-50">
+                  {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Sync'}
+                </button>
+                <button onClick={() => { setImportOpen(false); handleBrokerDisconnect(brokerId) }}
+                  className="p-1 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+            {(isExpired || !s.connected) && (
+              <button onClick={() => { setImportOpen(false); handleBrokerConnect(brokerId) }}
+                className="px-2.5 py-1 rounded-md text-xs bg-blue-500 text-white hover:bg-blue-600 transition">
+                {isExpired ? 'Reconnect' : 'Connect'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleCreate = async (endpoint, body) => {
     try {
@@ -153,11 +315,32 @@ export default function AccountsHub() {
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)]">
         <div className="p-4 flex items-center justify-between border-b border-[var(--border)]">
           <h3 className="font-semibold text-[var(--text)]">{TABS.find(t => t.id === activeTab)?.label} Accounts</h3>
-          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({}) }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 ${
-              showForm ? 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
-            {showForm ? <><X className="w-3.5 h-3.5" /> Cancel</> : <><Plus className="w-3.5 h-3.5" /> Add</>}
-          </button>
+          <div className="flex items-center gap-2">
+            {activeTab === 'demat' && hasBrokers && (
+              <div className="relative" ref={importRef}>
+                <button onClick={() => setImportOpen(!importOpen)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]">
+                  <Download className="w-3.5 h-3.5" /> Import
+                  <ChevronDown className={`w-3 h-3 transition-transform ${importOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {importOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-50 overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-[var(--border)]">
+                      <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Import from Broker</p>
+                    </div>
+                    {upstoxEnabled && renderBrokerRow('upstox', 'Upstox')}
+                    {upstoxEnabled && zerodhaEnabled && <div className="border-b border-[var(--border)]" />}
+                    {zerodhaEnabled && renderBrokerRow('zerodha', 'Zerodha')}
+                  </div>
+                )}
+              </div>
+            )}
+            <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({}) }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 ${
+                showForm ? 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
+              {showForm ? <><X className="w-3.5 h-3.5" /> Cancel</> : <><Plus className="w-3.5 h-3.5" /> Add</>}
+            </button>
+          </div>
         </div>
 
         {/* Forms */}
@@ -187,7 +370,7 @@ export default function AccountsHub() {
             <AccountRow key={a.id} icon={Building2} color="indigo" title={a.brokerName} subtitle={a.accountType || 'Equity'}
               detail={a.isDefault ? 'Default' : ''} extra={a.accountNumber || ''}
               accountType="DEMAT" accountId={a.id} logoUrl={getLogo('BROKER', a.brokerName)}
-              onEdit={() => { setForm({ brokerName: a.brokerName, accountType: a.accountType, description: a.description, isDefault: a.isDefault }); setEditingId(a.id); setShowForm(true) }}
+              onEdit={() => { setForm({ brokerName: a.brokerName, accountNumber: a.accountNumber || '', accountType: a.accountType, description: a.description, isDefault: a.isDefault }); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDematDelete(a.id)} />
           ))}
           {activeTab === 'cc' && (data?.creditCards || []).map(a => (

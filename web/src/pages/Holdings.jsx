@@ -5,8 +5,6 @@ import { useFamilyView } from '../context/FamilyViewContext'
 import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
-import UpstoxSync from '../components/UpstoxSync'
-import ZerodhaSync from '../components/ZerodhaSync'
 import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 import { ConfirmDialog } from '../components/ui/Modal'
@@ -53,6 +51,21 @@ const ASSET_COLORS = {
 // Asset types that REQUIRE a demat account (must match backend)
 const ASSET_TYPES_REQUIRING_DEMAT = ['EQUITY', 'ETF', 'MUTUAL_FUND']
 
+const BROKER_DOMAINS = {
+  'Zerodha': 'zerodha.com', 'Groww': 'groww.in', 'Angel One': 'angelone.in',
+  'ICICI Direct': 'icicidirect.com', 'HDFC Securities': 'hdfcsec.com',
+  'Sharekhan': 'sharekhan.com', '5Paisa': '5paisa.com', 'Upstox': 'upstox.com',
+  'Motilal Oswal': 'motilaloswal.com', 'Kotak Securities': 'kotaksecurities.com',
+  'Axis Direct': 'axisdirect.in', 'IIFL': 'iifl.com', 'Edelweiss': 'edelweiss.in',
+  'SBI Securities': 'sbisecurities.in', 'Paytm Money': 'paytmmoney.com',
+  'Dhan': 'dhan.co', 'INDmoney': 'indmoney.com',
+}
+
+const getBrokerLogo = (name) => {
+  const domain = BROKER_DOMAINS[name]
+  return domain ? `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : null
+}
+
 const POPULAR_BONDS = [
   { name: 'RBI Floating Rate Savings Bond 2020 (Taxable)', coupon: 8.05 },
   { name: 'Sovereign Gold Bond (SGB)', coupon: 2.5 },
@@ -74,10 +87,17 @@ export default function Holdings() {
   const isFamilyView = familyView === 'family'
   const upstoxEnabled = useFeature('upstox-import')
   const zerodhaEnabled = useFeature('zerodha-import')
+  const hasBrokers = upstoxEnabled || zerodhaEnabled
   const [holdings, setHoldings] = useState([])
   const [symbols, setSymbols] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [brokerStatus, setBrokerStatus] = useState({})
+  const [syncingBroker, setSyncingBroker] = useState(null)
+  const importRef = useRef(null)
+  const dematDropdownRef = useRef(null)
+  const [dematDropdownOpen, setDematDropdownOpen] = useState(false)
   const [dematAccounts, setDematAccounts] = useState([])
   const [assetType, setAssetType] = useState('')
   const [form, setForm] = useState({
@@ -250,6 +270,121 @@ export default function Holdings() {
     }).catch(console.error)
       .finally(() => setLoading(false))
   }, [])
+
+  // Fetch broker connection statuses
+  useEffect(() => {
+    if (!hasBrokers) return
+    const fetches = []
+    if (upstoxEnabled) fetches.push(client.get('/brokers/upstox/status').then(r => ['upstox', r.data]).catch(() => ['upstox', { connected: false }]))
+    if (zerodhaEnabled) fetches.push(client.get('/brokers/zerodha/status').then(r => ['zerodha', r.data]).catch(() => ['zerodha', { connected: false }]))
+    Promise.all(fetches).then(results => {
+      const map = {}
+      results.forEach(([key, val]) => { map[key] = val })
+      setBrokerStatus(map)
+    })
+  }, [hasBrokers, upstoxEnabled, zerodhaEnabled])
+
+  // Handle broker OAuth callbacks from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    // Upstox callback (code param)
+    const code = params.get('code')
+    if (code && upstoxEnabled) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSyncingBroker('upstox')
+      client.post('/brokers/upstox/callback', { code })
+        .then(res => {
+          if (res.data?.success) {
+            toast.success('Upstox connected', { description: res.data.brokerUserName || '' })
+            setBrokerStatus(prev => ({ ...prev, upstox: { connected: true, status: 'ACTIVE', brokerUserName: res.data.brokerUserName } }))
+          } else {
+            toast.error('Upstox connection failed', { description: res.data?.message })
+          }
+        })
+        .catch(err => toast.error('Connection failed', { description: err.message }))
+        .finally(() => setSyncingBroker(null))
+      return
+    }
+    // Zerodha callback (request_token param)
+    const requestToken = params.get('request_token')
+    const kiteStatus = params.get('status')
+    if (requestToken && kiteStatus === 'success' && zerodhaEnabled) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSyncingBroker('zerodha')
+      client.post('/brokers/zerodha/callback', { request_token: requestToken })
+        .then(res => {
+          if (res.data?.success) {
+            toast.success('Zerodha connected', { description: res.data.brokerUserName || '' })
+            setBrokerStatus(prev => ({ ...prev, zerodha: { connected: true, status: 'ACTIVE', brokerUserName: res.data.brokerUserName } }))
+          } else {
+            toast.error('Zerodha connection failed', { description: res.data?.message })
+          }
+        })
+        .catch(err => toast.error('Connection failed', { description: err.message }))
+        .finally(() => setSyncingBroker(null))
+    }
+  }, [])
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    if (!importOpen && !dematDropdownOpen) return
+    const handleClick = (e) => {
+      if (importOpen && importRef.current && !importRef.current.contains(e.target)) setImportOpen(false)
+      if (dematDropdownOpen && dematDropdownRef.current && !dematDropdownRef.current.contains(e.target)) setDematDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [importOpen, dematDropdownOpen])
+
+  const refreshHoldings = () => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))
+
+  const handleBrokerConnect = async (broker) => {
+    try {
+      const { data } = await client.get(`/brokers/${broker}/auth-url`)
+      window.location.href = data.url
+    } catch (err) {
+      toast.error('Failed to get auth URL', { description: err.message })
+    }
+  }
+
+  const handleBrokerSync = async (broker) => {
+    setSyncingBroker(broker)
+    try {
+      const { data } = await client.post(`/brokers/${broker}/sync`)
+      if (data.success) {
+        toast.success(`${broker === 'upstox' ? 'Upstox' : 'Zerodha'} synced`, { description: data.message })
+        setBrokerStatus(prev => ({ ...prev, [broker]: { ...prev[broker], lastSyncedAt: new Date().toISOString() } }))
+        refreshHoldings()
+      } else {
+        toast.error('Sync failed', { description: data.message })
+        if (data.message?.includes('expired') || data.message?.includes('reconnect')) {
+          setBrokerStatus(prev => ({ ...prev, [broker]: { ...prev[broker], status: 'TOKEN_EXPIRED' } }))
+        }
+      }
+    } catch (err) {
+      toast.error('Sync failed', { description: err.message })
+    } finally {
+      setSyncingBroker(null)
+    }
+  }
+
+  const handleBrokerDisconnect = async (broker) => {
+    const name = broker === 'upstox' ? 'Upstox' : 'Zerodha'
+    setConfirmDialog({
+      open: true,
+      title: `Disconnect ${name}?`,
+      description: 'Your imported holdings will remain.',
+      onConfirm: async () => {
+        try {
+          await client.post(`/brokers/${broker}/disconnect`)
+          setBrokerStatus(prev => ({ ...prev, [broker]: { connected: false } }))
+          toast.success(`${name} disconnected`)
+        } catch (err) {
+          toast.error('Failed to disconnect', { description: err.message })
+        }
+      },
+    })
+  }
 
   useEffect(() => {
     if (loading) return
@@ -698,24 +833,129 @@ export default function Holdings() {
           <h1 className="text-2xl font-bold">Holdings</h1>
           <p className="text-[var(--text-muted)] text-sm mt-1">{holdings.length} investments across all asset classes</p>
         </div>
-        <button
-          onClick={() => { if (showForm) { setShowForm(false); resetForm() } else openForm() }}
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)]' : 'bg-blue-500 hover:bg-blue-600'}`}
-        >
-          <Plus className="w-4 h-4" /> {showForm ? 'Cancel' : 'Add Holdings'}
-        </button>
-      </div>
-
-      {(upstoxEnabled || zerodhaEnabled) && (
-        <div className="space-y-3">
-          {upstoxEnabled && (
-            <UpstoxSync onSyncComplete={() => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))} />
+        <div className="flex items-center gap-2">
+          {hasBrokers && (
+            <div className="relative" ref={importRef}>
+              <button
+                onClick={() => setImportOpen(!importOpen)}
+                className="px-4 py-2 rounded-lg flex items-center gap-2 transition bg-[var(--bg-card)] border border-[var(--border)] hover:bg-[var(--hover-bg)]"
+              >
+                <Download className="w-4 h-4" /> Import
+                <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${importOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {importOpen && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-[var(--border)]">
+                    <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Import from Broker</p>
+                  </div>
+                  {upstoxEnabled && (() => {
+                    const s = brokerStatus.upstox || {}
+                    const isConnected = s.connected && s.status === 'ACTIVE'
+                    const isExpired = s.connected && s.status === 'TOKEN_EXPIRED'
+                    const isSyncing = syncingBroker === 'upstox'
+                    return (
+                      <div className="px-4 py-3 border-b border-[var(--border)] hover:bg-[var(--hover-bg)] transition">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="relative">
+                              <img src={getBrokerLogo('Upstox')} alt="Upstox" className="w-7 h-7 rounded-md object-contain bg-white p-0.5"
+                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+                              <div className="w-7 h-7 rounded-md bg-[var(--hover-bg)] items-center justify-center text-[var(--text-muted)] hidden">
+                                <Building2 className="w-4 h-4" />
+                              </div>
+                              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--bg-card)] ${isConnected ? 'bg-green-400' : isExpired ? 'bg-amber-400' : 'bg-[var(--text-secondary)]'}`} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Upstox</p>
+                              <p className="text-xs text-[var(--text-muted)]">
+                                {isConnected && s.brokerUserName ? s.brokerUserName : isExpired ? 'Session expired' : 'Not connected'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {isConnected && (
+                              <>
+                                <button onClick={() => { setImportOpen(false); handleBrokerSync('upstox') }} disabled={isSyncing}
+                                  className="px-2.5 py-1 rounded-md text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition disabled:opacity-50">
+                                  {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Sync'}
+                                </button>
+                                <button onClick={() => { setImportOpen(false); handleBrokerDisconnect('upstox') }}
+                                  className="p-1 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                            {(isExpired || !s.connected) && (
+                              <button onClick={() => { setImportOpen(false); handleBrokerConnect('upstox') }}
+                                className="px-2.5 py-1 rounded-md text-xs bg-blue-500 text-white hover:bg-blue-600 transition">
+                                {isExpired ? 'Reconnect' : 'Connect'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                  {zerodhaEnabled && (() => {
+                    const s = brokerStatus.zerodha || {}
+                    const isConnected = s.connected && s.status === 'ACTIVE'
+                    const isExpired = s.connected && s.status === 'TOKEN_EXPIRED'
+                    const isSyncing = syncingBroker === 'zerodha'
+                    return (
+                      <div className="px-4 py-3 hover:bg-[var(--hover-bg)] transition">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="relative">
+                              <img src={getBrokerLogo('Zerodha')} alt="Zerodha" className="w-7 h-7 rounded-md object-contain bg-white p-0.5"
+                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+                              <div className="w-7 h-7 rounded-md bg-[var(--hover-bg)] items-center justify-center text-[var(--text-muted)] hidden">
+                                <Building2 className="w-4 h-4" />
+                              </div>
+                              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--bg-card)] ${isConnected ? 'bg-green-400' : isExpired ? 'bg-amber-400' : 'bg-[var(--text-secondary)]'}`} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Zerodha</p>
+                              <p className="text-xs text-[var(--text-muted)]">
+                                {isConnected && s.brokerUserName ? s.brokerUserName : isExpired ? 'Session expired' : 'Not connected'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {isConnected && (
+                              <>
+                                <button onClick={() => { setImportOpen(false); handleBrokerSync('zerodha') }} disabled={isSyncing}
+                                  className="px-2.5 py-1 rounded-md text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition disabled:opacity-50">
+                                  {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Sync'}
+                                </button>
+                                <button onClick={() => { setImportOpen(false); handleBrokerDisconnect('zerodha') }}
+                                  className="p-1 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                            {(isExpired || !s.connected) && (
+                              <button onClick={() => { setImportOpen(false); handleBrokerConnect('zerodha') }}
+                                className="px-2.5 py-1 rounded-md text-xs bg-blue-500 text-white hover:bg-blue-600 transition">
+                                {isExpired ? 'Reconnect' : 'Connect'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
+            </div>
           )}
-          {zerodhaEnabled && (
-            <ZerodhaSync onSyncComplete={() => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))} />
-          )}
+          <button
+            onClick={() => { if (showForm) { setShowForm(false); resetForm() } else openForm() }}
+            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition ${showForm ? 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)]' : 'bg-blue-500 hover:bg-blue-600'}`}
+          >
+            <Plus className="w-4 h-4" /> {showForm ? 'Cancel' : 'Add Holdings'}
+          </button>
         </div>
-      )}
+      </div>
 
       {showForm && (
         <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">
@@ -937,25 +1177,68 @@ export default function Holdings() {
                         </a>
                       </div>
                     ) : (
-                      <select
-                        value={form.dematAccountId}
-                        onChange={(e) => setForm({ ...form, dematAccountId: e.target.value })}
-                        className={`w-full bg-[var(--input-bg)] border rounded-lg px-3 py-2.5 ${
-                          ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && !form.dematAccountId
-                            ? 'border-red-500/50'
-                            : 'border-[var(--border)]'
-                        }`}
-                        required={ASSET_TYPES_REQUIRING_DEMAT.includes(assetType)}
-                      >
-                        <option value="">
-                          {ASSET_TYPES_REQUIRING_DEMAT.includes(assetType)
-                            ? 'Select a demat account *'
-                            : 'No account (general)'}
-                        </option>
-                        {dematAccounts.map((d) => (
-                          <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber})` : ''}{d.isDefault ? ' ⭐' : ''}</option>
-                        ))}
-                      </select>
+                      <div className="relative" ref={dematDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setDematDropdownOpen(!dematDropdownOpen)}
+                          className={`w-full bg-[var(--input-bg)] border rounded-lg px-3 py-2.5 text-left flex items-center justify-between ${
+                            ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && !form.dematAccountId
+                              ? 'border-red-500/50'
+                              : 'border-[var(--border)]'
+                          }`}
+                        >
+                          {form.dematAccountId ? (() => {
+                            const sel = dematAccounts.find(d => d.id === form.dematAccountId)
+                            if (!sel) return <span className="text-[var(--text-muted)]">Select...</span>
+                            const logo = getBrokerLogo(sel.brokerName)
+                            return (
+                              <span className="flex items-center gap-2 min-w-0">
+                                {logo ? (
+                                  <img src={logo} alt="" className="w-5 h-5 rounded object-contain bg-white p-px flex-shrink-0"
+                                    onError={(e) => { e.target.style.display = 'none' }} />
+                                ) : (
+                                  <Building2 className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
+                                )}
+                                <span className="truncate">{sel.brokerName}{sel.accountNumber ? ` (${sel.accountNumber})` : ''}{sel.isDefault ? ' *' : ''}</span>
+                              </span>
+                            )
+                          })() : (
+                            <span className="text-[var(--text-muted)]">
+                              {ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) ? 'Select a demat account *' : 'No account (general)'}
+                            </span>
+                          )}
+                          <ChevronDownIcon className={`w-4 h-4 text-[var(--text-muted)] flex-shrink-0 transition-transform ${dematDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {dematDropdownOpen && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                            {!ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && (
+                              <button type="button"
+                                onClick={() => { setForm({ ...form, dematAccountId: '' }); setDematDropdownOpen(false) }}
+                                className={`w-full px-3 py-2.5 flex items-center gap-2 hover:bg-[var(--hover-bg)] transition text-left text-sm ${!form.dematAccountId ? 'bg-blue-500/10 text-blue-400' : ''}`}>
+                                <Building2 className="w-4 h-4 text-[var(--text-muted)]" />
+                                <span>No account (general)</span>
+                              </button>
+                            )}
+                            {dematAccounts.map((d) => {
+                              const logo = getBrokerLogo(d.brokerName)
+                              const isSelected = form.dematAccountId === d.id
+                              return (
+                                <button type="button" key={d.id}
+                                  onClick={() => { setForm({ ...form, dematAccountId: d.id }); setDematDropdownOpen(false) }}
+                                  className={`w-full px-3 py-2.5 flex items-center gap-2 hover:bg-[var(--hover-bg)] transition text-left text-sm ${isSelected ? 'bg-blue-500/10 text-blue-400' : ''}`}>
+                                  {logo ? (
+                                    <img src={logo} alt="" className="w-5 h-5 rounded object-contain bg-white p-px flex-shrink-0"
+                                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'block') }} />
+                                  ) : null}
+                                  {!logo && <Building2 className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />}
+                                  <span className="truncate">{d.brokerName}{d.accountNumber ? ` (${d.accountNumber})` : ''}</span>
+                                  {d.isDefault && <span className="ml-auto text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">Default</span>}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
                     )}
                     {ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) && (
                       <p className="text-xs text-[var(--text-muted)] mt-1">
