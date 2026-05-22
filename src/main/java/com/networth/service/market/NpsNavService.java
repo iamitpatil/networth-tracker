@@ -195,7 +195,10 @@ public class NpsNavService {
                 List<Map<String, String>> schemes = new ArrayList<>();
                 for (List<String> item : data) {
                     if (item.size() >= 2) {
-                        schemes.add(Map.of("schemeCode", item.get(0), "schemeName", item.get(1)));
+                        Map<String, String> scheme = new HashMap<>();
+                        scheme.put("schemeCode", item.get(0));
+                        scheme.put("schemeName", item.get(1));
+                        schemes.add(scheme);
                     }
                 }
                 schemesCache = schemes;

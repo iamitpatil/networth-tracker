@@ -2,6 +2,7 @@ package com.networth.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
@@ -19,53 +20,50 @@ import java.util.UUID;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    private static Map<String, Object> errorBody(String error, String message) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("error", error);
+        body.put("message", message);
+        body.put("timestamp", LocalDateTime.now().toString());
+        return body;
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "Not Found",
-                "message", e.getMessage(),
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(errorBody("Not Found", e.getMessage()));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException e) {
-        // Return 404 instead of 403 to avoid information leakage
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "Not Found",
-                "message", e.getMessage(),
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(errorBody("Not Found", e.getMessage()));
     }
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<Map<String, Object>> handleBadCredentials(BadCredentialsException e) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                "error", "Unauthorized",
-                "message", "Invalid credentials",
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(errorBody("Unauthorized", "Invalid credentials"));
     }
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException e) {
-        var body = new java.util.HashMap<String, Object>();
-        body.put("error", "Too Many Requests");
-        body.put("message", e.getMessage());
+        Map<String, Object> body = errorBody("Too Many Requests", e.getMessage());
         body.put("retryAfterSeconds", e.getRetryAfterSeconds());
-        body.put("timestamp", LocalDateTime.now().toString());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .contentType(MediaType.APPLICATION_JSON)
                 .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
                 .body(body);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "error", "Bad Request",
-                "message", e.getMessage(),
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(errorBody("Bad Request", e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -76,20 +74,18 @@ public class GlobalExceptionHandler {
             String message = error.getDefaultMessage();
             errors.put(field, message);
         });
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "error", "Validation Failed",
-                "errors", errors,
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> body = errorBody("Validation Failed", "Validation errors");
+        body.put("errors", errors);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(NoHandlerFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "Not Found",
-                "message", "Endpoint not found",
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(errorBody("Not Found", "Endpoint not found"));
     }
 
     /**
@@ -101,11 +97,10 @@ public class GlobalExceptionHandler {
         String correlationId = UUID.randomUUID().toString();
         log.error("Internal server error [correlationId={}]: {}", correlationId, e.getMessage(), e);
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "error", "Internal Server Error",
-                "message", "An unexpected error occurred. Please try again later.",
-                "correlationId", correlationId,
-                "timestamp", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> body = errorBody("Internal Server Error", "An unexpected error occurred. Please try again later.");
+        body.put("correlationId", correlationId);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 }

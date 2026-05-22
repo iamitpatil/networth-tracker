@@ -86,8 +86,8 @@ public class AccountsHubController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/nps/schemes")
-    public ResponseEntity<?> getNpsSchemes() {
+    @GetMapping(value = "/nps/schemes", produces = "application/json")
+    public ResponseEntity<List<Map<String, String>>> getNpsSchemes() {
         return ResponseEntity.ok(npsNavService.getSchemes());
     }
 
@@ -98,8 +98,8 @@ public class AccountsHubController {
         return ResponseEntity.ok(npsNavService.refreshUserNpsValues(userId));
     }
 
-    @GetMapping("/nps/scheme/{schemeCode}")
-    public ResponseEntity<?> getNpsSchemeDetail(@PathVariable String schemeCode) {
+    @GetMapping(value = "/nps/scheme/{schemeCode}", produces = "application/json")
+    public ResponseEntity<Map<String, Object>> getNpsSchemeDetail(@PathVariable String schemeCode) {
         Map<String, Object> detail = npsNavService.getDetailedScheme(schemeCode);
         if (detail == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(detail);
