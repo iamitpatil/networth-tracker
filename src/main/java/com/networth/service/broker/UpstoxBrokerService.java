@@ -4,10 +4,13 @@ import com.networth.model.dto.HoldingRequest;
 import com.networth.model.entity.BrokerConnection;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
+import com.networth.model.entity.Transaction;
 import com.networth.model.enums.AssetType;
+import com.networth.model.enums.TransactionType;
 import com.networth.repository.BrokerConnectionRepository;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
+import com.networth.repository.TransactionRepository;
 import com.networth.service.DematAccountService;
 import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
@@ -35,12 +38,15 @@ public class UpstoxBrokerService {
     private final BrokerConnectionRepository connectionRepository;
     private final DematAccountRepository dematAccountRepository;
     private final HoldingRepository holdingRepository;
+    private final TransactionRepository transactionRepository;
     private final HoldingService holdingService;
 
     private static final String BROKER_NAME = "UPSTOX";
+    private static final String BROKER_LABEL = "Upstox";
     private static final String AUTH_URL = "https://api.upstox.com/v2/login/authorization/dialog";
     private static final String TOKEN_URL = "https://api.upstox.com/v2/login/authorization/token";
     private static final String HOLDINGS_URL = "https://api.upstox.com/v2/portfolio/long-term-holdings";
+    private static final String TRADES_URL = "https://api.upstox.com/v2/charges/historical-trades";
     private static final String PROFILE_URL = "https://api.upstox.com/v2/user/profile";
 
     @Value("${broker.upstox.client-id:}")
@@ -169,6 +175,7 @@ public class UpstoxBrokerService {
             int created = 0;
             int updated = 0;
             int skipped = 0;
+            int txnCreated = 0;
 
             for (Map<String, Object> uh : upstoxHoldings) {
                 try {
@@ -212,6 +219,9 @@ public class UpstoxBrokerService {
                         if (companyName != null) match.setName(companyName);
                         holdingRepository.save(match);
                         updated++;
+
+                        // Create synthetic BUY transaction if none from this broker exists
+                        if (createSyntheticTransaction(match, userId, qty, avg)) txnCreated++;
                     } else {
                         // Create new
                         HoldingRequest req = HoldingRequest.builder()
@@ -226,6 +236,11 @@ public class UpstoxBrokerService {
                                 .build();
                         holdingService.createHolding(userId.toString(), req);
                         created++;
+
+                        // Create transaction for newly created holding
+                        holdingRepository.findByUserIdAndSymbolAndDematAccountId(userId, symbol, demat.getId())
+                                .ifPresent(h -> { if (createSyntheticTransaction(h, userId, qty, avg)) {}; });
+                        txnCreated++;
                     }
                 } catch (Exception e) {
                     log.warn("Failed to sync holding: {}", e.getMessage());
@@ -233,15 +248,25 @@ public class UpstoxBrokerService {
                 }
             }
 
+            // Try to sync actual historical trades (best effort, won't fail the whole sync)
+            int historicalTxns = 0;
+            try {
+                historicalTxns = syncHistoricalTrades(userId, conn, demat);
+            } catch (Exception e) {
+                log.warn("Historical trades sync failed (non-fatal): {}", e.getMessage());
+            }
+
             conn.setLastSyncedAt(LocalDateTime.now());
             connectionRepository.save(conn);
 
-            log.info("Upstox sync for user {}: {} created, {} updated, {} skipped",
-                    userId, created, updated, skipped);
+            int totalTxns = txnCreated + historicalTxns;
+            log.info("Upstox sync for user {}: {} created, {} updated, {} skipped, {} transactions",
+                    userId, created, updated, skipped, totalTxns);
             return Map.of("success", true,
-                    "message", String.format("%d created, %d updated, %d skipped", created, updated, skipped),
+                    "message", String.format("%d holdings (%d new, %d updated), %d transactions imported",
+                            upstoxHoldings.size(), created, updated, totalTxns),
                     "created", created, "updated", updated, "skipped", skipped,
-                    "total", upstoxHoldings.size());
+                    "transactions", totalTxns, "total", upstoxHoldings.size());
         } catch (Exception e) {
             log.error("Upstox sync failed for user {}: {}", userId, e.getMessage());
             if (e.getMessage() != null && e.getMessage().contains("401")) {
@@ -300,5 +325,177 @@ public class UpstoxBrokerService {
                 .isDefault(demats.isEmpty())
                 .build();
         return dematAccountRepository.save(demat);
+    }
+
+    /**
+     * Create a synthetic BUY transaction for a holding if no broker transaction exists yet.
+     * This is a "snapshot" transaction representing the current position at average cost.
+     * Does NOT call CostBasisService since the holding already has correct qty/avgPrice from sync.
+     */
+    private boolean createSyntheticTransaction(Holding holding, UUID userId, BigDecimal qty, BigDecimal avgPrice) {
+        // Skip if broker transactions already exist for this holding
+        List<Transaction> existing = transactionRepository.findByHoldingIdAndBroker(holding.getId(), BROKER_LABEL);
+        if (!existing.isEmpty()) return false;
+
+        Transaction txn = Transaction.builder()
+                .holdingId(holding.getId())
+                .userId(userId)
+                .transactionType(TransactionType.BUY)
+                .quantity(qty)
+                .price(avgPrice)
+                .amount(qty.multiply(avgPrice))
+                .fees(BigDecimal.ZERO)
+                .taxes(BigDecimal.ZERO)
+                .transactionDate(LocalDateTime.now())
+                .notes("Auto-imported from Upstox holdings sync")
+                .broker(BROKER_LABEL)
+                .build();
+        transactionRepository.save(txn);
+        return true;
+    }
+
+    /**
+     * Fetch historical trades from Upstox's /v2/charges/historical-trades API.
+     * Covers last 3 financial years. Creates Transaction records for each trade.
+     * Returns count of new transactions created.
+     */
+    @SuppressWarnings("unchecked")
+    private int syncHistoricalTrades(UUID userId, BrokerConnection conn, DematAccount demat) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + conn.getAccessToken());
+        headers.set("Accept", "application/json");
+
+        // Fetch equity segment trades for last 3 years
+        java.time.LocalDate endDate = java.time.LocalDate.now();
+        java.time.LocalDate startDate = endDate.minusYears(3);
+
+        int totalCreated = 0;
+        int page = 1;
+        int pageSize = 500;
+
+        while (true) {
+            try {
+                String url = TRADES_URL + "?segment=EQ"
+                        + "&start_date=" + startDate
+                        + "&end_date=" + endDate
+                        + "&page_number=" + page
+                        + "&page_size=" + pageSize;
+
+                ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET,
+                        new HttpEntity<>(headers), Map.class);
+
+                if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) break;
+
+                Map<String, Object> body = response.getBody();
+                String status = body.get("status") != null ? body.get("status").toString() : "";
+                if (!"success".equals(status)) break;
+
+                Map<String, Object> data = (Map<String, Object>) body.get("data");
+                if (data == null) break;
+
+                List<Map<String, Object>> trades = (List<Map<String, Object>>) data.get("trades");
+                if (trades == null || trades.isEmpty()) break;
+
+                for (Map<String, Object> trade : trades) {
+                    try {
+                        String tradingSymbol = (String) trade.get("scrip_name");
+                        if (tradingSymbol == null) tradingSymbol = (String) trade.get("symbol");
+                        String txnType = (String) trade.get("transaction_type"); // BUY or SELL
+                        Number tradeQty = (Number) trade.get("quantity");
+                        Number tradePrice = (Number) trade.get("price");
+                        String tradeDateStr = trade.get("trade_date") != null ? trade.get("trade_date").toString() : null;
+
+                        if (tradingSymbol == null || tradeQty == null || tradePrice == null) continue;
+
+                        String symbol = tradingSymbol.contains(".") ? tradingSymbol : tradingSymbol + ".NS";
+                        BigDecimal qty = BigDecimal.valueOf(tradeQty.doubleValue());
+                        BigDecimal price = BigDecimal.valueOf(tradePrice.doubleValue());
+
+                        // Parse trade date
+                        LocalDateTime tradeDate;
+                        if (tradeDateStr != null) {
+                            try {
+                                tradeDate = java.time.LocalDate.parse(tradeDateStr).atStartOfDay();
+                            } catch (Exception e) {
+                                tradeDate = LocalDateTime.now();
+                            }
+                        } else {
+                            tradeDate = LocalDateTime.now();
+                        }
+
+                        TransactionType type = "SELL".equalsIgnoreCase(txnType) ? TransactionType.SELL : TransactionType.BUY;
+
+                        // Find the holding this trade belongs to
+                        Optional<Holding> holdingOpt = holdingRepository
+                                .findByUserIdAndSymbolAndDematAccountId(userId, symbol, demat.getId());
+                        if (holdingOpt.isEmpty()) continue; // No matching holding, skip
+
+                        Holding holding = holdingOpt.get();
+                        BigDecimal txnQty = type == TransactionType.SELL ? qty.negate() : qty;
+
+                        // Dedup: check if this exact trade already exists
+                        if (transactionRepository.existsByHoldingIdAndBrokerAndTransactionDateAndQuantity(
+                                holding.getId(), BROKER_LABEL, tradeDate, txnQty)) {
+                            continue;
+                        }
+
+                        Transaction txn = Transaction.builder()
+                                .holdingId(holding.getId())
+                                .userId(userId)
+                                .transactionType(type)
+                                .quantity(txnQty)
+                                .price(price)
+                                .amount(qty.multiply(price))
+                                .fees(BigDecimal.ZERO)
+                                .taxes(BigDecimal.ZERO)
+                                .transactionDate(tradeDate)
+                                .notes("Imported from Upstox trade history")
+                                .broker(BROKER_LABEL)
+                                .build();
+                        transactionRepository.save(txn);
+                        totalCreated++;
+                    } catch (Exception e) {
+                        log.debug("Skipped trade: {}", e.getMessage());
+                    }
+                }
+
+                // Check if there are more pages
+                if (trades.size() < pageSize) break;
+                page++;
+            } catch (Exception e) {
+                log.warn("Historical trades page {} failed: {}", page, e.getMessage());
+                break;
+            }
+        }
+
+        if (totalCreated > 0) {
+            log.info("Upstox historical trades for user {}: {} transactions imported", userId, totalCreated);
+            // Remove synthetic transactions if real trades were found
+            // (synthetic ones have notes "Auto-imported from Upstox holdings sync")
+            cleanupSyntheticTransactions(userId, demat);
+        }
+
+        return totalCreated;
+    }
+
+    /**
+     * If we got real historical trades, remove the synthetic BUY transactions we created as placeholders.
+     */
+    private void cleanupSyntheticTransactions(UUID userId, DematAccount demat) {
+        List<Holding> holdings = holdingRepository.findByUserIdAndDematAccountId(userId, demat.getId());
+        for (Holding h : holdings) {
+            List<Transaction> brokerTxns = transactionRepository.findByHoldingIdAndBroker(h.getId(), BROKER_LABEL);
+            List<Transaction> synthetic = brokerTxns.stream()
+                    .filter(t -> t.getNotes() != null && t.getNotes().contains("Auto-imported from Upstox holdings sync"))
+                    .toList();
+            List<Transaction> real = brokerTxns.stream()
+                    .filter(t -> t.getNotes() == null || !t.getNotes().contains("Auto-imported from Upstox holdings sync"))
+                    .toList();
+            // Only remove synthetic if real trades exist for this holding
+            if (!real.isEmpty() && !synthetic.isEmpty()) {
+                transactionRepository.deleteAll(synthetic);
+                log.debug("Removed {} synthetic transactions for holding {} (replaced by real trades)", synthetic.size(), h.getSymbol());
+            }
+        }
     }
 }

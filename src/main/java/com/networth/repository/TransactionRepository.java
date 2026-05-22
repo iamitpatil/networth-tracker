@@ -5,6 +5,7 @@ import com.networth.model.enums.TransactionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -16,4 +17,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByUserId(UUID userId);
     List<Transaction> findByUserIdAndTransactionDateBetween(UUID userId, LocalDateTime start, LocalDateTime end);
     List<Transaction> findByUserIdAndTransactionType(UUID userId, TransactionType type);
+    List<Transaction> findByHoldingIdAndBroker(UUID holdingId, String broker);
+    boolean existsByHoldingIdAndBrokerAndTransactionDateAndQuantity(UUID holdingId, String broker, LocalDateTime transactionDate, BigDecimal quantity);
 }

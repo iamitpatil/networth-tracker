@@ -4,10 +4,13 @@ import com.networth.model.dto.HoldingRequest;
 import com.networth.model.entity.BrokerConnection;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
+import com.networth.model.entity.Transaction;
 import com.networth.model.enums.AssetType;
+import com.networth.model.enums.TransactionType;
 import com.networth.repository.BrokerConnectionRepository;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
+import com.networth.repository.TransactionRepository;
 import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,9 +38,11 @@ public class ZerodhaIntegrationService {
     private final BrokerConnectionRepository connectionRepository;
     private final DematAccountRepository dematAccountRepository;
     private final HoldingRepository holdingRepository;
+    private final TransactionRepository transactionRepository;
     private final HoldingService holdingService;
 
     private static final String BROKER_NAME = "ZERODHA";
+    private static final String BROKER_LABEL = "Zerodha";
     private static final String KITE_LOGIN_URL = "https://kite.zerodha.com/connect/login";
     private static final String KITE_BASE_URL = "https://api.kite.trade";
     private static final String SESSION_URL = KITE_BASE_URL + "/session/token";
@@ -195,6 +200,7 @@ public class ZerodhaIntegrationService {
             int created = 0;
             int updated = 0;
             int skipped = 0;
+            int txnCreated = 0;
 
             for (Map<String, Object> kh : kiteHoldings) {
                 try {
@@ -236,6 +242,9 @@ public class ZerodhaIntegrationService {
                         }
                         holdingRepository.save(match);
                         updated++;
+
+                        // Create synthetic BUY transaction if none from this broker exists
+                        if (createSyntheticTransaction(match, userId, qty, avg)) txnCreated++;
                     } else {
                         // Create new holding
                         HoldingRequest req = HoldingRequest.builder()
@@ -250,6 +259,11 @@ public class ZerodhaIntegrationService {
                                 .build();
                         holdingService.createHolding(userId.toString(), req);
                         created++;
+
+                        // Create transaction for newly created holding
+                        holdingRepository.findByUserIdAndSymbolAndDematAccountId(userId, symbol, demat.getId())
+                                .ifPresent(h -> createSyntheticTransaction(h, userId, qty, avg));
+                        txnCreated++;
                     }
                 } catch (Exception e) {
                     log.warn("Failed to sync Zerodha holding: {}", e.getMessage());
@@ -260,12 +274,13 @@ public class ZerodhaIntegrationService {
             conn.setLastSyncedAt(LocalDateTime.now());
             connectionRepository.save(conn);
 
-            log.info("Zerodha sync for user {}: {} created, {} updated, {} skipped",
-                    userId, created, updated, skipped);
+            log.info("Zerodha sync for user {}: {} created, {} updated, {} skipped, {} transactions",
+                    userId, created, updated, skipped, txnCreated);
             return Map.of("success", true,
-                    "message", String.format("%d created, %d updated, %d skipped", created, updated, skipped),
+                    "message", String.format("%d holdings (%d new, %d updated), %d transactions imported",
+                            kiteHoldings.size(), created, updated, txnCreated),
                     "created", created, "updated", updated, "skipped", skipped,
-                    "total", kiteHoldings.size());
+                    "transactions", txnCreated, "total", kiteHoldings.size());
         } catch (Exception e) {
             log.error("Zerodha sync failed for user {}: {}", userId, e.getMessage());
             if (e.getMessage() != null && (e.getMessage().contains("403") || e.getMessage().contains("401"))) {
@@ -363,6 +378,32 @@ public class ZerodhaIntegrationService {
                 .isDefault(demats.isEmpty())
                 .build();
         return dematAccountRepository.save(demat);
+    }
+
+    /**
+     * Create a synthetic BUY transaction for a holding if no broker transaction exists yet.
+     * Zerodha has no historical trades API, so we create a snapshot BUY at average cost.
+     * Does NOT call CostBasisService since the holding already has correct qty/avgPrice from sync.
+     */
+    private boolean createSyntheticTransaction(Holding holding, UUID userId, BigDecimal qty, BigDecimal avgPrice) {
+        List<Transaction> existing = transactionRepository.findByHoldingIdAndBroker(holding.getId(), BROKER_LABEL);
+        if (!existing.isEmpty()) return false;
+
+        Transaction txn = Transaction.builder()
+                .holdingId(holding.getId())
+                .userId(userId)
+                .transactionType(TransactionType.BUY)
+                .quantity(qty)
+                .price(avgPrice)
+                .amount(qty.multiply(avgPrice))
+                .fees(BigDecimal.ZERO)
+                .taxes(BigDecimal.ZERO)
+                .transactionDate(LocalDateTime.now())
+                .notes("Auto-imported from Zerodha holdings sync")
+                .broker(BROKER_LABEL)
+                .build();
+        transactionRepository.save(txn);
+        return true;
     }
 
     /**
