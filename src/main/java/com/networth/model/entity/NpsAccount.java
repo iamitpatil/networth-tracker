@@ -48,6 +48,18 @@ public class NpsAccount {
     @Column(name = "employer_name", length = 200)
     private String employerName;
 
+    @Column(name = "scheme_code", length = 20)
+    private String schemeCode;
+
+    @Column(precision = 18, scale = 4)
+    private BigDecimal units;
+
+    @Column(precision = 18, scale = 4)
+    private BigDecimal nav;
+
+    @Column(name = "nav_date")
+    private LocalDate navDate;
+
     @Column(name = "current_value", precision = 18, scale = 2)
     private BigDecimal currentValue;
 

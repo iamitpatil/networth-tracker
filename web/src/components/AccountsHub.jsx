@@ -50,6 +50,7 @@ export default function AccountsHub() {
   const [importOpen, setImportOpen] = useState(false)
   const [brokerStatus, setBrokerStatus] = useState({})
   const [syncingBroker, setSyncingBroker] = useState(null)
+  const [refreshingNps, setRefreshingNps] = useState(false)
   const importRef = useRef(null)
 
   const getLogo = (category, name) => {
@@ -316,6 +317,26 @@ export default function AccountsHub() {
         <div className="p-4 flex items-center justify-between border-b border-[var(--border)]">
           <h3 className="font-semibold text-[var(--text)]">{TABS.find(t => t.id === activeTab)?.label} Accounts</h3>
           <div className="flex items-center gap-2">
+            {activeTab === 'nps' && (
+              <button onClick={async () => {
+                  setRefreshingNps(true)
+                  try {
+                    const { data } = await client.post('/accounts/nps/refresh-nav')
+                    if (data.updated > 0) {
+                      toast.success(`NPS NAV updated`, { description: `${data.updated} account(s) refreshed` })
+                      loadAll()
+                    } else {
+                      toast.info('No NPS accounts with scheme codes to refresh')
+                    }
+                  } catch (err) { toast.error('NAV refresh failed', { description: err.message }) }
+                  finally { setRefreshingNps(false) }
+                }}
+                disabled={refreshingNps}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50">
+                {refreshingNps ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Refresh NAV
+              </button>
+            )}
             {activeTab === 'demat' && hasBrokers && (
               <div className="relative" ref={importRef}>
                 <button onClick={() => setImportOpen(!importOpen)}
@@ -385,8 +406,8 @@ export default function AccountsHub() {
           ))}
           {activeTab === 'nps' && (data?.npsAccounts || []).map(a => (
             <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
-              subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}`}
-              detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.assetClass ? `Class ${a.assetClass}` : ''}
+              subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}${a.schemeCode ? ` • ${a.schemeCode}` : ''}${a.nav ? ` • NAV ₹${a.nav}` : ''}`}
+              detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.units ? `${a.units} units` : (a.assetClass ? `Class ${a.assetClass}` : '')}
               accountType="NPS" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('nps', a.id, `NPS ${a.pranNumber}`)} />
@@ -654,17 +675,120 @@ function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const { options: tiers } = useReferenceData('NPS_TIER')
   const { options: assetClasses } = useReferenceData('NPS_ASSET_CLASS')
   const { options: schemes } = useReferenceData('NPS_SCHEME')
+  const [npsSchemes, setNpsSchemes] = useState([])
+  const [schemeSearch, setSchemeSearch] = useState('')
+  const [schemeDropdownOpen, setSchemeDropdownOpen] = useState(false)
+  const [navLoading, setNavLoading] = useState(false)
+  const schemeRef = useRef(null)
+
+  // Fetch NPS schemes from npsnav.in
+  useEffect(() => {
+    client.get('/accounts/nps/schemes')
+      .then(res => setNpsSchemes(res.data || []))
+      .catch(() => {})
+  }, [])
+
+  // Close scheme dropdown on outside click
+  useEffect(() => {
+    if (!schemeDropdownOpen) return
+    const handleClick = (e) => { if (schemeRef.current && !schemeRef.current.contains(e.target)) setSchemeDropdownOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [schemeDropdownOpen])
+
+  // When scheme is selected, fetch its NAV
+  const handleSchemeSelect = async (schemeCode, schemeName) => {
+    s('schemeCode', schemeCode)
+    setSchemeSearch(schemeName)
+    setSchemeDropdownOpen(false)
+    setNavLoading(true)
+    try {
+      const { data } = await client.get(`/accounts/nps/scheme/${schemeCode}`)
+      if (data?.NAV) {
+        const nav = parseFloat(data.NAV)
+        setForm(prev => ({
+          ...prev,
+          schemeCode,
+          nav,
+          currentValue: prev.units ? (parseFloat(prev.units) * nav).toFixed(2) : prev.currentValue,
+        }))
+      }
+    } catch {}
+    finally { setNavLoading(false) }
+  }
+
+  // Auto-calculate current value when units change
+  const handleUnitsChange = (v) => {
+    const units = v
+    const nav = form.nav
+    setForm(prev => ({
+      ...prev,
+      units,
+      currentValue: units && nav ? (parseFloat(units) * parseFloat(nav)).toFixed(2) : prev.currentValue,
+    }))
+  }
+
+  const selectedScheme = npsSchemes.find(s => s.schemeCode === form.schemeCode)
+  const filteredSchemes = schemeSearch
+    ? npsSchemes.filter(s => s.schemeName.toLowerCase().includes(schemeSearch.toLowerCase()) || s.schemeCode.toLowerCase().includes(schemeSearch.toLowerCase()))
+    : npsSchemes
+
+  // Init search field from existing scheme
+  useEffect(() => {
+    if (form.schemeCode && selectedScheme && !schemeSearch) {
+      setSchemeSearch(selectedScheme.schemeName)
+    }
+  }, [form.schemeCode, selectedScheme])
+
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="PRAN Number *" value={form.pranNumber} onChange={v => s('pranNumber', v.slice(0,12))} placeholder="12-digit PRAN" required />
         <Select label="Fund Manager" value={form.fundManager} onChange={v => s('fundManager', v)} options={fundManagers} />
         <Select label="Tier *" value={form.tier} onChange={v => s('tier', v)} options={tiers} required />
-        <Select label="Scheme" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={schemes} />
+        <Select label="Scheme Preference" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={schemes} />
         <Select label="Asset Class" value={form.assetClass} onChange={v => s('assetClass', v)} options={assetClasses} />
         <Input label="Opening Date" value={form.openingDate} onChange={v => s('openingDate', v)} type="date" />
         <Input label="Employer" value={form.employerName} onChange={v => s('employerName', v)} placeholder="Company name" />
-        <Input label="Current Value" value={form.currentValue} onChange={v => s('currentValue', v)} type="number" placeholder="280000" />
+
+        {/* NPS Scheme Code from npsnav.in */}
+        <div className="col-span-2 md:col-span-3" ref={schemeRef}>
+          <label className="block text-xs text-[var(--text-muted)] mb-1">
+            NPS Scheme (for live NAV)
+            {navLoading && <Loader2 className="w-3 h-3 inline ml-1 animate-spin" />}
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={schemeSearch}
+              onChange={(e) => { setSchemeSearch(e.target.value); setSchemeDropdownOpen(true) }}
+              onFocus={() => setSchemeDropdownOpen(true)}
+              className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50"
+              placeholder="Search NPS scheme (e.g. SBI Scheme E Tier I)..."
+            />
+            {schemeDropdownOpen && filteredSchemes.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+                {filteredSchemes.slice(0, 50).map((sc) => (
+                  <button type="button" key={sc.schemeCode}
+                    onClick={() => handleSchemeSelect(sc.schemeCode, sc.schemeName)}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)] transition truncate ${form.schemeCode === sc.schemeCode ? 'bg-blue-500/10 text-blue-400' : ''}`}>
+                    <span className="font-mono text-xs text-[var(--text-muted)] mr-2">{sc.schemeCode}</span>
+                    {sc.schemeName}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {form.schemeCode && (
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Scheme: <span className="font-mono">{form.schemeCode}</span>
+              {form.nav && <> · NAV: <span className="text-green-400">₹{parseFloat(form.nav).toFixed(4)}</span></>}
+            </p>
+          )}
+        </div>
+
+        <Input label="Units Held" value={form.units} onChange={handleUnitsChange} type="number" placeholder="1250.5000" />
+        <Input label="Current Value (₹)" value={form.currentValue} onChange={v => s('currentValue', v)} type="number" placeholder="Auto-calculated from NAV × units" />
       </div>
     </FormWrapper>
   )
