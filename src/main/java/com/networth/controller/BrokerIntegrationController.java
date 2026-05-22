@@ -72,30 +72,48 @@ public class BrokerIntegrationController {
 
     // ---- Zerodha ----
 
-    @GetMapping("/zerodha/holdings")
-    public ResponseEntity<List<Map<String, Object>>> fetchZerodhaHoldings(
+    @GetMapping("/zerodha/auth-url")
+    public ResponseEntity<?> getZerodhaAuthUrl(
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(zerodhaService.fetchHoldings(UUID.fromString(userDetails.getUsername())));
+        if (!featureFlags.isEnabled("zerodha-import")) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Zerodha import is not enabled"));
+        }
+        String url = zerodhaService.getAuthUrl(UUID.fromString(userDetails.getUsername()));
+        return ResponseEntity.ok(Map.of("url", url));
     }
 
-    @GetMapping("/zerodha/positions")
-    public ResponseEntity<List<Map<String, Object>>> fetchZerodhaPositions(
-            @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(zerodhaService.fetchPositions(UUID.fromString(userDetails.getUsername())));
-    }
-
-    @GetMapping("/zerodha/orders")
-    public ResponseEntity<List<Map<String, Object>>> fetchZerodhaOrders(
+    @PostMapping("/zerodha/callback")
+    public ResponseEntity<Map<String, Object>> zerodhaCallback(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam String from,
-            @RequestParam String to) {
-        return ResponseEntity.ok(zerodhaService.fetchOrders(UUID.fromString(userDetails.getUsername()), from, to));
+            @RequestBody Map<String, String> request) {
+        if (!featureFlags.isEnabled("zerodha-import")) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Zerodha import is not enabled"));
+        }
+        String requestToken = request.get("request_token");
+        return ResponseEntity.ok(zerodhaService.exchangeRequestToken(
+                UUID.fromString(userDetails.getUsername()), requestToken));
     }
 
     @PostMapping("/zerodha/sync")
     public ResponseEntity<Map<String, Object>> syncZerodhaHoldings(
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(zerodhaService.syncAllHoldings(UUID.fromString(userDetails.getUsername())));
+        if (!featureFlags.isEnabled("zerodha-import")) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Zerodha import is not enabled"));
+        }
+        return ResponseEntity.ok(zerodhaService.syncHoldings(UUID.fromString(userDetails.getUsername())));
+    }
+
+    @GetMapping("/zerodha/status")
+    public ResponseEntity<Map<String, Object>> getZerodhaStatus(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(zerodhaService.getConnectionStatus(UUID.fromString(userDetails.getUsername())));
+    }
+
+    @PostMapping("/zerodha/disconnect")
+    public ResponseEntity<Map<String, String>> disconnectZerodha(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        zerodhaService.disconnect(UUID.fromString(userDetails.getUsername()));
+        return ResponseEntity.ok(Map.of("message", "Zerodha disconnected"));
     }
 
     // ---- Account Aggregator ----

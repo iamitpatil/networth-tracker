@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { Building2, Plus, Trash2, Pencil, Check, X, Star } from 'lucide-react'
 import client from '../api/client'
 import { ConfirmDialog } from '../components/ui/Modal'
+import UpstoxSync from '../components/UpstoxSync'
+import ZerodhaSync from '../components/ZerodhaSync'
+import { useFeature } from '../context/FeatureFlagContext'
 
 const BROKERS = [
   'Zerodha', 'Groww', 'Angel One', 'ICICI Direct', 'HDFC Securities',
@@ -12,6 +15,8 @@ const BROKERS = [
 const ACCOUNT_TYPES = ['Equity', 'Commodity', 'Derivatives', 'Mutual Funds']
 
 export default function DematAccounts() {
+  const upstoxEnabled = useFeature('upstox-import')
+  const zerodhaEnabled = useFeature('zerodha-import')
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -133,6 +138,17 @@ export default function DematAccounts() {
           </p>
         </div>
       </div>
+
+      {(upstoxEnabled || zerodhaEnabled) && (
+        <div className="space-y-3">
+          {upstoxEnabled && (
+            <UpstoxSync onSyncComplete={fetchAccounts} />
+          )}
+          {zerodhaEnabled && (
+            <ZerodhaSync onSyncComplete={fetchAccounts} />
+          )}
+        </div>
+      )}
 
       {showForm && (
         <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)]">

@@ -6,6 +6,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
 import UpstoxSync from '../components/UpstoxSync'
+import ZerodhaSync from '../components/ZerodhaSync'
 import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 import { ConfirmDialog } from '../components/ui/Modal'
@@ -72,6 +73,7 @@ export default function Holdings() {
   const { view: familyView } = useFamilyView()
   const isFamilyView = familyView === 'family'
   const upstoxEnabled = useFeature('upstox-import')
+  const zerodhaEnabled = useFeature('zerodha-import')
   const [holdings, setHoldings] = useState([])
   const [symbols, setSymbols] = useState([])
   const [loading, setLoading] = useState(true)
@@ -704,8 +706,15 @@ export default function Holdings() {
         </button>
       </div>
 
-      {upstoxEnabled && (
-        <UpstoxSync onSyncComplete={() => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))} />
+      {(upstoxEnabled || zerodhaEnabled) && (
+        <div className="space-y-3">
+          {upstoxEnabled && (
+            <UpstoxSync onSyncComplete={() => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))} />
+          )}
+          {zerodhaEnabled && (
+            <ZerodhaSync onSyncComplete={() => client.get('/portfolio/holdings').then(r => setHoldings(r.data || []))} />
+          )}
+        </div>
       )}
 
       {showForm && (
