@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { Link2, Unlink, RefreshCw, Loader2, CheckCircle, ExternalLink } from 'lucide-react'
+import { ConfirmDialog } from './ui/Modal'
 
 export default function UpstoxSync({ onSyncComplete }) {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   useEffect(() => {
     client.get('/brokers/upstox/status')
@@ -69,15 +71,21 @@ export default function UpstoxSync({ onSyncComplete }) {
     }
   }
 
-  const handleDisconnect = async () => {
-    if (!confirm('Disconnect Upstox? Your imported holdings will remain.')) return
-    try {
-      await client.post('/brokers/upstox/disconnect')
-      setStatus({ connected: false })
-      toast.success('Upstox disconnected')
-    } catch (err) {
-      toast.error('Failed to disconnect', { description: err.message })
-    }
+  const handleDisconnect = () => {
+    setConfirmDialog({
+      open: true,
+      title: 'Disconnect Upstox?',
+      description: 'Your imported holdings will remain.',
+      onConfirm: async () => {
+        try {
+          await client.post('/brokers/upstox/disconnect')
+          setStatus({ connected: false })
+          toast.success('Upstox disconnected')
+        } catch (err) {
+          toast.error('Failed to disconnect', { description: err.message })
+        }
+      },
+    })
   }
 
   if (loading) return null
@@ -136,6 +144,14 @@ export default function UpstoxSync({ onSyncComplete }) {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

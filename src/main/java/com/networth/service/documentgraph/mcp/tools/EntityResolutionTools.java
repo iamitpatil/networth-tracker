@@ -74,12 +74,16 @@ public class EntityResolutionTools {
         int max = limit != null && limit > 0 ? limit : 10;
         String q = query.toLowerCase();
         return holdingRepository.findByUserId(uid).stream()
-                .filter(h -> h.getSymbol() != null && h.getSymbol().toLowerCase().contains(q)
-                        || h.getName() != null && h.getName().toLowerCase().contains(q))
+                .filter(h -> (h.getSymbol() != null && h.getSymbol().toLowerCase().contains(q))
+                        || (h.getName() != null && h.getName().toLowerCase().contains(q)))
                 .limit(max).map(h -> {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", h.getId().toString()); m.put("symbol", h.getSymbol());
-                    m.put("name", h.getName()); m.put("isin", h.getIsin());
+                    m.put("id", h.getId().toString());
+                    m.put("symbol", h.getSymbol());
+                    m.put("name", h.getName());
+                    m.put("qty", h.getQuantity());
+                    m.put("value", h.getCurrentValue());
+                    m.put("avgPrice", h.getAverageBuyPrice());
                     return m;
                 }).collect(Collectors.toList());
     }
@@ -92,14 +96,15 @@ public class EntityResolutionTools {
         UUID uid = UUID.fromString(userId);
         int max = limit != null && limit > 0 ? limit : 10;
         String q = query.toLowerCase();
-        return bankAccountRepository.findByUserIdOrderByCreatedAtDesc(uid).stream()
-                .filter(a -> a.getBankName() != null && a.getBankName().toLowerCase().contains(q)
-                        || a.getAccountName() != null && a.getAccountName().toLowerCase().contains(q))
+        return bankAccountRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(uid).stream()
+                .filter(a -> (a.getBankName() != null && a.getBankName().toLowerCase().contains(q))
+                        || (a.getAccountName() != null && a.getAccountName().toLowerCase().contains(q)))
                 .limit(max).map(a -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", a.getId().toString()); m.put("bankName", a.getBankName());
                     m.put("accountName", a.getAccountName());
                     m.put("accountNumber", maskAccount(a.getAccountNumber()));
+                    m.put("balance", a.getBalance());
                     return m;
                 }).collect(Collectors.toList());
     }
@@ -113,8 +118,8 @@ public class EntityResolutionTools {
         int max = limit != null && limit > 0 ? limit : 10;
         String q = query.toLowerCase();
         return creditCardRepository.findByUserIdOrderByCreatedAtDesc(uid).stream()
-                .filter(c -> c.getCardIssuer() != null && c.getCardIssuer().toLowerCase().contains(q)
-                        || c.getCardLastFour() != null && c.getCardLastFour().contains(q))
+                .filter(c -> (c.getCardIssuer() != null && c.getCardIssuer().toLowerCase().contains(q))
+                        || (c.getCardLastFour() != null && c.getCardLastFour().contains(q)))
                 .limit(max).map(c -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", c.getId().toString()); m.put("issuer", c.getCardIssuer());
@@ -132,8 +137,9 @@ public class EntityResolutionTools {
 
     private List<Map<String, Object>> findHoldingsBySymbol(UUID userId, String symbol) {
         return holdingRepository.findByUserId(userId).stream()
-                .filter(h -> symbol.equalsIgnoreCase(h.getSymbol())
-                        || symbol.equalsIgnoreCase(h.getSymbol().replace(".NS", "")))
+                .filter(h -> h.getSymbol() != null &&
+                        (symbol.equalsIgnoreCase(h.getSymbol())
+                        || symbol.equalsIgnoreCase(h.getSymbol().replace(".NS", ""))))
                 .map(h -> entityMatch("HOLDING", h.getId(), h.getSymbol() + " (" + h.getName() + ")", 0.95))
                 .collect(Collectors.toList());
     }
@@ -141,12 +147,14 @@ public class EntityResolutionTools {
     private List<Map<String, Object>> findCreditCards(UUID userId, String issuer, String lastFour) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (CreditCard c : creditCardRepository.findByUserIdOrderByCreatedAtDesc(userId)) {
-            boolean issuerMatch = issuer == null || c.getCardIssuer().toLowerCase().contains(issuer.toLowerCase());
+            boolean issuerMatch = issuer == null
+                    || (c.getCardIssuer() != null && c.getCardIssuer().toLowerCase().contains(issuer.toLowerCase()));
             boolean lastFourMatch = lastFour == null || lastFour.equals(c.getCardLastFour());
             if (issuerMatch && lastFourMatch) {
                 double conf = (issuer != null && lastFour != null) ? 1.0 : 0.7;
-                results.add(entityMatch("CREDIT_CARD", c.getId(),
-                        c.getCardIssuer() + " " + c.getCardName() + " (" + c.getCardLastFour() + ")", conf));
+                String label = (c.getCardIssuer() != null ? c.getCardIssuer() : "") + " "
+                        + (c.getCardName() != null ? c.getCardName() : "") + " (" + c.getCardLastFour() + ")";
+                results.add(entityMatch("CREDIT_CARD", c.getId(), label.trim(), conf));
             }
         }
         return results;
@@ -154,13 +162,17 @@ public class EntityResolutionTools {
 
     private List<Map<String, Object>> findBankAccounts(UUID userId, String bankName, String accountNumber) {
         List<Map<String, Object>> results = new ArrayList<>();
-        for (BankAccount a : bankAccountRepository.findByUserIdOrderByCreatedAtDesc(userId)) {
-            boolean nameMatch = bankName == null || a.getBankName().toLowerCase().contains(bankName.toLowerCase());
-            boolean acctMatch = accountNumber == null || a.getAccountNumber().endsWith(accountNumber);
+        for (BankAccount a : bankAccountRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId)) {
+            boolean nameMatch = bankName == null
+                    || (a.getBankName() != null && a.getBankName().toLowerCase().contains(bankName.toLowerCase()));
+            boolean acctMatch = accountNumber == null
+                    || (a.getAccountNumber() != null && a.getAccountNumber().endsWith(accountNumber));
             if (nameMatch && acctMatch) {
                 double conf = (bankName != null && accountNumber != null) ? 1.0 : 0.7;
-                results.add(entityMatch("BANK_ACCOUNT", a.getId(),
-                        a.getBankName() + " " + a.getAccountName() + " (" + maskAccount(a.getAccountNumber()) + ")", conf));
+                String label = (a.getBankName() != null ? a.getBankName() : "") + " "
+                        + (a.getAccountName() != null ? a.getAccountName() : "")
+                        + " (" + maskAccount(a.getAccountNumber()) + ")";
+                results.add(entityMatch("BANK_ACCOUNT", a.getId(), label.trim(), conf));
             }
         }
         return results;

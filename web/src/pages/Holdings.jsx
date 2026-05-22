@@ -8,6 +8,7 @@ import NewsPanel from '../components/NewsPanel'
 import UpstoxSync from '../components/UpstoxSync'
 import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#14b8a6', '#f97316']
 
@@ -111,6 +112,7 @@ export default function Holdings() {
   const [dividendRecords, setDividendRecords] = useState([])
   const [dividendRecordsLoading, setDividendRecordsLoading] = useState(false)
   const [calculatingDividends, setCalculatingDividends] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const chartStats = useMemo(() => {
     if (!priceHistory.length) return null
@@ -432,12 +434,17 @@ export default function Holdings() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (confirm('Delete this holding?')) {
-      await client.delete(`/portfolio/holdings/${id}`)
-      const res = await client.get('/portfolio/holdings')
-      setHoldings(res.data)
-    }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this holding?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        await client.delete(`/portfolio/holdings/${id}`)
+        const res = await client.get('/portfolio/holdings')
+        setHoldings(res.data)
+      },
+    })
   }
 
   const openChart = async (holding, days) => {
@@ -587,14 +594,20 @@ export default function Holdings() {
     }
   }
 
-  const handleInvoiceDelete = async (docId) => {
-    if (!confirm('Delete this invoice?')) return
-    try {
-      await client.delete(`/documents/${docId}`)
-      setInvoices((prev) => prev.filter((d) => d.id !== docId))
-    } catch (e) {
-      console.error('Delete failed:', e)
-    }
+  const handleInvoiceDelete = (docId) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this invoice?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/documents/${docId}`)
+          setInvoices((prev) => prev.filter((d) => d.id !== docId))
+        } catch (e) {
+          console.error('Delete failed:', e)
+        }
+      },
+    })
   }
 
   const handleInvoicePreview = async (doc) => {
@@ -1496,6 +1509,14 @@ export default function Holdings() {
       )}
 
       {/* Dividend Detail Modal */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
+
       {dividendHolding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setDividendHolding(null); setDividendRecords([]) }}>
           <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>

@@ -18,7 +18,6 @@ import Tax from './pages/Tax'
 import Goals from './pages/Goals'
 import Liabilities from './pages/Liabilities'
 import Import from './pages/Import'
-import SmartImport from './pages/SmartImport'
 import DematAccounts from './pages/DematAccounts'
 import Documents from './pages/Documents'
 import Profile from './pages/Profile'
@@ -56,7 +55,6 @@ createRoot(document.getElementById('root')).render(
             <Route path="goals" element={<Goals />} />
             <Route path="liabilities" element={<Liabilities />} />
             <Route path="import" element={<Import />} />
-            <Route path="smart-import" element={<SmartImport />} />
             <Route path="demat-accounts" element={<DematAccounts />} />
             <Route path="documents" element={<Documents />} />
             <Route path="ai-chat" element={<AIChat />} />

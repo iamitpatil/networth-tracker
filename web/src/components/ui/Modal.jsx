@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, Lock } from 'lucide-react'
 import Button from './Button'
 
 const sizes = {
@@ -149,6 +149,67 @@ export function ConfirmDialog({
       }
     >
       {/* Body intentionally empty - description shows in header */}
+    </Modal>
+  )
+}
+
+/**
+ * PDF Password modal — prompts user for password when PDF is encrypted.
+ * Reusable across the entire app.
+ */
+export function PdfPasswordModal({
+  open,
+  onClose,
+  onSubmit,
+  fileName,
+  error,
+  loading = false,
+}) {
+  const [password, setPassword] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (open) {
+      setPassword('')
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [open])
+
+  const handleSubmit = (e) => {
+    e?.preventDefault()
+    if (password.trim()) onSubmit?.(password.trim())
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Password-Protected PDF"
+      description={fileName ? `"${fileName}" is encrypted and requires a password to open.` : 'This PDF is encrypted and requires a password.'}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button variant="primary" onClick={handleSubmit} loading={loading} disabled={!password.trim()}>
+            <Lock className="w-3.5 h-3.5 mr-1.5" /> Unlock
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <input
+          ref={inputRef}
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Enter PDF password"
+          className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+          autoComplete="off"
+        />
+        {error && (
+          <p className="text-xs text-red-400">{error}</p>
+        )}
+      </form>
     </Modal>
   )
 }

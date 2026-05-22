@@ -2,10 +2,12 @@ package com.networth.service.documentgraph.mcp;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networth.service.documentgraph.mcp.tools.AgentTools;
 import com.networth.service.documentgraph.mcp.tools.DocumentClassificationTools;
 import com.networth.service.documentgraph.mcp.tools.DocumentExtractionTools;
 import com.networth.service.documentgraph.mcp.tools.EntityResolutionTools;
 import com.networth.service.documentgraph.mcp.tools.ExecutionTools;
+import com.networth.service.documentgraph.mcp.tools.FinancialAnalyticsTools;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -26,11 +28,13 @@ public class McpToolClient {
             DocumentClassificationTools classificationTools,
             DocumentExtractionTools extractionTools,
             EntityResolutionTools resolutionTools,
-            ExecutionTools executionTools) {
+            ExecutionTools executionTools,
+            FinancialAnalyticsTools analyticsTools,
+            AgentTools agentTools) {
         this.objectMapper = objectMapper;
 
         MethodToolCallbackProvider provider = MethodToolCallbackProvider.builder()
-                .toolObjects(classificationTools, extractionTools, resolutionTools, executionTools)
+                .toolObjects(classificationTools, extractionTools, resolutionTools, executionTools, analyticsTools, agentTools)
                 .build();
 
         for (ToolCallback cb : provider.getToolCallbacks()) {
@@ -49,7 +53,9 @@ public class McpToolClient {
         }
 
         try {
-            String jsonArgs = objectMapper.writeValueAsString(args);
+            // Deep-convert any string values that look like JSON into proper Map/List
+            Map<String, Object> convertedArgs = deepConvertStrings(args);
+            String jsonArgs = objectMapper.writeValueAsString(convertedArgs);
             String result = callback.call(jsonArgs);
             if (result == null || result.isBlank()) {
                 return Map.of("status", "completed");
@@ -72,9 +78,34 @@ public class McpToolClient {
                 }
             }
         } catch (Exception e) {
-            log.warn("Tool {} execution failed: {}", toolName, e.getMessage());
-            return Map.of("error", e.getMessage());
+            String errMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            log.warn("Tool {} execution failed: {}", toolName, errMsg);
+            Map<String, Object> errResult = new LinkedHashMap<>();
+            errResult.put("error", errMsg);
+            errResult.put("isError", true);
+            return errResult;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> deepConvertStrings(Map<String, Object> args) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : args.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof String str && str.startsWith("{") && str.endsWith("}")) {
+                try {
+                    value = objectMapper.readValue(str, LinkedHashMap.class);
+                } catch (Exception ignored) {}
+            } else if (value instanceof String str && str.startsWith("[") && str.endsWith("]")) {
+                try {
+                    value = objectMapper.readValue(str, List.class);
+                } catch (Exception ignored) {}
+            } else if (value instanceof Map) {
+                value = deepConvertStrings((Map<String, Object>) value);
+            }
+            result.put(entry.getKey(), value);
+        }
+        return result;
     }
 
     public List<Map<String, String>> getToolList() {

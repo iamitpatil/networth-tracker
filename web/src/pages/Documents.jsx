@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { FileText, Plus, Trash2, Download, Upload, X, Loader2, FolderOpen, Building2 } from 'lucide-react'
 import client from '../api/client'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 const CATEGORIES = ['INVOICE', 'ID_PROOF', 'STATEMENT', 'REPORT', 'OTHER']
 
@@ -35,6 +36,7 @@ export default function Documents() {
   const [dematAccountId, setDematAccountId] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
   const fileInputRef = useRef(null)
 
   const loadDocuments = () => {
@@ -83,14 +85,20 @@ export default function Documents() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this document?')) return
-    try {
-      await client.delete(`/documents/${id}`)
-      setDocuments(documents.filter(d => d.id !== id))
-    } catch (err) {
-      console.error('Delete failed', err)
-    }
+  function handleDelete(id) {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this document?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/documents/${id}`)
+          setDocuments(documents.filter(d => d.id !== id))
+        } catch (err) {
+          console.error('Delete failed', err)
+        }
+      },
+    })
   }
 
   async function handleView(doc) {
@@ -370,6 +378,14 @@ export default function Documents() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

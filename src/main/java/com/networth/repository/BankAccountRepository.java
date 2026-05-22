@@ -10,4 +10,5 @@ import java.util.UUID;
 @Repository
 public interface BankAccountRepository extends JpaRepository<BankAccount, UUID> {
     List<BankAccount> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    List<BankAccount> findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID userId);
 }

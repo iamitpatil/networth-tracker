@@ -6,6 +6,7 @@ import {
   Plus, Trash2, Pencil, X, ChevronDown, ChevronUp, Eye, EyeOff,
   Upload, FileText, Download, Loader2, Paperclip
 } from 'lucide-react'
+import { ConfirmDialog } from './ui/Modal'
 
 const TABS = [
   { id: 'bank', label: 'Bank', icon: Landmark, color: 'blue' },
@@ -28,6 +29,7 @@ export default function AccountsHub() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({})
 
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
   const { options: bankRef } = useReferenceData('BANK')
   const { options: brokerRef } = useReferenceData('BROKER')
   const { options: cardIssuerRef } = useReferenceData('CARD_ISSUER')
@@ -66,13 +68,19 @@ export default function AccountsHub() {
     } catch (err) { toast.error('Failed to update', { description: err.response?.data?.message || err.message }) }
   }
 
-  const handleDelete = async (endpoint, id, label) => {
-    if (!confirm(`Delete ${label}?`)) return
-    try {
-      await client.delete(`/accounts/${endpoint}/${id}`)
-      toast.success(`${label} deleted`)
-      loadAll()
-    } catch (err) { toast.error('Failed to delete', { description: err.response?.data?.message || err.message }) }
+  const handleDelete = (endpoint, id, label) => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${label}?`,
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/accounts/${endpoint}/${id}`)
+          toast.success(`${label} deleted`)
+          loadAll()
+        } catch (err) { toast.error('Failed to delete', { description: err.response?.data?.message || err.message }) }
+      },
+    })
   }
 
   // For bank/demat we use existing endpoints
@@ -84,10 +92,16 @@ export default function AccountsHub() {
     try { await client.put(`/bank-accounts/${id}`, body); toast.success('Updated'); resetForm(); loadAll() }
     catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
   }
-  const handleBankDelete = async (id) => {
-    if (!confirm('Delete bank account?')) return
-    try { await client.delete(`/bank-accounts/${id}`); toast.success('Deleted'); loadAll() }
-    catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+  const handleBankDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete bank account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try { await client.delete(`/bank-accounts/${id}`); toast.success('Deleted'); loadAll() }
+        catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+      },
+    })
   }
   const handleDematCreate = async (body) => {
     try { await client.post('/demat-accounts', body); toast.success('Demat account added'); resetForm(); loadAll() }
@@ -97,10 +111,16 @@ export default function AccountsHub() {
     try { await client.put(`/demat-accounts/${id}`, body); toast.success('Updated'); resetForm(); loadAll() }
     catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
   }
-  const handleDematDelete = async (id) => {
-    if (!confirm('Delete demat account?')) return
-    try { await client.delete(`/demat-accounts/${id}`); toast.success('Deleted'); loadAll() }
-    catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+  const handleDematDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete demat account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try { await client.delete(`/demat-accounts/${id}`); toast.success('Deleted'); loadAll() }
+        catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+      },
+    })
   }
 
   if (loading) return <div className="flex justify-center py-12 text-[var(--text-muted)]">Loading accounts...</div>
@@ -221,6 +241,14 @@ export default function AccountsHub() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }
@@ -230,6 +258,7 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
   const [docs, setDocs] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
   const fileRef = useRef(null)
 
   const loadDocs = async () => {
@@ -269,15 +298,21 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
     }
   }
 
-  const handleDeleteDoc = async (docId) => {
-    if (!confirm('Delete this document?')) return
-    try {
-      await client.delete(`/documents/${docId}`)
-      setDocs(prev => prev.filter(d => d.id !== docId))
-      toast.success('Document deleted')
-    } catch (err) {
-      toast.error('Delete failed', { description: err.response?.data?.message || err.message })
-    }
+  const handleDeleteDoc = (docId) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this document?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/documents/${docId}`)
+          setDocs(prev => prev.filter(d => d.id !== docId))
+          toast.success('Document deleted')
+        } catch (err) {
+          toast.error('Delete failed', { description: err.response?.data?.message || err.message })
+        }
+      },
+    })
   }
 
   return (
@@ -352,6 +387,14 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

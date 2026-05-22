@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
 import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Banknote, Upload, ChevronDown, ChevronRight, FileText, Download } from 'lucide-react'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 export default function Salaries() {
   const [salaries, setSalaries] = useState([])
@@ -14,6 +15,7 @@ export default function Salaries() {
   const [parsedData, setParsedData] = useState(null)
   const [expandedRow, setExpandedRow] = useState(null)
   const [salaryDocs, setSalaryDocs] = useState({})
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const load = async () => {
     try {
@@ -71,12 +73,18 @@ export default function Salaries() {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this salary record?')) return
-    try {
-      await client.delete(`/salaries/${id}`)
-      setSalaries((p) => p.filter((s) => s.id !== id))
-    } catch (e) { console.error(e) }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this salary record?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/salaries/${id}`)
+          setSalaries((p) => p.filter((s) => s.id !== id))
+        } catch (e) { console.error(e) }
+      },
+    })
   }
 
   const handleUpload = async (e) => {
@@ -288,6 +296,14 @@ export default function Salaries() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
 
       {expandedRow && salaries.find(s => s.id === expandedRow)?.components && (
         <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 space-y-1.5">

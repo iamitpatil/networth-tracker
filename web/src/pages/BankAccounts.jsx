@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import client from '../api/client'
 import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Download, Search } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 export default function BankAccounts() {
   const { options: bankNames } = useReferenceData('BANK')
@@ -18,6 +19,7 @@ export default function BankAccounts() {
   const [gmailLoading, setGmailLoading] = useState(false)
   const [gmailTxns, setGmailTxns] = useState([])
   const [txnFilter, setTxnFilter] = useState('pending')
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const load = async () => {
     try {
@@ -63,12 +65,18 @@ export default function BankAccounts() {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this bank account?')) return
-    try {
-      await client.delete(`/bank-accounts/${id}`)
-      setAccounts((p) => p.filter((a) => a.id !== id))
-    } catch (e) { console.error(e) }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this bank account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/bank-accounts/${id}`)
+          setAccounts((p) => p.filter((a) => a.id !== id))
+        } catch (e) { console.error(e) }
+      },
+    })
   }
 
   const handleGmailAuth = () => {
@@ -370,6 +378,14 @@ export default function BankAccounts() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

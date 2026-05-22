@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Building2, Plus, Trash2, Pencil, Check, X, Star } from 'lucide-react'
 import client from '../api/client'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 const BROKERS = [
   'Zerodha', 'Groww', 'Angel One', 'ICICI Direct', 'HDFC Securities',
@@ -22,6 +23,7 @@ export default function DematAccounts() {
     description: '',
     isDefault: false,
   })
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   useEffect(() => { fetchAccounts() }, [])
 
@@ -82,14 +84,20 @@ export default function DematAccounts() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this demat account?')) return
-    try {
-      await client.delete(`/demat-accounts/${id}`)
-      await fetchAccounts()
-    } catch (err) {
-      console.error('Failed to delete demat account', err)
-    }
+  function handleDelete(id) {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this demat account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/demat-accounts/${id}`)
+          await fetchAccounts()
+        } catch (err) {
+          console.error('Failed to delete demat account', err)
+        }
+      },
+    })
   }
 
   if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
@@ -260,6 +268,14 @@ export default function DematAccounts() {
           <p className="text-[var(--text-secondary)] text-sm">Click "Add Account" to link your brokerage accounts</p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

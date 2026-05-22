@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3, Loader2 } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
 import CreditCardSpend from '../components/CreditCardSpend'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 const LIABILITY_CATEGORIES = [
   {
@@ -62,6 +63,7 @@ export default function Liabilities() {
   const [selectedLiability, setSelectedLiability] = useState(null)
   const [emiSchedule, setEmiSchedule] = useState([])
   const [activeFilter, setActiveFilter] = useState('all')
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const [form, setForm] = useState({
     liabilityType: 'home_loan',
@@ -154,16 +156,22 @@ export default function Liabilities() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this liability?')) return
-    try {
-      await client.delete(`/liabilities/${id}`)
-      setLocalLiabilities(prev => prev.filter(l => l.id !== id))
-      if (selectedLiability?.id === id) { setSelectedLiability(null); setEmiSchedule([]) }
-      toast.success('Liability deleted')
-    } catch (err) {
-      toast.error('Failed to delete', { description: err.response?.data?.message || err.message })
-    }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this liability?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/liabilities/${id}`)
+          setLocalLiabilities(prev => prev.filter(l => l.id !== id))
+          if (selectedLiability?.id === id) { setSelectedLiability(null); setEmiSchedule([]) }
+          toast.success('Liability deleted')
+        } catch (err) {
+          toast.error('Failed to delete', { description: err.response?.data?.message || err.message })
+        }
+      },
+    })
   }
 
   if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
@@ -547,6 +555,14 @@ export default function Liabilities() {
       )}
 
       </>}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

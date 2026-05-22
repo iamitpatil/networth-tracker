@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
 import { Users, Plus, X, Check, Ban, LogOut, Trash2, Mail, UserPlus, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { ConfirmDialog } from '../components/ui/Modal'
 
 export default function Family() {
   const { fetchPending, fetchFamilies } = useFamilyView()
@@ -15,6 +16,7 @@ export default function Family() {
   const [inviteEmail, setInviteEmail] = useState({})
   const [sending, setSending] = useState({})
   const [creating, setCreating] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,24 +85,36 @@ export default function Family() {
     } catch (e) { console.error(e) }
   }
 
-  const handleLeave = async (familyId) => {
-    if (!confirm('Leave this family?')) return
-    try {
-      await client.delete(`/families/${familyId}/leave`)
-      setMembers((p) => { const n = { ...p }; delete n[familyId]; return n })
-      await load()
-      await fetchFamilies()
-    } catch (e) { console.error(e) }
+  const handleLeave = (familyId) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Leave this family?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/families/${familyId}/leave`)
+          setMembers((p) => { const n = { ...p }; delete n[familyId]; return n })
+          await load()
+          await fetchFamilies()
+        } catch (e) { console.error(e) }
+      },
+    })
   }
 
-  const handleDelete = async (familyId) => {
-    if (!confirm('Delete this family permanently?')) return
-    try {
-      await client.delete(`/families/${familyId}`)
-      setMembers((p) => { const n = { ...p }; delete n[familyId]; return n })
-      await load()
-      await fetchFamilies()
-    } catch (e) { console.error(e) }
+  const handleDelete = (familyId) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this family permanently?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/families/${familyId}`)
+          setMembers((p) => { const n = { ...p }; delete n[familyId]; return n })
+          await load()
+          await fetchFamilies()
+        } catch (e) { console.error(e) }
+      },
+    })
   }
 
   if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
@@ -273,6 +287,14 @@ export default function Family() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }
