@@ -101,35 +101,51 @@ public class AIChatController {
             if (result.pendingActionId() != null) body.put("pendingActionId", result.pendingActionId());
             return ResponseEntity.ok(body);
         } catch (PdfPasswordRequiredException e) {
-            return ResponseEntity.status(422).body(Map.of(
-                    "error", "PASSWORD_REQUIRED",
-                    "message", e.getMessage()));
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("error", "PASSWORD_REQUIRED");
+            body.put("message", e.getMessage());
+            return ResponseEntity.status(422).contentType(MediaType.APPLICATION_JSON).body(body);
         }
     }
 
-    @PostMapping(value = "/chat-upload-stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<?> chatUploadStream(
+    @PostMapping(value = "/chat-upload-stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Object chatUploadStream(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam("file") MultipartFile file,
             @RequestParam("message") String message,
             @RequestParam(value = "sessionId", required = false) String sessionId,
-            @RequestParam(value = "password", required = false) String password) {
+            @RequestParam(value = "password", required = false) String password,
+            jakarta.servlet.http.HttpServletResponse servletResponse) throws Exception {
+        // Extract file content first — may throw PdfPasswordRequiredException
+        String enriched;
         try {
-            String enriched = enrichWithFile(message, file, password);
-            SseEmitter emitter = new SseEmitter(aiConfig.getSseTimeoutMs());
-            mcpAIChatService.streamChat(emitter, sessionId, userDetails.getUsername(), enriched, "advice");
-            return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);
+            enriched = enrichWithFile(message, file, password);
         } catch (PdfPasswordRequiredException e) {
-            return ResponseEntity.status(422).body(Map.of(
-                    "error", "PASSWORD_REQUIRED",
-                    "message", e.getMessage()));
+            // Write JSON error directly to response — bypasses Spring's converter
+            servletResponse.setStatus(422);
+            servletResponse.setContentType("application/json");
+            servletResponse.setCharacterEncoding("UTF-8");
+            servletResponse.getWriter().write("{\"error\":\"PASSWORD_REQUIRED\",\"message\":\"" +
+                    e.getMessage().replace("\"", "\\\"") + "\"}");
+            servletResponse.getWriter().flush();
+            return null; // Response already written
         }
+
+        // Success — return SseEmitter directly (Spring handles SSE async natively)
+        servletResponse.setContentType("text/event-stream");
+        servletResponse.setCharacterEncoding("UTF-8");
+        servletResponse.setHeader("Cache-Control", "no-cache");
+        SseEmitter emitter = new SseEmitter(aiConfig.getSseTimeoutMs());
+        mcpAIChatService.streamChat(emitter, sessionId, userDetails.getUsername(), enriched, "advice");
+        return emitter;
     }
 
-    @GetMapping("/tools")
+    @GetMapping(value = "/tools", produces = "application/json")
     public ResponseEntity<Map<String, Object>> getTools() {
         List<Map<String, String>> tools = mcpAIChatService.getToolDefinitions();
-        return ResponseEntity.ok(Map.of("tools", tools));
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("tools", tools);
+        return ResponseEntity.ok(body);
     }
 
     // ---- Session Management ----
