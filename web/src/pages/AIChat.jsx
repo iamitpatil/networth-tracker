@@ -9,7 +9,7 @@ import {
   TrendingUp, PieChart, Shield, Loader2, Copy, RotateCcw,
   MessageSquare, Wallet, ArrowRight, Paperclip, History,
   Search, CreditCard, Briefcase, Building2, Play,
-  ThumbsUp, ThumbsDown, AlertTriangle, ChevronDown, Brain, Wrench,
+  ThumbsUp, ThumbsDown, AlertTriangle, ChevronDown, Brain, Wrench, Upload,
 } from 'lucide-react'
 
 const SUGGESTED_PROMPTS = [
@@ -338,6 +338,7 @@ export default function AIChat() {
   const [confirmLoading, setConfirmLoading] = useState(null)
   const [attachedFile, setAttachedFile] = useState(null)
   const [pdfPasswordModal, setPdfPasswordModal] = useState({ open: false, file: null, message: '', error: '' })
+  const [dragOver, setDragOver] = useState(false)
   const [liveSteps, setLiveSteps] = useState([])  // ordered: reasoning + tool steps
   const [liveThought, setLiveThought] = useState('')
   const [sessions, setSessions] = useState([])
@@ -658,8 +659,29 @@ export default function AIChat() {
 
   const headerSessionNum = sessionId ? (sessions.findIndex(s => s.id === sessionId) + 1) || 1 : null
 
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file && (file.type === 'application/pdf' || file.type.includes('text') || file.name.endsWith('.csv') || file.name.endsWith('.txt'))) {
+      setAttachedFile(file)
+    }
+  }
+  const handleDragOver = (e) => { e.preventDefault(); setDragOver(true) }
+  const handleDragLeave = (e) => { e.preventDefault(); setDragOver(false) }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-5xl mx-auto">
+    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-5xl mx-auto relative"
+      onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+      {dragOver && (
+        <div className="absolute inset-0 z-50 bg-blue-500/10 backdrop-blur-sm border-2 border-dashed border-blue-500 rounded-2xl flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <Upload className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+            <p className="text-lg font-medium text-blue-400">Drop file to attach</p>
+            <p className="text-sm text-[var(--text-muted)]">PDF, CSV, or TXT files supported</p>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 pb-4 border-b border-[var(--border)]">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">

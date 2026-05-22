@@ -6,6 +6,7 @@ public enum DocumentType {
     BANK_STATEMENT,
     CAS,
     FORM_16,
+    NPS_STATEMENT,
     BROKER_CSV,
     INVOICE,
     GENERIC_FINANCIAL,

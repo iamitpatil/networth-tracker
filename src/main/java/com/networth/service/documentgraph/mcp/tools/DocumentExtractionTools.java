@@ -51,6 +51,27 @@ Return ONLY a valid JSON object with keys:
 PayDate MUST be in YYYY-MM-DD format. Use null for missing values. No explanation, no markdown, just JSON.
 """;
 
+    private static final String NPS_PROMPT = """
+You are an NPS (National Pension System) statement parser. Extract structured data from the NPS Statement of Transaction (SOT) text below.
+Return ONLY a valid JSON object with these keys:
+- pranNumber (string, 12-digit PRAN number)
+- subscriberName (string, name of the subscriber)
+- fundManager (string, pension fund manager name e.g. "SBI Pension Fund", "HDFC Pension Fund")
+- tier (string, "TIER1" or "TIER2")
+- schemePreference (string, "ACTIVE" or "AUTO" or null)
+- assetClass (string, "E" for Equity, "C" for Corporate Bonds, "G" for Government Securities, "A" for Alternate, or null)
+- currentValue (number, total current corpus/value)
+- totalContributions (number, total contributions made)
+- units (object mapping asset class to units, e.g. {"E": 1250.5, "C": 800.2, "G": 500.0})
+- navValues (object mapping asset class to latest NAV, e.g. {"E": 55.55, "C": 45.22, "G": 40.77})
+- transactions (array of objects, each with: date (YYYY-MM-DD), description, amount, type (CONTRIBUTION/WITHDRAWAL/SWITCH), assetClass)
+- employerName (string, employer name if corporate NPS, or null)
+- openingDate (string, YYYY-MM-DD, date of account opening if found)
+- statementPeriod (object with "from" and "to" dates in YYYY-MM-DD format)
+
+Use null for any field you cannot determine. No explanation, no markdown fences, just the JSON object.
+""";
+
     private static final String GENERIC_PROMPT = """
 You are a financial data extractor. Extract all financial information from this document text.
 Look for transactions, account details, card details, employer details, investment details.
@@ -99,6 +120,12 @@ Return a JSON object:
         // Form 16 uses the existing Form16Parser, which takes MultipartFile
         // This tool extracts the text structure; actual parsing uses the dedicated parser
         return callAi(GENERIC_PROMPT, text, "Form 16 extraction");
+    }
+
+    @Tool(name = "extract_nps_statement", description = "Extract PRAN, contributions, units, NAV, and transactions from an NPS Statement of Transaction")
+    public Map<String, Object> extractNpsStatement(
+            @ToolParam(description = "Text content of the NPS statement") String text) {
+        return callAi(NPS_PROMPT, text, "NPS statement extraction");
     }
 
     @Tool(name = "extract_generic", description = "Extract any financial information from a generic financial document")

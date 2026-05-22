@@ -30,12 +30,13 @@ Key heuristics by type:
 - BANK_STATEMENT: Contains bank name + account number + opening/closing balance + transactions
 - CAS: Contains "Consolidated Account Statement" + multiple folios/holdings
 - FORM_16: Contains "Form 16" + "TDS" + "PAN" + assessment year + salary breakdown
+- NPS_STATEMENT: Contains "PRAN" or "National Pension" or "NPS" + "Tier" + "NAV" + contribution/transaction details, fund manager names (SBI/LIC/HDFC/UTI/Kotak/ICICI/Birla/Tata/Axis/DSP pension fund)
 - BROKER_CSV: CSV with headers like Symbol, Quantity, Price
 - INVOICE: Contains "invoice" + "bill to" + line items + total
 
 Respond ONLY with a JSON object:
 {
-  "documentType": "CREDIT_CARD_BILL|SALARY_SLIP|BANK_STATEMENT|CAS|FORM_16|BROKER_CSV|INVOICE|GENERIC_FINANCIAL|UNKNOWN",
+  "documentType": "CREDIT_CARD_BILL|SALARY_SLIP|BANK_STATEMENT|CAS|FORM_16|NPS_STATEMENT|BROKER_CSV|INVOICE|GENERIC_FINANCIAL|UNKNOWN",
   "confidence": 0.0-1.0,
   "reasoning": "Brief explanation"
 }
