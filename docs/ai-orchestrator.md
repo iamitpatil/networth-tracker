@@ -3,6 +3,7 @@
 > **Status:** Production | **Last updated:** 2026-05-22
 > **Model:** Gemma 4 E4B (4.5B effective params, 128K context, native function calling + thinking)
 > **Stack:** Spring Boot + llama.cpp + React SSE
+> **Tools:** 32 tools across 6 classes + 3 expert agents
 
 ---
 
@@ -14,14 +15,16 @@
 4. [Function Calling & Tool Loop](#4-function-calling--tool-loop)
 5. [Token Streaming & Reasoning](#5-token-streaming--reasoning)
 6. [SSE Protocol](#6-sse-protocol)
-7. [MCP Tools](#7-mcp-tools)
-8. [Human-in-the-Loop (HITL)](#8-human-in-the-loop-hitl)
-9. [Session Management](#9-session-management)
-10. [System Prompt & Intent Classification](#10-system-prompt--intent-classification)
-11. [Frontend Implementation](#11-frontend-implementation)
-12. [Security & Safety](#12-security--safety)
-13. [File References](#13-file-references)
-14. [Decision Log](#14-decision-log)
+7. [MCP Tools (32)](#7-mcp-tools)
+8. [Expert Agents](#8-expert-agents)
+9. [Human-in-the-Loop (HITL)](#9-human-in-the-loop-hitl)
+10. [PDF Processing](#10-pdf-processing)
+11. [Session Management](#11-session-management)
+12. [System Prompt & Intent Classification](#12-system-prompt--intent-classification)
+13. [Frontend Implementation](#13-frontend-implementation)
+14. [Security & Safety](#14-security--safety)
+15. [File References](#15-file-references)
+16. [Decision Log](#16-decision-log)
 
 ---
 
@@ -29,14 +32,13 @@
 
 The AI chat is a **universal orchestrator** for the NetWorth Tracker app. Upload any financial document, ask about your portfolio, or request data changes — the AI:
 
-1. **Understands** what you need (intent classification)
-2. **Searches** your portfolio data via tools (holdings, accounts, cards)
-3. **Extracts** structured data from documents (CC bills, salary slips, statements)
-4. **Resolves** entities against your existing portfolio
-5. **Proposes** actions and waits for approval (HITL)
-6. **Executes** them after confirmation
-
-Built in 3 phases: Java Graph Engine (Phase 1) -> MCP Tool Layer (Phase 2) -> AI-Driven Orchestrator (Phase 3, current).
+1. **Understands** what you need (intent classification + clarifying questions)
+2. **Searches** your portfolio data via 32 tools (holdings, accounts, cards, net worth, analytics)
+3. **Delegates** complex analysis to expert agents (stock analyst, portfolio doctor, tax advisor)
+4. **Extracts** structured data from documents including PDFs (CC bills, salary slips, statements)
+5. **Resolves** entities against your existing portfolio
+6. **Proposes** actions and waits for approval (HITL)
+7. **Executes** them after confirmation
 
 ---
 
@@ -59,28 +61,40 @@ Browser (React)                Spring Boot (:8080)               Gemma 4 E4B (:8
      |                              |   | AiClient.chatWithToolsStreaming()
      |                              |   |------------------------------>|
      |  event: reasoning_delta      |   |  stream=true                  |
-     |  event: reasoning_delta      |   |<--- delta.reasoning_content   |
-     |  event: reasoning_delta      |   |<--- delta.reasoning_content   |
-     |<-----------------------------|   |       (token by token)        |
-     |  (token by token)            |   |                               |
-     |                              |   |<--- delta.tool_calls          |
+     |<-----------------------------|   |<--- delta.reasoning_content    |
+     |  (token by token)            |   |       (token by token)        |
+     |                              |   |                               |
      |  event: reasoning_done       |   |<--- finish_reason: tool_calls |
      |<-----------------------------|   |                               |
-     |                              |   | McpToolClient.callTool()      |
-     |  event: tool_start           |   |---> Execute MCP tool          |
+     |                              |   |                               |
+     |  event: tool_start           |   | Regular tool:                 |
+     |<-----------------------------|   |   McpToolClient.callTool()    |
+     |  event: tool_end             |   |                               |
      |<-----------------------------|   |                               |
-     |  event: tool_end             |   |<--- Tool result               |
+     |                              |   | Agent tool:                   |
+     |  event: agent_start          |   |   AgentContext.set(emitter)   |
+     |<-----------------------------|   |   AgentExecutor.execute()     |
+     |  event: agent_step           |   |     |                        |
+     |  event: agent_reasoning_delta|   |     | Sub-loop:              |
+     |  event: agent_tool_start     |   |     |  AI decides tools      |
+     |  event: agent_tool_end       |   |     |  Calls tools           |
+     |  event: agent_reasoning_done |   |     |  Streams reasoning     |
+     |  event: agent_end            |   |     |  Returns analysis      |
+     |<-----------------------------|   |   AgentContext.clear()        |
+     |  event: tool_end             |   |                               |
      |<-----------------------------|   |                               |
      |                              |   | (next round...)               |
      |  event: response             |   |                               |
      |<-----------------------------|   | Save session + traces         |
      |                              |                                   |
 
-MCP Tool Classes (in-process):
+Tool Classes (in-process, 32 tools):
   DocumentClassificationTools  (1 tool)
   DocumentExtractionTools      (6 tools)
   EntityResolutionTools        (4 tools)
   ExecutionTools               (6 tools)
+  FinancialAnalyticsTools      (12 tools)
+  AgentTools                   (3 agents)
 ```
 
 ### Key Components
@@ -89,9 +103,11 @@ MCP Tool Classes (in-process):
 |---|---|---|
 | **AiConfig** | `config/AiConfig.java` | Centralized config (`@ConfigurationProperties(prefix="ai")`) |
 | **AiClient** | `service/documentgraph/AiClient.java` | HTTP client to llama.cpp (streaming + non-streaming) |
-| **McpAIChatService** | `service/documentgraph/mcp/McpAIChatService.java` | Orchestrator: tool loop, HITL, sessions, SSE |
+| **McpAIChatService** | `service/documentgraph/mcp/McpAIChatService.java` | Main orchestrator: tool loop, HITL, sessions, SSE |
+| **AgentExecutor** | `service/documentgraph/mcp/AgentExecutor.java` | Sub-orchestrator for expert agents (own tool loop) |
+| **AgentContext** | `service/documentgraph/mcp/AgentContext.java` | ThreadLocal SSE bridge for agents to stream events |
 | **McpToolClient** | `service/documentgraph/mcp/McpToolClient.java` | Tool registry + execution via `MethodToolCallbackProvider` |
-| **AIChatController** | `controller/AIChatController.java` | REST endpoints (10 endpoints) |
+| **AIChatController** | `controller/AIChatController.java` | REST endpoints + PDF extraction |
 | **AIChat.jsx** | `web/src/pages/AIChat.jsx` | Full-page chat UI |
 | **FloatingChat.jsx** | `web/src/components/FloatingChat.jsx` | Floating widget chat UI |
 
@@ -99,10 +115,9 @@ MCP Tool Classes (in-process):
 
 ## 3. AI Configuration
 
-All settings are centralized in `AiConfig.java` and configurable via `application.properties` or environment variables:
+All settings centralized in `AiConfig.java`, configurable via `application.properties` or environment variables:
 
 ```properties
-# application.properties
 ai.server-url=${AI_SERVER_URL:http://localhost:8082/v1/chat/completions}
 ai.model=${AI_MODEL:llama}
 ai.temperature=${AI_TEMPERATURE:0.1}
@@ -116,20 +131,6 @@ ai.sse-timeout-ms=${AI_SSE_TIMEOUT:180000}
 ai.stream-tokens=${AI_STREAM_TOKENS:true}
 ```
 
-| Property | Default | Description |
-|---|---|---|
-| `ai.server-url` | `http://localhost:8082/v1/chat/completions` | LLM server endpoint |
-| `ai.model` | `llama` | Model name sent in requests |
-| `ai.temperature` | `0.1` | LLM temperature (0=deterministic, 1=creative) |
-| `ai.connect-timeout-ms` | `120000` | HTTP connect timeout |
-| `ai.read-timeout-ms` | `120000` | HTTP read timeout |
-| `ai.max-tool-rounds` | `3` | Max tool-calling loop iterations |
-| `ai.tool-result-max-chars` | `3000` | Truncation limit for tool results sent to LLM |
-| `ai.max-session-messages` | `50` | Message pairs before session trimming |
-| `ai.pending-action-expiry-days` | `7` | HITL action expiration |
-| `ai.sse-timeout-ms` | `180000` | SSE emitter timeout (3 minutes) |
-| `ai.stream-tokens` | `true` | Enable real-time token streaming from LLM |
-
 ### Model: Gemma 4 E4B
 
 | Property | Value |
@@ -140,62 +141,27 @@ ai.stream-tokens=${AI_STREAM_TOKENS:true}
 | Function calling | Native support |
 | Thinking mode | Built-in chain-of-thought (`reasoning_content`) |
 | Multimodal | Text + Image + Audio |
-| License | Apache 2.0 |
-
-**llama-server command:**
-```bash
-llama-server \
-  -m models/gemma-4-E4B-it-Q4_K_M.gguf \
-  --port 8082 \
-  --ctx-size 32768 \
-  --n-gpu-layers 99 \
-  --threads 8 \
-  --no-mmap
-```
 
 ---
 
 ## 4. Function Calling & Tool Loop
-
-### Protocol
-
-`AiClient` sends OpenAI-compatible requests to llama.cpp:
-
-```json
-{
-  "model": "llama",
-  "temperature": 0.1,
-  "stream": true,
-  "messages": [
-    { "role": "system", "content": "SYSTEM_PROMPT" },
-    { "role": "user", "content": "..." },
-    { "role": "assistant", "tool_calls": [...] },
-    { "role": "tool", "tool_call_id": "call_xxx", "content": "{...}" }
-  ],
-  "tools": [ ...17 TOOL_DEFINITIONS... ],
-  "tool_choice": "auto"
-}
-```
 
 ### Tool Loop (McpAIChatService.streamChat)
 
 ```
 1. Build fullMessages = [system_prompt] + [session_history] + [user_message]
 2. Pre-filter: isNonFinancialQuery(message, hasHistory)
-   - Greetings without history -> skip tools, respond directly
-   - Confirmations WITH history ("yes", "ok") -> keep tools for follow-up
 3. Loop (up to ai.max-tool-rounds):
    a. SSE: thought event
-   b. Call AiClient (streaming or non-streaming based on ai.stream-tokens)
-   c. Forward reasoning tokens as reasoning_delta SSE events
-   d. If no tool_calls -> SSE: response event, save session, done
-   e. For each tool_call:
-      - SSE: tool_start
+   b. Call AiClient.chatWithToolsStreaming() — streams reasoning tokens
+   c. If no tool_calls -> SSE: response event, save session, done
+   d. For each tool_call:
+      - If agent tool -> set AgentContext, call AgentExecutor (sub-loop)
       - If execution tool -> create AiPendingAction (HITL)
       - If read-only tool -> execute via McpToolClient
-      - SSE: tool_end
-      - Append tool result to fullMessages
-4. If loop exhausted -> summarize(fullMessages) -> SSE: response
+      - SSE: tool_start / agent events / tool_end
+   e. If round 2+ has no reasoning, emit synthetic "Presenting results"
+4. If loop exhausted -> summarize -> SSE: response
 5. Save session + tool traces to DB
 ```
 
@@ -203,323 +169,367 @@ llama-server \
 
 ## 5. Token Streaming & Reasoning
 
-Gemma 4 supports chain-of-thought reasoning via `reasoning_content`. When `ai.stream-tokens=true`:
-
-### Backend Flow
-
-`AiClient.chatWithToolsStreaming()` opens an SSE connection to llama.cpp (`stream: true`) and parses chunks:
+`AiClient.chatWithToolsStreaming()` opens an SSE connection to llama.cpp with `stream: true` and forwards tokens via callbacks:
 
 ```java
-// Each token callback:
-callback.onReasoningToken(token)  // -> sendEvent(emitter, "reasoning_delta", {token, round})
-callback.onContentToken(token)    // -> (reserved for future content streaming)
-callback.onComplete(finishReason) // -> sendEvent(emitter, "reasoning_done", {round})
+callback.onReasoningToken(token)  // -> SSE: reasoning_delta
+callback.onContentToken(token)    // -> (reserved)
+callback.onComplete(finishReason) // -> SSE: reasoning_done
 ```
 
-After the stream completes, the method assembles the full `ChatWithToolsResponse` (content + tool_calls + reasoning) for the tool loop to process.
-
-### Frontend Flow
-
-The SSE parser accumulates reasoning tokens:
-
-```
-reasoning_delta {token: "The", round: 1}    -> append to round 1 text
-reasoning_delta {token: " user", round: 1}  -> append
-reasoning_delta {token: " is", round: 1}    -> append
-...hundreds of tokens...
-reasoning_done  {round: 1}                  -> mark round complete
-```
-
-**Live UI (during streaming):**
-- Purple card per reasoning round with text growing token-by-token
-- Blinking cursor (`animate-pulse` purple bar) at the end of streaming text
-- Spinner next to "Round N -- thinking..." while streaming
-- Brain icon replaces spinner when round completes
-
-**After response (collapsed):**
-- `ThinkingSection` component renders collapsed by default
-- Shows: "Thinking . N tools used . N steps"
-- Click to expand: reasoning blocks + tool call cards with full JSON results
-
-### Fallback
-
-When `ai.stream-tokens=false`, the backend uses `chatWithToolsFull()` (non-streaming) and sends the full reasoning as a single `reasoning` SSE event.
+**Live UI:** Collapsible `ReasoningCard` components with streaming text + blinking cursor.
+**After response:** All steps collapse into a `ThinkingSection` with ordered timeline.
+**Markdown rendering:** Reasoning content renders via `ReactMarkdown` + `remarkGfm`.
 
 ---
 
 ## 6. SSE Protocol
 
-Events sent via `SseEmitter` (timeout: `ai.sse-timeout-ms`):
+### Main Orchestrator Events
 
 | Event | Data | When |
 |---|---|---|
-| `thought` | `{ content: "Thinking...", round: N }` | Before each AI call |
-| `reasoning_delta` | `{ token: "The", round: N }` | Each reasoning token (streaming mode) |
-| `reasoning_done` | `{ round: N }` | Reasoning complete for a round |
-| `reasoning` | `{ content: "full text", round: N }` | Full reasoning block (non-streaming fallback) |
-| `tool_start` | `{ name: "search_holdings", arguments: {...} }` | Before tool execution |
-| `tool_end` | `{ name: "...", result: {...}, durationMs: N, type: "executed"\|"pending_approval" }` | After tool execution |
-| `response` | `{ content: "...", sessionId: "uuid", pendingActionId?: "uuid" }` | Final response |
-| `error` | `{ message: "..." }` | On failure |
+| `thought` | `{ content, round }` | Before each AI call |
+| `reasoning_delta` | `{ token, round }` | Each reasoning token |
+| `reasoning_done` | `{ round }` | Reasoning complete for a round |
+| `reasoning` | `{ content, round }` | Full reasoning (non-streaming fallback) |
+| `tool_start` | `{ name, arguments }` | Before tool execution |
+| `tool_end` | `{ name, result, durationMs, type }` | After tool execution |
+| `response` | `{ content, sessionId, pendingActionId? }` | Final response |
+| `error` | `{ message }` | On failure |
 
-`sendEvent()` returns `boolean` -- `false` means client disconnected, and the tool loop aborts immediately.
+### Agent Events (nested inside agent tool calls)
 
-### TCP Chunk Handling (Frontend)
+| Event | Data | When |
+|---|---|---|
+| `agent_start` | `{ name, agentId }` | Agent begins |
+| `agent_step` | `{ step, agentId }` | Progress step ("Calling search_holdings...") |
+| `agent_reasoning_delta` | `{ token, agentId }` | Sub-AI reasoning token |
+| `agent_reasoning_done` | `{ agentId }` | Sub-AI reasoning round complete |
+| `agent_tool_start` | `{ name, arguments, agentId }` | Agent calls a tool |
+| `agent_tool_end` | `{ name, durationMs, result, agentId }` | Agent tool result |
+| `agent_end` | `{ name, agentId }` | Agent finished |
 
-SSE JSON payloads can split across TCP chunks. Both chat UIs use a `pendingData` accumulator:
-
-```javascript
-pendingData += line.slice(5)  // append data line
-try {
-  const d = JSON.parse(pendingData)
-  pendingData = ''  // success -- reset
-  // process event...
-} catch {
-  // incomplete JSON -- keep pendingData for next chunk
-}
-```
+The `agentId` allows the frontend to associate events with the correct agent tool card, supporting parallel agent execution.
 
 ---
 
 ## 7. MCP Tools
 
-17 tools across 4 classes, registered via `MethodToolCallbackProvider`:
+32 tools across 6 classes:
 
-### Document Tools
+### Document Tools (7)
 
-| Tool | Class | Status | Description |
-|---|---|---|---|
-| `classify_document` | DocumentClassificationTools | Working | AI-powered document type classification |
-| `extract_credit_card_bill` | DocumentExtractionTools | Working | Structured CC bill extraction |
-| `extract_salary_slip` | DocumentExtractionTools | Working | Salary slip data extraction |
-| `extract_bank_statement` | DocumentExtractionTools | Working | Bank statement extraction (generic prompt) |
-| `extract_cas` | DocumentExtractionTools | Stub | Returns metadata only |
-| `extract_form16` | DocumentExtractionTools | Working | Form 16 extraction (generic prompt) |
-| `extract_generic` | DocumentExtractionTools | Working | Fallback financial extraction |
-
-### Search Tools (Read-Only)
-
-| Tool | Class | Status | Description |
-|---|---|---|---|
-| `search_holdings` | EntityResolutionTools | Working | Search by symbol/name, returns qty+value+avgPrice |
-| `search_accounts` | EntityResolutionTools | Working | Search bank accounts (filters soft-deleted) |
-| `search_credit_cards` | EntityResolutionTools | Working | Search by issuer or last 4 digits |
-| `resolve_entity` | EntityResolutionTools | Working | Match extracted entities to portfolio |
-
-### Execution Tools (HITL-Protected)
-
-| Tool | Class | Status | Description |
-|---|---|---|---|
-| `create_transaction` | ExecutionTools | Working | Create investment transaction via TransactionService |
-| `update_cc_spend` | ExecutionTools | Working | Save CC spend report via SpendAnalyticsService |
-| `update_salary` | ExecutionTools | Working | Create salary entry via SalaryService |
-| `update_account_balance` | ExecutionTools | Working | Update bank balance via BankAccountService |
-| `update_holding` | ExecutionTools | Stub | Returns not_implemented |
-| `link_document` | ExecutionTools | Stub | Returns not_implemented |
-
-### userId Injection
-
-`McpAIChatService` auto-injects `userId` into tool arguments via `arguments.putIfAbsent("userId", userId)` for all tools except `link_document`. The LLM never needs to know or guess user IDs.
-
----
-
-## 8. Human-in-the-Loop (HITL)
-
-All execution tools are intercepted before execution:
-
-```
-1. AI calls execution tool (e.g., create_transaction)
-2. McpAIChatService creates AiPendingAction record:
-   - status: "pending"
-   - expiresAt: now + ai.pending-action-expiry-days
-   - toolName, arguments, summary stored
-3. Returns pending_approval status to AI (not executed)
-4. Frontend shows PendingActionCard with Approve/Reject buttons
-5. User clicks Approve:
-   POST /ai/actions/:id/confirm
-   -> Checks expiration (rejects if expired)
-   -> Executes tool via McpToolClient
-   -> Handles tool failure (status -> "failed")
-   -> On success: status -> "executed", result stored
-6. User clicks Reject:
-   POST /ai/actions/:id/reject -> status: "rejected"
-```
-
-### Pending Action States
-
-`pending` -> `approved` -> `executed` (success)
-`pending` -> `approved` -> `failed` (tool error)
-`pending` -> `rejected`
-`pending` -> `expired` (checked on confirm attempt)
-
-Orphan pending actions are deleted when their parent session is deleted.
-
----
-
-## 9. Session Management
-
-### Storage
-
-`ai_chat_sessions` table (PostgreSQL):
-
-| Column | Type | Notes |
+| Tool | Status | Description |
 |---|---|---|
-| `id` | UUID | Primary key |
-| `user_id` | UUID | Owner (indexed) |
-| `mode` | String | `"advice"` or `"import"` |
-| `title` | String | Auto-set from first message |
-| `messages` | JSONB | `[{role, content}]` array |
-| `tool_call_traces` | JSONB | `[[{tool, arguments, result, durationMs, type}]]` |
-| `created_at` | Timestamp | Auto |
-| `updated_at` | Timestamp | Auto |
+| `classify_document` | Working | AI-powered document classification |
+| `extract_credit_card_bill` | Working | CC bill extraction |
+| `extract_salary_slip` | Working | Salary slip extraction |
+| `extract_bank_statement` | Working | Bank statement extraction |
+| `extract_cas` | Stub | CAS metadata only |
+| `extract_form16` | Working | Form 16 extraction |
+| `extract_generic` | Working | Fallback extraction |
 
-### Trimming
+### Search Tools (4)
 
-When messages exceed `ai.max-session-messages * 2` (default: 100 entries), oldest messages are removed. Tool traces are cleared on trim.
-
-### Endpoints
-
-| Method | Path | Description |
+| Tool | Status | Description |
 |---|---|---|
-| GET | `/ai/sessions` | List user's sessions |
-| GET | `/ai/sessions/:id` | Get session with messages + traces |
-| DELETE | `/ai/sessions/:id` | Delete session + orphan pending actions |
+| `search_holdings` | Working | Holdings with qty, value, avgPrice |
+| `search_accounts` | Working | Bank accounts (filters soft-deleted) |
+| `search_credit_cards` | Working | Cards by issuer or last 4 |
+| `resolve_entity` | Working | Match entities to portfolio |
+
+### Execution Tools (6, HITL-Protected)
+
+| Tool | Status | Description |
+|---|---|---|
+| `create_transaction` | Working | Via TransactionService |
+| `update_cc_spend` | Working | Via SpendAnalyticsService |
+| `update_salary` | Working | Via SalaryService |
+| `update_account_balance` | Working | Via BankAccountService |
+| `update_holding` | Stub | Not implemented |
+| `link_document` | Stub | Not implemented |
+
+### Financial Analytics Tools (12)
+
+| Tool | Status | Description |
+|---|---|---|
+| `get_net_worth` | Working | Total net worth with asset breakdown |
+| `get_portfolio_summary` | Working | Invested, current value, PnL, returns |
+| `get_financial_health_score` | Working | 0-100 score with recommendations |
+| `get_asset_allocation` | Working | Allocation by asset type |
+| `get_sector_allocation` | Working | Allocation by sector |
+| `calculate_xirr` | Working | True annualized return |
+| `calculate_capital_gains` | Working | LTCG/STCG per asset class |
+| `compare_tax_regimes` | Working | Old vs new regime comparison |
+| `get_goals` | Working | List financial goals |
+| `get_goal_progress` | Working | Goal progress with shortfall |
+| `get_liabilities` | Working | List loans |
+| `calculate_emi` | Working | EMI calculator (no user data needed) |
+
+### Expert Agent Tools (3)
+
+| Tool | Description |
+|---|---|
+| `analyze_stock` | Deep stock analysis via sub-orchestrator |
+| `portfolio_doctor` | Full portfolio health check via sub-orchestrator |
+| `tax_advisor` | Tax planning via sub-orchestrator |
 
 ---
 
-## 10. System Prompt & Intent Classification
+## 8. Expert Agents
 
-### Pre-Filter: `isNonFinancialQuery(message, hasSessionHistory)`
+Agents are **sub-orchestrators** — they run their own AI tool-calling loop with a scoped set of tools. The AI inside the agent autonomously decides which tools to call and in what order.
 
-Skips tool calling for greetings and non-financial queries:
-
-- **With no session history:** "hi", "hello", messages < 6 chars, short messages without financial keywords -> bypass tools
-- **With session history:** Short confirmations ("yes", "ok", "sure", < 15 chars) are NOT filtered, so the AI gets context + tools for follow-ups
-- **Financial keywords:** 80+ keywords checked (portfolio, stock, bill, salary, performance, etc.)
-
-### System Prompt
-
-The prompt uses 6 intents with a critical rule at the top:
+### Architecture
 
 ```
-ALWAYS SEARCH BEFORE ANSWERING
-When user mentions "my portfolio/holdings/stocks/accounts/investments":
-  -> MUST call search tools FIRST
-  -> NEVER ask user to provide data you can look up
-  -> Use broad queries: search_holdings(query="", limit=50)
+Main orchestrator calls analyze_stock
+  |
+  v
+AgentContext.set(emitter, objectMapper, agentId, toolClient)
+  |
+  v
+AgentExecutor.execute(systemPrompt, task, allowedTools, maxRounds, userId, toolClient)
+  |
+  +-- Round 1: AI reasons -> decides to call search_holdings
+  |     agent_step: "Thinking (round 1/4)..."
+  |     agent_reasoning_delta (streaming)
+  |     agent_tool_start: search_holdings
+  |     agent_tool_end: search_holdings (result)
+  |
+  +-- Round 2: AI reasons -> calls get_portfolio_summary + get_asset_allocation
+  |     agent_reasoning_delta (streaming)
+  |     agent_tool_start: get_portfolio_summary
+  |     agent_tool_end: (result)
+  |     agent_tool_start: get_asset_allocation
+  |     agent_tool_end: (result)
+  |
+  +-- Round 3: AI produces final analysis (no more tools)
+  |     agent_step: "Preparing final report..."
+  |     agent_reasoning_delta (streaming)
+  |     Returns analysis text
+  |
+  v
+AgentContext.clear()
+Main orchestrator presents agent's analysis to user
 ```
 
-Intent categories: GREETING, PORTFOLIO QUERY, DOCUMENT PROCESSING, RECORD/UPDATE, FINANCIAL ADVICE, UNKNOWN.
+### Agent Definitions
+
+| Agent | System Prompt Focus | Allowed Tools | Max Rounds |
+|---|---|---|---|
+| **Stock Analyst** | Single stock deep-dive: performance, news, risk, buy/hold/sell | search_holdings, search_accounts, get_portfolio_summary, get_net_worth, get_asset_allocation, get_sector_allocation, calculate_xirr, get_financial_health_score, search_credit_cards | 4 |
+| **Portfolio Doctor** | Comprehensive health check with action plan | search_holdings, search_accounts, search_credit_cards, get_net_worth, get_portfolio_summary, get_asset_allocation, get_sector_allocation, get_financial_health_score, calculate_xirr, get_goals, get_liabilities | 4 |
+| **Tax Advisor** | Tax planning: gains, harvesting, regime comparison | search_holdings, get_net_worth, get_portfolio_summary, calculate_capital_gains, compare_tax_regimes, get_goals, get_liabilities, get_financial_health_score | 4 |
+
+### ThreadLocal Context (AgentContext)
+
+Agents run inside `@Tool` methods called by `McpToolClient.callTool()`. They can't receive the SSE emitter as a parameter (MCP tool interface constraint). Solution: `AgentContext` uses `ThreadLocal` to pass the emitter:
+
+```java
+// McpAIChatService sets context before calling agent:
+AgentContext.set(emitter, objectMapper, agentId, mcpToolClient);
+try {
+    toolResult = mcpToolClient.callTool(toolName, arguments);
+} finally {
+    AgentContext.clear();
+}
+
+// Inside agent tool, AgentContext streams events:
+AgentContext.step("Fetching holdings...");
+AgentContext.reasoningToken("The user");  // streamed to browser
+AgentContext.sendEvent("agent_tool_start", Map.of("name", "search_holdings", ...));
+```
+
+### Circular Dependency Resolution
+
+`AgentTools` -> `AgentExecutor` -> `McpToolClient` (needed at runtime to call tools).
+`McpToolClient` -> `AgentTools` (registered as a tool provider).
+
+Solution: `AgentExecutor` does NOT inject `McpToolClient` in its constructor. Instead, `McpToolClient` is passed through `AgentContext` at runtime and forwarded to `AgentExecutor.execute()` as a parameter.
 
 ---
 
-## 11. Frontend Implementation
+## 9. Human-in-the-Loop (HITL)
+
+Execution tools are intercepted. Frontend shows `PendingActionCard` with Approve/Reject buttons.
+
+States: `pending` -> `approved` -> `executed` | `failed` | `rejected` | `expired`
+
+### Clarifying Questions
+
+When intent is ambiguous, the AI asks specific questions with 2-4 options instead of guessing:
+- "Help me with taxes" -> "Would you like me to: (1) Calculate capital gains, (2) Compare tax regimes, (3) Check 80C utilization?"
+
+---
+
+## 10. PDF Processing
+
+### Upload Flow
+
+1. User attaches PDF in chat
+2. `AIChatController.enrichWithFile()` detects PDF content type
+3. `extractPdfText(bytes, password)` uses Apache PDFBox with `setSortByPosition(true)`
+4. Extracted text prepended to user message
+5. AI processes text via classify/extract tools
+
+### Password-Protected PDFs
+
+1. `extractPdfText` catches `InvalidPasswordException`
+2. Throws `PdfPasswordRequiredException`
+3. Controller returns HTTP 422: `{"error": "PASSWORD_REQUIRED", "message": "..."}`
+4. Frontend shows `PdfPasswordModal` (reusable component in `Modal.jsx`)
+5. User enters password, frontend retries with `password` form param
+6. Wrong password -> modal re-opens with error message
+
+### Endpoint
+
+`POST /ai/extract-pdf-text` — Generic PDF text extraction utility for other parts of the app.
+
+---
+
+## 11. Session Management
+
+`ai_chat_sessions` table (PostgreSQL JSONB). Trimming at 100 entries. Orphan pending actions deleted on session delete.
+
+---
+
+## 12. System Prompt & Intent Classification
+
+### Intent -> Tool Mapping
+
+| Intent | Tools/Action |
+|---|---|
+| Greeting | No tools |
+| Net worth / overview | get_net_worth, get_portfolio_summary |
+| Portfolio analysis | search_holdings, get_asset_allocation, get_sector_allocation |
+| Deep portfolio review | portfolio_doctor agent |
+| Specific stock analysis | analyze_stock agent |
+| Tax questions | tax_advisor agent or calculate_capital_gains |
+| Goal tracking | get_goals, get_goal_progress |
+| Health check | get_financial_health_score |
+| Loan / EMI | get_liabilities, calculate_emi |
+| Document processing | classify -> extract -> resolve -> present |
+| Record data | Propose, confirm, execute (HITL) |
+| Ambiguous | Ask clarifying question with 2-4 options |
+
+---
+
+## 13. Frontend Implementation
 
 ### Components
 
-| Component | File | Description |
+| Component | Description |
+|---|---|
+| **AIChat** | Full-page chat with session history sidebar |
+| **FloatingChat** | Floating widget with maximize button (-> /ai-chat) |
+| **ThinkingSection** | Collapsible ordered timeline of reasoning + tools |
+| **ReasoningCard** | Collapsible reasoning block with markdown rendering + streaming cursor |
+| **LiveToolCall** | Live tool card with nested agent sub-steps |
+| **AgentSubToolCard** | Collapsible agent sub-tool with args + result |
+| **ToolCallCard** | Completed tool card in ThinkingSection |
+| **PendingActionCard** | HITL approve/reject with wrench icon |
+| **PdfPasswordModal** | Password prompt for encrypted PDFs |
+| **ConfirmDialog** | Replaces all 14 native `confirm()` dialogs across the app |
+
+### Ordered Timeline (liveSteps)
+
+All reasoning and tool calls are stored in a single `liveSteps` array in arrival order:
+
+```
+[ reasoning(round 1), tool(analyze_stock, agent), reasoning(round 2) ]
+```
+
+Each agent tool card contains nested `agentSteps`:
+
+```
+agentSteps: [
+  { type: 'step', text: 'Thinking (round 1/4)...' },
+  { type: 'reasoning', content: '...', done: true },
+  { type: 'tool', name: 'search_holdings', durationMs: 7, result: '...' },
+  { type: 'tool', name: 'get_portfolio_summary', durationMs: 5, result: '...' },
+  { type: 'step', text: 'Preparing final report...' },
+  { type: 'reasoning', content: '...', done: true },
+]
+```
+
+### Icons
+
+| Element | Icon | Color |
 |---|---|---|
-| **AIChat** | `web/src/pages/AIChat.jsx` | Full-page chat with session sidebar |
-| **FloatingChat** | `web/src/components/FloatingChat.jsx` | Floating widget overlay |
-| **ThinkingSection** | (in AIChat.jsx) | Collapsible reasoning + tool steps |
-| **LiveToolCall** | (in both) | Live tool card during streaming |
-| **ToolCallCard** | (in both) | Completed tool card (expandable, full JSON) |
-| **PendingActionCard** | (in both) | HITL approve/reject card |
-| **TransactionCard** | (in both) | Rich CC bill transaction display |
-
-### SSE Implementation Details
-
-- `fetch()` + `ReadableStream` reader (not EventSource, for POST support)
-- `pendingData` accumulator handles JSON split across TCP chunks
-- Functional `setMessages(prev => ...)` prevents stale closure bugs
-- `nextId()` counter for stable React keys (no `Date.now()` collisions)
-- IME composition guard prevents premature send on Enter
-- **Immediate rendering** on `response`/`error` events (no waiting for stream close)
-- Fallback to `POST /ai/chat-v2` on SSE failure
-
-### Live Streaming UI
-
-During AI processing, the user sees:
-1. **Reasoning text** streaming token-by-token in a purple card with a blinking cursor
-2. **Tool call cards** appearing as tools are invoked, with live spinners
-3. **Transaction cards** rendering from tool results (e.g., CC bill breakdown)
-
-After the response arrives:
-1. Live section disappears
-2. Bot message renders with markdown
-3. **Collapsed ThinkingSection** below: "Thinking . N tools . N steps" -- click to expand
-4. **PendingActionCard** if HITL action was created
+| Regular tool | Wrench | Blue |
+| Agent tool | Bot (robot) | Cyan |
+| Reasoning | Brain | Purple |
+| HITL pending | Wrench | Amber |
 
 ---
 
-## 12. Security & Safety
+## 14. Security & Safety
 
-### Ownership
-
-Every tool that reads or writes data verifies `userId`. The `userId` is injected by `McpAIChatService`, never provided by the LLM.
-
-### HITL Guard
-
-Execution tools are never called directly. The LLM proposes actions, the backend creates pending records, and the user must explicitly approve.
-
-### Expiration
-
-Pending actions expire after `ai.pending-action-expiry-days` (default: 7). Confirmation after expiry is rejected.
-
-### Error Isolation
-
-Tool execution failures during HITL confirmation transition the action to `failed` status with the error stored. The user is notified.
-
-### Connection Management
-
-- `HttpURLConnection.disconnect()` in `finally` blocks prevents socket leaks
-- `sendEvent()` returns false on client disconnect -> tool loop aborts immediately
-- SSE emitter has configurable timeout (`ai.sse-timeout-ms`)
+- **Ownership:** userId injected by server, never from LLM
+- **HITL:** Execution tools require explicit user approval
+- **Expiration:** Pending actions expire after configurable days
+- **Error isolation:** Tool failures set status to "failed" with error stored
+- **Disconnect detection:** sendEvent returns false -> tool loop aborts
+- **PDF passwords:** Never stored, used only for extraction then discarded
+- **No native alerts:** All 14 `confirm()` calls replaced with themed `ConfirmDialog`
 
 ---
 
-## 13. File References
+## 15. File References
 
 ### Backend
 
 | File | Purpose |
 |---|---|
 | `config/AiConfig.java` | Centralized AI configuration |
-| `service/documentgraph/AiClient.java` | llama.cpp HTTP client (streaming + non-streaming) |
-| `service/documentgraph/mcp/McpAIChatService.java` | AI orchestrator (tool loop, HITL, sessions, SSE) |
+| `service/documentgraph/AiClient.java` | llama.cpp client (streaming + non-streaming) |
+| `service/documentgraph/mcp/McpAIChatService.java` | Main orchestrator |
+| `service/documentgraph/mcp/AgentExecutor.java` | Agent sub-orchestrator |
+| `service/documentgraph/mcp/AgentContext.java` | ThreadLocal SSE bridge for agents |
 | `service/documentgraph/mcp/McpToolClient.java` | Tool registry + execution |
-| `service/documentgraph/mcp/tools/DocumentClassificationTools.java` | classify_document |
-| `service/documentgraph/mcp/tools/DocumentExtractionTools.java` | 6 extraction tools |
-| `service/documentgraph/mcp/tools/EntityResolutionTools.java` | 4 search/resolve tools |
-| `service/documentgraph/mcp/tools/ExecutionTools.java` | 6 execution tools (3 stubs) |
-| `controller/AIChatController.java` | 10 REST endpoints |
-| `model/entity/AiChatSession.java` | Session entity (JSONB) |
-| `model/entity/AiPendingAction.java` | HITL pending action entity |
-| `repository/AiChatSessionRepository.java` | Session queries |
-| `repository/AiPendingActionRepository.java` | Pending action queries |
+| `service/documentgraph/mcp/tools/DocumentClassificationTools.java` | 1 tool |
+| `service/documentgraph/mcp/tools/DocumentExtractionTools.java` | 6 tools |
+| `service/documentgraph/mcp/tools/EntityResolutionTools.java` | 4 tools |
+| `service/documentgraph/mcp/tools/ExecutionTools.java` | 6 tools |
+| `service/documentgraph/mcp/tools/FinancialAnalyticsTools.java` | 12 tools |
+| `service/documentgraph/mcp/tools/AgentTools.java` | 3 expert agents |
+| `controller/AIChatController.java` | REST endpoints + PDF extraction |
+| `model/entity/AiChatSession.java` | Session entity |
+| `model/entity/AiPendingAction.java` | HITL entity |
 
 ### Frontend
 
 | File | Purpose |
 |---|---|
-| `web/src/pages/AIChat.jsx` | Full-page AI chat |
-| `web/src/components/FloatingChat.jsx` | Floating widget chat |
-| `web/src/api/client.js` | Axios client (baseURL `/api/v1`) |
+| `web/src/pages/AIChat.jsx` | Full-page chat (ordered timeline, agents, reasoning) |
+| `web/src/components/FloatingChat.jsx` | Floating widget (same protocol, maximize button) |
+| `web/src/components/ui/Modal.jsx` | PdfPasswordModal + ConfirmDialog |
 
 ---
 
-## 14. Decision Log
+## 16. Decision Log
 
 | Date | Decision | Rationale |
 |---|---|---|
-| 2026-05-21 | Three-phase approach (Graph -> MCP -> AI Agent) | Fastest path to working feature; incremental improvements |
-| 2026-05-21 | MCP tools in same JVM | No network overhead; transactional safety preserved |
-| 2026-05-21 | Function calling via llama.cpp | Native support; no separate Python agent needed |
-| 2026-05-21 | Qwen 2.5-7B as initial model | Best function calling at 7B size |
-| 2026-05-22 | Switched to Gemma 4 E4B | 128K context, native function calling + thinking, better benchmarks |
-| 2026-05-22 | Real token streaming for reasoning | Users see AI thinking in real-time like coding agents |
-| 2026-05-22 | Centralized AiConfig via @ConfigurationProperties | All AI settings configurable without recompiling |
-| 2026-05-22 | Immediate rendering on response event | Don't wait for SSE stream close; eliminates "stuck thinking" bug |
-| 2026-05-22 | isNonFinancialQuery respects session history | "yes" after a proposal is a follow-up, not a greeting |
-| 2026-05-22 | Tool result truncation at 3000 chars (configurable) | 800 was too aggressive; 3000 fits all 15 holdings in context |
-| 2026-05-22 | sendEvent returns boolean for disconnect detection | Prevents wasting AI tokens when client is gone |
+| 2026-05-21 | Three-phase approach | Fastest path to working feature |
+| 2026-05-21 | MCP tools in same JVM | No network overhead; transactional safety |
+| 2026-05-21 | Function calling via llama.cpp | Native support; no Python needed |
+| 2026-05-21 | Qwen 2.5-7B as initial model | Best function calling at 7B |
+| 2026-05-22 | Switched to Gemma 4 E4B | 128K context, thinking mode, better benchmarks |
+| 2026-05-22 | Real token streaming | Users see AI thinking like coding agents |
+| 2026-05-22 | Centralized AiConfig | All settings configurable without recompiling |
+| 2026-05-22 | Immediate rendering on response | Eliminates "stuck thinking" bug |
+| 2026-05-22 | isNonFinancialQuery respects history | "yes" is a follow-up, not a greeting |
+| 2026-05-22 | Tool result truncation at 3000 chars | 800 was too aggressive for 15 holdings |
+| 2026-05-22 | 12 financial analytics tools | Net worth, health score, tax, goals, EMI |
+| 2026-05-22 | Expert agents as sub-orchestrators | AI-driven tool selection, not hardcoded Java |
+| 2026-05-22 | AgentContext via ThreadLocal | Breaks circular dependency, enables SSE from agents |
+| 2026-05-22 | PDF extraction via PDFBox | Enables document upload without copy-paste |
+| 2026-05-22 | PdfPasswordModal for encrypted PDFs | Seamless retry with password across the app |
+| 2026-05-22 | Replace all 14 native confirm() | Consistent themed ConfirmDialog component |
+| 2026-05-22 | Ordered liveSteps timeline | Reasoning + tools interleaved in arrival order |
+| 2026-05-22 | Collapsible reasoning (ReasoningCard) | Consistent with collapsible tool cards |
+| 2026-05-22 | Wrench icon for tools, Bot for agents | Universal icons, removed per-tool color maps |
+| 2026-05-22 | Synthetic round 2 reasoning | Shows activity when model skips thinking |
