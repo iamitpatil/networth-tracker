@@ -912,18 +912,10 @@ export default function Holdings() {
   const allocation = useMemo(() => {
     if (filter === 'all') {
       // Group by asset type
-      return [
-        { name: 'Equity', key: 'EQUITY' },
-        { name: 'Mutual Fund', key: 'MUTUAL_FUND' },
-        { name: 'Bond', key: 'BOND' },
-        { name: 'Gold', key: 'GOLD' },
-        { name: 'FD', key: 'FD' },
-        { name: 'PPF', key: 'PPF' },
-        { name: 'EPF', key: 'EPF' },
-        { name: 'NPS', key: 'NPS' },
-      ].map(a => ({
-        ...a,
-        value: holdings.filter(h => h.assetType === a.key).reduce((s, h) => s + (h.currentValue || 0), 0),
+      return ASSET_TYPES.map(a => ({
+        name: a.label,
+        key: a.value,
+        value: holdings.filter(h => h.assetType === a.value).reduce((s, h) => s + (h.currentValue || 0), 0),
       })).filter(a => a.value > 0)
     } else {
       // Group by individual holding within the selected type
@@ -1532,7 +1524,7 @@ export default function Holdings() {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={allocation} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={50} paddingAngle={3}>
+                  <Pie data={allocation} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={50} paddingAngle={1} strokeWidth={0}>
                     {allocation.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip formatter={(v) => `Rs. ${Number(v).toLocaleString('en-IN')}`} contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }} />
