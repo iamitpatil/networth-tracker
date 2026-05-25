@@ -74,8 +74,17 @@ public class AmfiHistoricalService {
         return status;
     }
 
+    @FunctionalInterface
+    public interface ProgressCallback {
+        void onProgress(int processedDays, int totalDays, int records);
+    }
+
     public int backfillAll(LocalDate fromDate, LocalDate toDate) {
-        return backfillAll(fromDate, toDate, () -> true);
+        return backfillAll(fromDate, toDate, () -> true, null);
+    }
+
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
+        return backfillAll(fromDate, toDate, cancelCheck, null);
     }
 
     /**
@@ -84,7 +93,7 @@ public class AmfiHistoricalService {
      * 2. Compute actual gaps: pre-gap (before earliest) + post-gap (after latest)
      * 3. Only fetch days we don't already have
      */
-    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck, ProgressCallback progress) {
         Set<String> targetIsins = collectMfIsins();
         if (targetIsins.isEmpty()) {
             log.warn("No MF ISINs found to backfill");
@@ -157,7 +166,10 @@ public class AmfiHistoricalService {
                 if (chunkEnd.isAfter(rangeEnd)) chunkEnd = rangeEnd;
                 int saved = backfillChunk(chunkStart, chunkEnd, targetIsins);
                 totalSaved += saved;
-                progressDays.incrementAndGet();
+                int currentProgress = progressDays.incrementAndGet();
+                if (progress != null) {
+                    progress.onProgress(currentProgress, totalDaysToProcess, totalSaved);
+                }
                 chunkStart = chunkEnd.plusDays(1);
             }
         }

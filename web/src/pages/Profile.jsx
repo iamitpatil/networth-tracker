@@ -555,30 +555,45 @@ function TwoFactorAuth() {
 
 function DataRefresh() {
   const [backfillStatus, setBackfillStatus] = useState(null)
-  const [starting, setStarting] = useState(false)
+  const [polling, setPolling] = useState(false)
   const [days, setDays] = useState(365)
   const [error, setError] = useState('')
 
-  // Poll backfill status while running
+  // Poll backfill status
   useEffect(() => {
-    let interval
-    const pollStatus = async () => {
+    if (!polling) return
+    const interval = setInterval(async () => {
       try {
         const { data } = await client.get('/market/backfill/status')
         setBackfillStatus(data)
-        if (!data.running && interval) {
-          clearInterval(interval)
-        }
+        if (!data.running) setPolling(false)
       } catch {}
-    }
-    pollStatus()
-    interval = setInterval(pollStatus, 3000)
+    }, 2000)
     return () => clearInterval(interval)
-  }, [starting])
+  }, [polling])
+
+  // Check status on mount
+  useEffect(() => {
+    client.get('/market/backfill/status')
+      .then(({ data }) => {
+        setBackfillStatus(data)
+        if (data.running) setPolling(true)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleStart = async () => {
-    setStarting(true)
     setError('')
+    // Optimistically show running state immediately
+    setBackfillStatus({
+      running: true,
+      currentStep: 'symbols',
+      currentStepMessage: 'Starting...',
+      steps: ['symbols', 'equities', 'mutual_funds', 'nps'],
+      completedSteps: [],
+      startedAt: new Date().toISOString(),
+    })
+    setPolling(true)
     try {
       const { data } = await client.post(`/market/backfill?days=${days}`)
       if (data.status === 'already_running') {
@@ -586,8 +601,7 @@ function DataRefresh() {
       }
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to start backfill')
-    } finally {
-      setStarting(false)
+      setPolling(false)
     }
   }
 
@@ -608,6 +622,7 @@ function DataRefresh() {
   const currentStep = backfillStatus?.currentStep
   const stepResults = backfillStatus?.stepResults || {}
   const stepErrors = backfillStatus?.stepErrors || {}
+  const currentStepProgress = backfillStatus?.currentStepProgress
 
   return (
     <div className="space-y-4">
@@ -669,7 +684,7 @@ function DataRefresh() {
                       {step.label}
                     </p>
                     <p className="text-xs text-[var(--text-muted)] truncate">
-                      {hasError || stepResults[step.key] || step.desc}
+                      {hasError || stepResults[step.key] || (isCurrent && currentStepProgress) || (isCurrent && backfillStatus?.currentStepMessage) || step.desc}
                     </p>
                   </div>
                 </div>

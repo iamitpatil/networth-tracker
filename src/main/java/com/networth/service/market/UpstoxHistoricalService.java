@@ -50,15 +50,21 @@ public class UpstoxHistoricalService {
         return backfillAll(fromDate, toDate, () -> true);
     }
 
-    /**
-     * Backfill with cancellation support and bulk pre-check.
-     * 1. Query DB for earliest + latest date per symbol in one SQL query
-     * 2. Skip symbols fully covered (no API call)
-     * 3. For symbols with gaps, fetch both pre-gap and post-gap ranges
-     *    e.g. requested [Jan-Dec], existing [Mar-Sep] → fetch [Jan-Feb] + [Oct-Dec]
-     */
+    @FunctionalInterface
+    public interface ProgressCallback {
+        void onProgress(int processed, int total, int records, int skipped);
+    }
+
     @Transactional
     public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
+        return backfillAll(fromDate, toDate, cancelCheck, null);
+    }
+
+    /**
+     * Backfill with cancellation + progress reporting.
+     */
+    @Transactional
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck, ProgressCallback progress) {
         if (accessToken == null || accessToken.isBlank()) {
             log.warn("No Upstox analytics token configured, skipping equity backfill");
             return 0;
@@ -126,6 +132,9 @@ public class UpstoxHistoricalService {
                 processed++;
             }
 
+            if (progress != null) {
+                progress.onProgress(processed, equitySymbols.size(), total, skippedFullyCovered);
+            }
             if (processed % 100 == 0) {
                 log.info("Equity backfill progress: {}/{} processed ({} skipped), {} records",
                         processed, equitySymbols.size(), skippedFullyCovered, total);

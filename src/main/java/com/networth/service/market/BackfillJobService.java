@@ -66,13 +66,23 @@ public class BackfillJobService {
             // Cancellation check passed into inner loops for immediate abort
             java.util.function.Supplier<Boolean> cancelCheck = running::get;
 
+            // Progress callback: updates status map with intra-step progress
+            java.util.function.BiConsumer<String, String> progressCallback = (step, msg) -> {
+                status.put("currentStepProgress", msg);
+            };
+
             // Step 2: Backfill equity price history
             updateStep("equities", "Backfilling equity price history...");
             try {
                 LocalDate to = LocalDate.now();
                 LocalDate from = to.minusDays(historyDays);
-                int count = upstoxHistoricalService.backfillAll(from, to, cancelCheck);
+                int count = upstoxHistoricalService.backfillAll(from, to, cancelCheck,
+                        (processed, total, records, skipped) -> {
+                            status.put("currentStepProgress",
+                                    String.format("%d/%d symbols · %d records · %d skipped", processed, total, records, skipped));
+                        });
                 if (!running.get()) { cancelled(); return; }
+                status.remove("currentStepProgress");
                 completeStep("equities", count + " equity price records backfilled");
                 status.put("equityRecords", count);
             } catch (Exception e) {
@@ -88,8 +98,13 @@ public class BackfillJobService {
             try {
                 LocalDate to = LocalDate.now();
                 LocalDate from = to.minusDays(historyDays);
-                int count = amfiHistoricalService.backfillAll(from, to, cancelCheck);
+                int count = amfiHistoricalService.backfillAll(from, to, cancelCheck,
+                        (processedDays, totalDaysVal, records) -> {
+                            status.put("currentStepProgress",
+                                    String.format("Day %d/%d · %d records", processedDays, totalDaysVal, records));
+                        });
                 if (!running.get()) { cancelled(); return; }
+                status.remove("currentStepProgress");
                 completeStep("mutual_funds", count + " MF NAV records backfilled");
                 status.put("mfRecords", count);
             } catch (Exception e) {
