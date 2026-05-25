@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
 import { useFeature } from '../context/FeatureFlagContext'
@@ -122,6 +122,9 @@ export default function Holdings() {
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [refreshingPrices, setRefreshingPrices] = useState(false)
+  const [sortConfig, setSortConfig] = useState({ key: 'totalValue', dir: 'desc' })
+  const [pollInterval, setPollInterval] = useState(10) // seconds, 0 to disable
+  const [lastPriceUpdate, setLastPriceUpdate] = useState(null)
   const [filter, setFilter] = useState('all')
   const searchRef = useRef(null)
   const [invoiceHolding, setInvoiceHolding] = useState(null)
@@ -251,6 +254,31 @@ export default function Holdings() {
     })
   }, [filteredHoldings, isFamilyView])
 
+  const sortedHoldings = useMemo(() => {
+    if (!sortConfig.key) return groupedHoldings
+    return [...groupedHoldings].sort((a, b) => {
+      let aVal, bVal
+      switch (sortConfig.key) {
+        case 'name': aVal = (a.symbol || '').toLowerCase(); bVal = (b.symbol || '').toLowerCase(); break
+        case 'type': aVal = a.assetType || ''; bVal = b.assetType || ''; break
+        case 'quantity': aVal = a.totalQuantity || 0; bVal = b.totalQuantity || 0; break
+        case 'avgPrice': aVal = a.avgPrice || 0; bVal = b.avgPrice || 0; break
+        case 'currentPrice': aVal = a.currentPrice || 0; bVal = b.currentPrice || 0; break
+        case 'invested': aVal = a.totalInvested || 0; bVal = b.totalInvested || 0; break
+        case 'totalValue': aVal = a.totalValue || 0; bVal = b.totalValue || 0; break
+        case 'dayChangePct': aVal = a.dayChangePct || 0; bVal = b.dayChangePct || 0; break
+        case 'pnl': aVal = a.totalPnL || 0; bVal = b.totalPnL || 0; break
+        default: return 0
+      }
+      if (typeof aVal === 'string') return sortConfig.dir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
+      return sortConfig.dir === 'asc' ? aVal - bVal : bVal - aVal
+    })
+  }, [groupedHoldings, sortConfig])
+
+  const handleSort = (key) => {
+    setSortConfig(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' })
+  }
+
   const [expandedGroups, setExpandedGroups] = useState({})
   const toggleGroup = (key) => {
     setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
@@ -281,16 +309,27 @@ export default function Holdings() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Auto-refresh prices on page load (background, non-blocking)
+  // Initial price refresh from external APIs (once on load)
   useEffect(() => {
     if (loading) return
     setRefreshingPrices(true)
     client.post('/portfolio/refresh-prices')
       .then(() => client.get('/portfolio/holdings'))
-      .then(({ data }) => setHoldings(data || []))
+      .then(({ data }) => { setHoldings(data || []); setLastPriceUpdate(new Date()) })
       .catch(() => {})
       .finally(() => setRefreshingPrices(false))
   }, [loading])
+
+  // Auto-poll holdings for updated prices (reads from DB, no external API calls)
+  useEffect(() => {
+    if (loading || pollInterval <= 0) return
+    const interval = setInterval(() => {
+      client.get('/portfolio/holdings')
+        .then(({ data }) => { setHoldings(data || []); setLastPriceUpdate(new Date()) })
+        .catch(() => {})
+    }, pollInterval * 1000)
+    return () => clearInterval(interval)
+  }, [loading, pollInterval])
 
   // Fetch broker connection statuses
   useEffect(() => {
@@ -1531,27 +1570,62 @@ export default function Holdings() {
           ))}
         </div>
 
+        {/* Poll interval + last update indicator */}
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] px-1 mb-2">
+          <div className="flex items-center gap-3">
+            {lastPriceUpdate && (
+              <span>Last updated: {lastPriceUpdate.toLocaleTimeString('en-IN')}</span>
+            )}
+            {pollInterval > 0 && !refreshingPrices && (
+              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />Auto-refresh {pollInterval}s</span>
+            )}
+          </div>
+          <select value={pollInterval} onChange={(e) => setPollInterval(Number(e.target.value))}
+            className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)]">
+            <option value={0}>Auto-refresh: Off</option>
+            <option value={5}>Every 5s</option>
+            <option value={10}>Every 10s</option>
+            <option value={30}>Every 30s</option>
+            <option value={60}>Every 60s</option>
+          </select>
+        </div>
+
         <div className="overflow-x-auto -mx-4 sm:mx-0">
-        <table className="w-full min-w-[800px]">
+        <table className="w-full min-w-[1000px]">
           <thead className="bg-[var(--bg)]/50 text-left sticky top-0 z-10">
             <tr>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Name</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Demat</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Type</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Qty</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Avg Price</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Value</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Day Chg %</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">P&L</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Dividends</th>
+              {[
+                { key: 'name', label: 'Name', align: '' },
+                { key: 'type', label: 'Type', align: '' },
+                { key: 'quantity', label: 'Qty', align: 'text-right' },
+                { key: 'avgPrice', label: 'Avg Price', align: 'text-right' },
+                { key: 'currentPrice', label: 'Cur. Price', align: 'text-right' },
+                { key: 'invested', label: 'Invested', align: 'text-right' },
+                { key: 'totalValue', label: 'Value', align: 'text-right' },
+                { key: 'dayChangePct', label: 'Day Chg %', align: 'text-right' },
+                { key: 'pnl', label: 'P&L', align: 'text-right' },
+              ].map(col => (
+                <th key={col.key}
+                  onClick={() => handleSort(col.key)}
+                  className={`px-4 py-3 text-sm font-medium text-[var(--text-muted)] cursor-pointer select-none hover:text-[var(--text)] transition ${col.align}`}>
+                  <span className="inline-flex items-center gap-1">
+                    {col.label}
+                    {sortConfig.key === col.key ? (
+                      sortConfig.dir === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 opacity-30" />
+                    )}
+                  </span>
+                </th>
+              ))}
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
-            {groupedHoldings.length === 0 ? (
+            {sortedHoldings.length === 0 ? (
               <tr><td colSpan="10" className="px-4 py-12 text-center text-[var(--text-secondary)]">No holdings yet. Add your first investment above.</td></tr>
             ) : (
-              groupedHoldings.flatMap((group) => {
+              sortedHoldings.flatMap((group) => {
                 const isExpanded = expandedGroups[group.key]
                 const isClickable = group.assetType === 'EQUITY' || group.assetType === 'ETF' || group.assetType === 'MUTUAL_FUND'
                 const groupRow = (
@@ -1590,32 +1664,27 @@ export default function Holdings() {
                       {group.name && <div className="text-xs text-[var(--text-secondary)]">{group.name}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      {group.isGroup ? (
-                        <span className="text-xs text-[var(--text-secondary)]">{group.holdings.length} accounts</span>
-                      ) : group.representative.dematAccountBroker ? (
-                        <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-                          <Building2 className="w-3 h-3" />
-                           {group.representative.dematAccountBroker}{group.representative.dematAccountNumber ? ` (${group.representative.dematAccountNumber})` : ''}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-[var(--text-secondary)]">General</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-1 rounded ${ASSET_COLORS[group.assetType] || 'bg-[var(--input-bg)] text-[var(--text)]'}`}>
                         {ASSET_LABELS[group.assetType] || group.assetType.replace('_', ' ')}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">{group.totalQuantity}</td>
-                    <td className="px-4 py-3 text-right">Rs. {Number(group.avgPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                    <td className="px-4 py-3 text-right font-medium">Rs. {Number(group.totalValue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${group.dayChangePct != null ? (group.dayChangePct >= 0 ? 'text-green-400' : 'text-red-400') : 'text-[var(--text-muted)]'}`}>
+                    <td className="px-4 py-3 text-right text-sm">{Number(group.totalQuantity).toLocaleString('en-IN', { maximumFractionDigits: 4 })}</td>
+                    <td className="px-4 py-3 text-right text-sm">{Number(group.avgPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className="px-4 py-3 text-right text-sm">
+                      {group.currentPrice ? Number(group.currentPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm">{Number(group.totalInvested).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td className="px-4 py-3 text-right text-sm font-medium">{Number(group.totalValue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td className={`px-4 py-3 text-right text-sm font-medium ${group.dayChangePct != null ? (group.dayChangePct >= 0 ? 'text-green-400' : 'text-red-400') : 'text-[var(--text-muted)]'}`}>
                       {group.dayChangePct != null ? `${group.dayChangePct >= 0 ? '+' : ''}${Number(group.dayChangePct).toFixed(2)}%` : '-'}
                     </td>
-                    <td className={`px-4 py-3 text-right font-medium ${group.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <td className={`px-4 py-3 text-right text-sm font-medium ${group.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       <div className="flex items-center justify-end gap-1">
-                        {group.totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        Rs. {Math.abs(group.totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        {group.totalPnL >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                        {Math.abs(group.totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        {group.totalInvested > 0 && (
+                          <span className="text-xs opacity-70">({((group.totalPnL / group.totalInvested) * 100).toFixed(1)}%)</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
