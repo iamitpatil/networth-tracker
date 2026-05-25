@@ -569,8 +569,24 @@ export default function Holdings() {
     }
   }, [chartHolding, chartMode, chartLoading, priceHistory])
 
-  const handleSelectSymbol = (symbol) => {
-    setForm({ ...form, symbol })
+  const handleSelectSymbol = (sym) => {
+    const updates = { ...form, symbol: sym }
+
+    // Pre-fill bond fields from sector metadata (e.g. "Bond | Coupon: 8.05% | Maturity: 30-SEP-2026 | FV: ₹1000")
+    if (isBond) {
+      const bondData = symbols.find(s => s.symbol === sym)
+      if (bondData?.sector) {
+        const couponMatch = bondData.sector.match(/Coupon:\s*([\d.]+)%/)
+        const maturityMatch = bondData.sector.match(/Maturity:\s*(\d{2})-([A-Z]{3})-(\d{4})/)
+        if (couponMatch) updates.couponRate = couponMatch[1]
+        if (maturityMatch) {
+          const months = { JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12' }
+          updates.maturityDate = `${maturityMatch[3]}-${months[maturityMatch[2]] || '01'}-${maturityMatch[1]}`
+        }
+      }
+    }
+
+    setForm(updates)
     setSearchOpen(false)
     setSearch('')
   }
