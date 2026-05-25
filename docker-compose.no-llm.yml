@@ -1,0 +1,24 @@
+# Override to skip the LLM container and use a host-side llama-server instead.
+# Useful when you have GPU acceleration on the host (e.g., Apple Silicon, NVIDIA).
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.no-llm.yml up --build
+#
+# Then run llama-server on the host:
+#   ./llama.sh start
+
+services:
+  llm:
+    deploy:
+      replicas: 0    # disable the LLM container
+
+  app:
+    environment:
+      # Point to host-side llama-server
+      AI_SERVER_URL: http://host.docker.internal:8082/v1/chat/completions
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # remove llm dependency

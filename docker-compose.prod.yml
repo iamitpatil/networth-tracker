@@ -32,6 +32,33 @@ services:
     networks:
       - backend
 
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: networth-llm
+    volumes:
+      - ${MODEL_DIR:-./models}:/models:ro
+    command: >
+      --model /models/${AI_MODEL_FILE:-gemma-4-E4B-it-Q4_K_M.gguf}
+      --host 0.0.0.0
+      --port 8082
+      --ctx-size ${AI_CTX_SIZE:-32768}
+      --threads ${AI_THREADS:-8}
+      --no-mmap
+      --no-warmup
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8082/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${LLM_MEMORY_LIMIT:-8g}
+    networks:
+      - backend
+
   app:
     build:
       context: .
@@ -47,11 +74,13 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
       UPLOAD_DIR: /app/uploads
-      AI_SERVER_URL: ${AI_SERVER_URL:-http://host.docker.internal:8082/v1/chat/completions}
+      AI_SERVER_URL: http://llm:8082/v1/chat/completions
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      llm:
         condition: service_healthy
     restart: unless-stopped
     volumes:
