@@ -79,8 +79,10 @@ public class AmfiHistoricalService {
     }
 
     /**
-     * Backfill with cancellation support. The cancelCheck supplier is called
-     * before each day chunk — return false to abort.
+     * Backfill with cancellation support and smart date detection.
+     * 1. Query DB for earliest + latest MF NAV dates across all symbols
+     * 2. Compute actual gaps: pre-gap (before earliest) + post-gap (after latest)
+     * 3. Only fetch days we don't already have
      */
     public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
         Set<String> targetIsins = collectMfIsins();
@@ -89,24 +91,79 @@ public class AmfiHistoricalService {
             return 0;
         }
 
-        int totalSaved = 0;
-        LocalDate chunkStart = fromDate;
+        // Pre-check: find earliest + latest dates for MF symbols (12-char ISINs)
+        List<Object[]> dateRanges = historyRepository.findDateRangePerSymbol();
+        LocalDate globalEarliest = null;
+        LocalDate globalLatest = null;
+        int symbolsWithData = 0;
 
-        while (chunkStart.isBefore(toDate)) {
-            if (!cancelCheck.get()) {
-                log.info("MF backfill cancelled at {}, {} records so far", chunkStart, totalSaved);
-                backfillStatus.put("recordsBackfilled", totalSaved);
-                return totalSaved;
+        for (Object[] row : dateRanges) {
+            String sym = (String) row[0];
+            if (sym != null && sym.length() == 12 && targetIsins.contains(sym)) {
+                LocalDate earliest = (LocalDate) row[1];
+                LocalDate latest = (LocalDate) row[2];
+                symbolsWithData++;
+                if (globalEarliest == null || earliest.isBefore(globalEarliest)) globalEarliest = earliest;
+                if (globalLatest == null || latest.isAfter(globalLatest)) globalLatest = latest;
             }
-            LocalDate chunkEnd = chunkStart.plusDays(MAX_DAYS_PER_REQUEST - 1);
-            if (chunkEnd.isAfter(toDate)) chunkEnd = toDate;
-            int saved = backfillChunk(chunkStart, chunkEnd, targetIsins);
-            totalSaved += saved;
-            progressDays.incrementAndGet();
-            chunkStart = chunkEnd.plusDays(1);
         }
 
-        log.info("Backfilled {} MF NAV history records total", totalSaved);
+        // Build list of date ranges to fetch (pre-gap + post-gap)
+        List<LocalDate[]> rangesToFetch = new java.util.ArrayList<>();
+
+        if (globalEarliest == null) {
+            // No existing data — fetch full requested range
+            rangesToFetch.add(new LocalDate[]{fromDate, toDate});
+            log.info("MF pre-check: no existing data, fetching full range {} to {}", fromDate, toDate);
+        } else {
+            // Pre-gap: requested start is before our earliest record
+            if (fromDate.isBefore(globalEarliest)) {
+                rangesToFetch.add(new LocalDate[]{fromDate, globalEarliest.minusDays(1)});
+                log.info("MF pre-check: pre-gap {} to {} ({} days)",
+                        fromDate, globalEarliest.minusDays(1),
+                        java.time.temporal.ChronoUnit.DAYS.between(fromDate, globalEarliest));
+            }
+            // Post-gap: requested end is after our latest record
+            if (toDate.isAfter(globalLatest)) {
+                rangesToFetch.add(new LocalDate[]{globalLatest.plusDays(1), toDate});
+                log.info("MF pre-check: post-gap {} to {} ({} days)",
+                        globalLatest.plusDays(1), toDate,
+                        java.time.temporal.ChronoUnit.DAYS.between(globalLatest, toDate));
+            }
+            if (rangesToFetch.isEmpty()) {
+                log.info("MF NAV history fully covered ({} symbols, {} to {})", symbolsWithData, globalEarliest, globalLatest);
+                return 0;
+            }
+        }
+
+        int totalSaved = 0;
+        int totalDaysToProcess = rangesToFetch.stream()
+                .mapToInt(r -> (int) java.time.temporal.ChronoUnit.DAYS.between(r[0], r[1]) + 1)
+                .sum();
+        totalDays.set(totalDaysToProcess);
+        progressDays.set(0);
+
+        for (LocalDate[] range : rangesToFetch) {
+            LocalDate chunkStart = range[0];
+            LocalDate rangeEnd = range[1];
+
+            while (chunkStart.isBefore(rangeEnd) || chunkStart.isEqual(rangeEnd)) {
+                if (!cancelCheck.get()) {
+                    log.info("MF backfill cancelled at {}, {} records so far", chunkStart, totalSaved);
+                    backfillStatus.put("recordsBackfilled", totalSaved);
+                    return totalSaved;
+                }
+                LocalDate chunkEnd = chunkStart.plusDays(MAX_DAYS_PER_REQUEST - 1);
+                if (chunkEnd.isAfter(rangeEnd)) chunkEnd = rangeEnd;
+                int saved = backfillChunk(chunkStart, chunkEnd, targetIsins);
+                totalSaved += saved;
+                progressDays.incrementAndGet();
+                chunkStart = chunkEnd.plusDays(1);
+            }
+        }
+
+        log.info("Backfilled {} MF NAV history records ({} days across {} ranges)",
+                totalSaved, totalDaysToProcess, rangesToFetch.size());
         backfillStatus.put("recordsBackfilled", totalSaved);
         return totalSaved;
     }
