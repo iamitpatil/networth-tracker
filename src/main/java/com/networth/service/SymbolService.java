@@ -4,7 +4,6 @@ import com.networth.model.entity.Symbol;
 import com.networth.model.entity.SymbolAlias;
 import com.networth.repository.SymbolAliasRepository;
 import com.networth.repository.SymbolRepository;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,18 +32,11 @@ public class SymbolService {
     private static final String NSE_DEBT_CSV_URL = "https://archives.nseindia.com/content/equities/DEBT.csv";
     private static final String MF_NAV_URL = "https://portal.amfiindia.com/spages/NAVAll.txt";
 
-    // Remove @PostConstruct — symbols refreshed manually via POST /api/v1/symbols/refresh
-    // @PostConstruct
-    public void init() {
-        refreshAll();
-    }
-
     @Transactional
     public void refreshAll() {
         refreshEquities();
         refreshMutualFunds();
         refreshBonds();
-        // Backfill ISINs on holdings using updated symbols
         int fixed = holdingService.backfillMissingIsins();
         log.info("Symbol refresh complete (fixed {} holding ISINs)", fixed);
     }
@@ -52,21 +44,13 @@ public class SymbolService {
     @Transactional
     public void refreshEquities() {
         try {
-            URI uri = URI.create(NSE_CSV_URL);
-            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            conn.setRequestProperty("Accept", "text/csv,application/csv");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(30000);
-
-            int status = conn.getResponseCode();
-            if (status != 200) {
-                log.warn("NSE CSV returned status {}", status);
+            HttpURLConnection conn = openConnection(NSE_CSV_URL, "text/csv,application/csv", 30000);
+            if (conn.getResponseCode() != 200) {
+                log.warn("NSE CSV returned status {}", conn.getResponseCode());
                 return;
             }
 
-            List<Symbol> symbols = new ArrayList<>();
+            int upserted = 0;
             try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
                 String header = br.readLine();
                 if (header == null) return;
@@ -83,66 +67,40 @@ public class SymbolService {
                     String isin = cols.length > 6 ? cols[6].trim().replaceAll("^\"|\"$", "") : null;
                     if (isin != null && (isin.isEmpty() || isin.length() != 12)) isin = null;
 
-                    symbols.add(Symbol.builder()
-                            .symbol(symbol + ".NS")
-                            .name(name)
-                            .category("EQUITY")
-                            .sector("Equity")
-                            .isin(isin)
-                            .build());
+                    String key = symbol + ".NS";
+                    Symbol existing = symbolRepository.findById(key).orElse(null);
+                    if (existing != null) {
+                        existing.setName(name);
+                        existing.setSector("Equity");
+                        if (isin != null) existing.setIsin(isin);
+                        symbolRepository.save(existing);
+                    } else {
+                        symbolRepository.save(Symbol.builder()
+                                .symbol(key).name(name).category("EQUITY").sector("Equity").isin(isin)
+                                .build());
+                    }
+                    upserted++;
+
+                    // Upsert alias
+                    upsertAlias(key, "ALPHA_VANTAGE", symbol + ".BSE");
                 }
             }
-
-            // Only delete existing equities, not MFs
-            List<Symbol> existingEquities = symbolRepository.findByCategory("EQUITY");
-            symbolRepository.deleteAll(existingEquities);
-            symbolRepository.saveAll(symbols);
-            log.info("Refreshed {} NSE equity symbols", symbols.size());
-
-            populateAliases(symbols);
+            log.info("Refreshed {} NSE equity symbols (upsert)", upserted);
         } catch (Exception e) {
             log.error("Failed to refresh NSE equities: {}", e.getMessage());
         }
     }
 
-    private void populateAliases(List<Symbol> symbols) {
-        // Use deleteAllInBatch for immediate SQL DELETE (not Hibernate-managed removal)
-        // followed by flush to ensure the delete is committed before inserts
-        symbolAliasRepository.deleteAllInBatch();
-        symbolAliasRepository.flush();
-
-        List<SymbolAlias> aliases = symbols.stream()
-                .filter(s -> s.getCategory().equals("EQUITY"))
-                .flatMap(s -> {
-                    String base = s.getSymbol().replace(".NS", "");
-                    return java.util.stream.Stream.of(
-                            SymbolAlias.builder().symbol(s.getSymbol()).source("ALPHA_VANTAGE").alias(base + ".BSE").build()
-                    );
-                })
-                .toList();
-        symbolAliasRepository.saveAll(aliases);
-        symbolAliasRepository.flush();
-        log.info("Populated {} symbol aliases", aliases.size());
-    }
-
     @Transactional
     public void refreshMutualFunds() {
         try {
-            URI uri = URI.create(MF_NAV_URL);
-            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            conn.setRequestProperty("Accept", "text/plain");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(60000);
-
-            int status = conn.getResponseCode();
-            if (status != 200) {
-                log.warn("AMFI NAV returned status {}", status);
+            HttpURLConnection conn = openConnection(MF_NAV_URL, "text/plain", 60000);
+            if (conn.getResponseCode() != 200) {
+                log.warn("AMFI NAV returned status {}", conn.getResponseCode());
                 return;
             }
 
-            List<Symbol> symbols = new ArrayList<>();
+            int upserted = 0;
             try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = br.readLine()) != null) {
@@ -164,26 +122,28 @@ public class SymbolService {
 
                     String schemeName = cols[3].trim();
                     if (schemeName.isEmpty()) continue;
-
                     String schemeCode = cols[0].trim();
 
-                    symbols.add(Symbol.builder()
-                            .symbol(isin)
-                            .name(schemeName)
-                            .category("MUTUAL_FUND")
-                            .sector("Mutual Fund")
-                            .schemeCode(schemeCode)
-                            .build());
+                    Symbol existing = symbolRepository.findById(isin).orElse(null);
+                    if (existing != null) {
+                        existing.setName(schemeName);
+                        existing.setSchemeCode(schemeCode);
+                        symbolRepository.save(existing);
+                    } else {
+                        symbolRepository.save(Symbol.builder()
+                                .symbol(isin).name(schemeName).category("MUTUAL_FUND")
+                                .sector("Mutual Fund").schemeCode(schemeCode)
+                                .build());
+                    }
+                    upserted++;
                 }
             }
 
-            if (symbols.isEmpty()) {
+            if (upserted == 0) {
                 log.warn("No mutual fund symbols parsed from AMFI data");
                 return;
             }
-
-            symbolRepository.saveAll(symbols);
-            log.info("Refreshed {} mutual fund symbols", symbols.size());
+            log.info("Refreshed {} mutual fund symbols (upsert)", upserted);
         } catch (Exception e) {
             log.error("Failed to refresh mutual funds: {}", e.getMessage());
         }
@@ -192,23 +152,15 @@ public class SymbolService {
     @Transactional
     public void refreshBonds() {
         try {
-            URI uri = URI.create(NSE_DEBT_CSV_URL);
-            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            conn.setRequestProperty("Accept", "text/csv,application/csv");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(30000);
-
-            int status = conn.getResponseCode();
-            if (status != 200) {
-                log.warn("NSE DEBT CSV returned status {}", status);
+            HttpURLConnection conn = openConnection(NSE_DEBT_CSV_URL, "text/csv,application/csv", 30000);
+            if (conn.getResponseCode() != 200) {
+                log.warn("NSE DEBT CSV returned status {}", conn.getResponseCode());
                 return;
             }
 
-            List<Symbol> symbols = new ArrayList<>();
+            int upserted = 0;
             try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                String header = br.readLine(); // skip header
+                String header = br.readLine();
                 if (header == null) return;
 
                 String line;
@@ -227,30 +179,58 @@ public class SymbolService {
                     if (symbol.isEmpty() || name.isEmpty()) continue;
                     if (isin != null && (isin.isEmpty() || isin.length() != 12)) isin = null;
 
-                    // Build sector string with bond metadata for frontend display
                     String sector = "Bond";
                     if (!ipRate.isEmpty()) sector += " | Coupon: " + ipRate + "%";
                     if (!redemptionDate.isEmpty()) sector += " | Maturity: " + redemptionDate;
                     if (!faceValue.isEmpty()) sector += " | FV: ₹" + faceValue;
 
-                    symbols.add(Symbol.builder()
-                            .symbol(symbol + ".NS")
-                            .name(name + (series.isEmpty() ? "" : " [" + series + "]"))
-                            .category("BOND")
-                            .sector(sector)
-                            .isin(isin)
-                            .build());
+                    String fullName = name + (series.isEmpty() ? "" : " [" + series + "]");
+                    String key = symbol + ".NS";
+
+                    Symbol existing = symbolRepository.findById(key).orElse(null);
+                    if (existing != null) {
+                        existing.setName(fullName);
+                        existing.setSector(sector);
+                        if (isin != null) existing.setIsin(isin);
+                        symbolRepository.save(existing);
+                    } else {
+                        symbolRepository.save(Symbol.builder()
+                                .symbol(key).name(fullName).category("BOND").sector(sector).isin(isin)
+                                .build());
+                    }
+                    upserted++;
                 }
             }
-
-            // Only delete existing bonds, not equities or MFs
-            List<Symbol> existingBonds = symbolRepository.findByCategory("BOND");
-            symbolRepository.deleteAll(existingBonds);
-            symbolRepository.saveAll(symbols);
-            log.info("Refreshed {} NSE bond/debenture symbols", symbols.size());
+            log.info("Refreshed {} NSE bond/debenture symbols (upsert)", upserted);
         } catch (Exception e) {
             log.error("Failed to refresh bonds: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Upsert a symbol alias — find by (symbol, source), create or update.
+     */
+    private void upsertAlias(String symbol, String source, String alias) {
+        SymbolAlias existing = symbolAliasRepository.findBySymbolAndSource(symbol, source).orElse(null);
+        if (existing != null) {
+            if (!alias.equals(existing.getAlias())) {
+                existing.setAlias(alias);
+                symbolAliasRepository.save(existing);
+            }
+        } else {
+            symbolAliasRepository.save(SymbolAlias.builder()
+                    .symbol(symbol).source(source).alias(alias).build());
+        }
+    }
+
+    private HttpURLConnection openConnection(String url, String accept, int readTimeout) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+        conn.setRequestProperty("Accept", accept);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(readTimeout);
+        return conn;
     }
 
     public List<Map<String, String>> getAllSymbols() {
@@ -287,5 +267,4 @@ public class SymbolService {
         fields.add(sb.toString());
         return fields.toArray(String[]::new);
     }
-
 }
