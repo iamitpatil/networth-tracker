@@ -128,6 +128,8 @@ export default function Holdings() {
   const [dematDropdownOpen, setDematDropdownOpen] = useState(false)
   const [dematAccounts, setDematAccounts] = useState([])
   const [npsAccounts, setNpsAccounts] = useState([])
+  const [epfAccounts, setEpfAccounts] = useState([])
+  const [ppfAccounts, setPpfAccounts] = useState([])
   const [npsSchemes, setNpsSchemes] = useState([]) // all NPS schemes from npsnav.in
   const [assetType, setAssetType] = useState('')
   const [form, setForm] = useState({
@@ -335,6 +337,8 @@ export default function Holdings() {
       setInvestmentHistory(i.data || [])
       setDividendSummary(div.data || null)
       setNpsAccounts(acc.data?.npsAccounts || [])
+      setEpfAccounts(acc.data?.epfAccounts || [])
+      setPpfAccounts(acc.data?.ppfAccounts || [])
       // Fetch NPS schemes for Tier II dropdown
       client.get('/accounts/nps/schemes').then(r => setNpsSchemes(r.data || [])).catch(() => {})
     }).catch(console.error)
@@ -1208,68 +1212,72 @@ export default function Holdings() {
                         )}
                       </>
                     ) : assetType === 'NPS' ? (
-                      <select
-                        value={form.npsAccountId}
-                        onChange={(e) => {
-                          const acc = npsAccounts.find(a => a.id === e.target.value)
+                      <StyledSelect value={form.npsAccountId}
+                        onChange={(v) => {
+                          const acc = npsAccounts.find(a => a.id === v)
                           if (!acc) { setForm({ ...form, npsAccountId: '', name: '' }); return }
 
                           const isTier1 = (acc.tier || 'TIER1').toUpperCase().includes('1')
                           const pfmSchemes = findPfmSchemes(acc.fundManager, npsSchemes)
                           const name = `NPS - ${acc.pranNumber} (${acc.fundManager || 'Unknown'})`
 
-                          // Build fund rows based on tier
                           const npsFunds = isTier1 && pfmSchemes
                             ? ['E', 'C', 'G'].map(s => ({
-                                scheme: s,
-                                label: s === 'E' ? 'Equity (E)' : s === 'C' ? 'Corporate Bonds (C)' : 'Govt Securities (G)',
-                                schemeCode: pfmSchemes[s] || '',
-                                schemeName: '',
-                                nav: '',
-                                units: '',
-                                locked: false, // Tier I: pre-selected but user can switch
+                                scheme: s, label: s === 'E' ? 'Equity (E)' : s === 'C' ? 'Corporate Bonds (C)' : 'Govt Securities (G)',
+                                schemeCode: pfmSchemes[s] || '', schemeName: '', nav: '', units: '',
                               }))
-                            : [{ scheme: '', label: '', schemeCode: '', schemeName: '', nav: '', units: '', locked: false }]
+                            : [{ scheme: '', schemeCode: '', schemeName: '', nav: '', units: '' }]
 
-                          setForm({ ...form, npsAccountId: e.target.value, name, npsFunds })
+                          setForm({ ...form, npsAccountId: v, name, npsFunds })
 
-                          // Fetch NAVs for Tier I schemes
                           if (isTier1 && pfmSchemes) {
-                            Promise.all(
-                              ['E', 'C', 'G'].map(s =>
-                                client.get(`/accounts/nps/scheme/${pfmSchemes[s]}`)
-                                  .then(r => ({ scheme: s, nav: r.data?.NAV }))
-                                  .catch(() => ({ scheme: s, nav: null }))
-                              )
-                            ).then(results => {
-                              setForm(prev => ({
-                                ...prev,
-                                npsFunds: prev.npsFunds.map(f => {
-                                  const r = results.find(r => r.scheme === f.scheme)
-                                  return r?.nav ? { ...f, nav: r.nav } : f
-                                })
-                              }))
+                            Promise.all(['E', 'C', 'G'].map(s =>
+                              client.get(`/accounts/nps/scheme/${pfmSchemes[s]}`)
+                                .then(r => ({ scheme: s, nav: r.data?.NAV }))
+                                .catch(() => ({ scheme: s, nav: null }))
+                            )).then(results => {
+                              setForm(prev => ({ ...prev, npsFunds: prev.npsFunds.map(f => {
+                                const r = results.find(r => r.scheme === f.scheme)
+                                return r?.nav ? { ...f, nav: r.nav } : f
+                              })}))
                             })
                           }
                         }}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
-                        required
-                      >
-                        <option value="">Select NPS Account...</option>
-                        {npsAccounts.map(acc => (
-                          <option key={acc.id} value={acc.id}>
-                            PRAN: {acc.pranNumber} — {acc.fundManager || 'Unknown'} ({acc.tier || 'Tier I'})
-                            {acc.currentValue ? ` — ₹${Number(acc.currentValue).toLocaleString('en-IN')}` : ''}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Select NPS Account..."
+                        options={npsAccounts.map(acc => ({
+                          value: acc.id,
+                          label: `PRAN: ${acc.pranNumber} — ${acc.fundManager || 'Unknown'} (${acc.tier || 'Tier I'})${acc.currentValue ? ` — ₹${Number(acc.currentValue).toLocaleString('en-IN')}` : ''}`
+                        }))}
+                        required />
+                    ) : assetType === 'EPF' ? (
+                      <StyledSelect value={form.name}
+                        onChange={(v) => setForm({ ...form, name: v })}
+                        placeholder="Select EPF Account..."
+                        options={epfAccounts.length > 0
+                          ? epfAccounts.map(acc => ({
+                              value: `EPF - ${acc.uanNumber || 'Unknown'} (${acc.employerName || 'Unknown'})`,
+                              label: `UAN: ${acc.uanNumber || '—'} — ${acc.employerName || 'Unknown'}${acc.currentBalance ? ` — ₹${Number(acc.currentBalance).toLocaleString('en-IN')}` : ''}`
+                            }))
+                          : [{ value: 'EPF Account', label: 'No EPF accounts — add one in Profile first' }]}
+                        required />
+                    ) : assetType === 'PPF' ? (
+                      <StyledSelect value={form.name}
+                        onChange={(v) => setForm({ ...form, name: v })}
+                        placeholder="Select PPF Account..."
+                        options={ppfAccounts.length > 0
+                          ? ppfAccounts.map(acc => ({
+                              value: `PPF - ${acc.accountNumber || 'Unknown'} (${acc.bankOrPostOffice || 'Unknown'})`,
+                              label: `A/C: ${acc.accountNumber || '—'} — ${acc.bankOrPostOffice || 'Unknown'}${acc.currentBalance ? ` — ₹${Number(acc.currentBalance).toLocaleString('en-IN')}` : ''}`
+                            }))
+                          : [{ value: 'PPF Account', label: 'No PPF accounts — add one in Profile first' }]}
+                        required />
                     ) : (
                       <input
                         type="text"
                         value={form.name}
                         onChange={(e) => setForm({ ...form, name: e.target.value })}
                         className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
-                        placeholder={assetType === 'FD' ? 'e.g., HDFC Bank FD 2025' : `e.g., ${assetType} Account`}
+                        placeholder={assetType === 'FD' ? 'e.g., HDFC Bank FD 2025' : assetType === 'GOLD' ? 'e.g., SGB 2024, Physical Gold' : assetType === 'CRYPTO' ? 'e.g., Bitcoin, Ethereum' : assetType === 'REAL_ESTATE' ? 'e.g., Flat in Pune, Plot in Jalgaon' : assetType === 'CASH' ? 'e.g., Emergency Fund, Savings' : `e.g., ${assetType} Account`}
                         required
                       />
                     )}
