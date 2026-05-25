@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
 import { useFeature } from '../context/FeatureFlagContext'
@@ -121,6 +121,7 @@ export default function Holdings() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [filter, setFilter] = useState('all')
   const searchRef = useRef(null)
   const [invoiceHolding, setInvoiceHolding] = useState(null)
@@ -279,6 +280,17 @@ export default function Holdings() {
     }).catch(console.error)
       .finally(() => setLoading(false))
   }, [])
+
+  // Auto-refresh prices on page load (background, non-blocking)
+  useEffect(() => {
+    if (loading) return
+    setRefreshingPrices(true)
+    client.post('/portfolio/refresh-prices')
+      .then(() => client.get('/portfolio/holdings'))
+      .then(({ data }) => setHoldings(data || []))
+      .catch(() => {})
+      .finally(() => setRefreshingPrices(false))
+  }, [loading])
 
   // Fetch broker connection statuses
   useEffect(() => {
@@ -846,9 +858,28 @@ export default function Holdings() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Holdings</h1>
-          <p className="text-[var(--text-muted)] text-sm mt-1">{holdings.length} investments across all asset classes</p>
+          <p className="text-[var(--text-muted)] text-sm mt-1">
+            {holdings.length} investments across all asset classes
+            {refreshingPrices && <span className="ml-2 text-blue-400 text-xs inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Updating prices...</span>}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (refreshingPrices) return
+              setRefreshingPrices(true)
+              client.post('/portfolio/refresh-prices')
+                .then(() => client.get('/portfolio/holdings'))
+                .then(({ data }) => { setHoldings(data || []); toast.success('Prices updated') })
+                .catch(() => toast.error('Failed to refresh prices'))
+                .finally(() => setRefreshingPrices(false))
+            }}
+            disabled={refreshingPrices}
+            className="p-2 rounded-lg text-[var(--text-muted)] hover:text-blue-400 hover:bg-blue-500/10 transition disabled:opacity-50"
+            title="Refresh prices"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshingPrices ? 'animate-spin' : ''}`} />
+          </button>
           {hasBrokers && (
             <div className="relative" ref={importRef}>
               <button
