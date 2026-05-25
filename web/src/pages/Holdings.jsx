@@ -1525,7 +1525,7 @@ export default function Holdings() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={allocation} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={50} paddingAngle={1} strokeWidth={0}
-                    activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 4} />}
+                    activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}
                   >
                     {allocation.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} cursor="pointer" />)}
                   </Pie>

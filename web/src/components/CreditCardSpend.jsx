@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import client from '../api/client'
 import { toast } from 'sonner'
 import { CheckCircle, Upload, FileText, Loader2, Receipt, Banknote, ArrowUpRight, ArrowDownRight, BarChart3 } from 'lucide-react'
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { PieChart as RechartsPie, Pie, Cell, Sector, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 
 const SPEND_CATEGORIES = {
   FOOD: { label: 'Food & Dining', color: '#F97316', icon: '🍔' },
@@ -251,10 +251,12 @@ export default function CreditCardSpend() {
                     <ResponsiveContainer width="100%" height="100%">
                       <RechartsPie>
                         <Pie data={ccSpendData} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                          innerRadius={50} outerRadius={85} paddingAngle={2}>
-                          {ccSpendData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                          innerRadius={50} outerRadius={85} paddingAngle={1} strokeWidth={0}
+                          activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}>
+                          {ccSpendData.map((d, i) => <Cell key={i} fill={d.color} cursor="pointer" />)}
                         </Pie>
-                        <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} />
+                        <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+                          itemStyle={{ color: 'var(--text)' }} />
                       </RechartsPie>
                     </ResponsiveContainer>
                   </div>
