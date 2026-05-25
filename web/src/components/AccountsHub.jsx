@@ -19,7 +19,7 @@ const getBrokerLogo = (name) => {
 
 const NPS_CRAS = [
   { value: 'PROTEAN', label: 'Protean (NSDL)', logo: '/logos/cra/protean.jpg' },
-  { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: '/logos/cra/kfintech.png' },
+  { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: '/logos/cra/kfintech.svg' },
   { value: 'CAMS', label: 'CAMS', logo: '/logos/cra/cams.png' },
 ]
 
