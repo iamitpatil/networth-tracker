@@ -5,6 +5,7 @@ import com.networth.model.entity.Symbol;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.SymbolRepository;
 import com.networth.service.market.AmfiHistoricalService;
+import com.networth.service.market.BackfillJobService;
 import com.networth.service.market.UpstoxHistoricalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ public class MarketDataController {
 
     private final UpstoxHistoricalService historicalService;
     private final AmfiHistoricalService amfiHistoricalService;
+    private final BackfillJobService backfillJobService;
     private final HoldingRepository holdingRepository;
     private final SymbolRepository symbolRepository;
 
@@ -112,5 +114,40 @@ public class MarketDataController {
     @GetMapping("/backfill-mf-status")
     public ResponseEntity<Map<String, Object>> backfillMfStatus() {
         return ResponseEntity.ok(amfiHistoricalService.getBackfillStatus());
+    }
+
+    // ── Full Backfill Job (async, singleton) ──
+
+    @PostMapping("/backfill")
+    public ResponseEntity<Map<String, Object>> startBackfill(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(defaultValue = "365") int days) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        boolean started = backfillJobService.tryStart(userId, days);
+        if (!started) {
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("status", "already_running");
+            body.put("message", "A backfill job is already running. Check status or wait for it to complete.");
+            return ResponseEntity.status(409).body(body);
+        }
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("status", "started");
+        body.put("message", "Full backfill started (symbols + equity prices + MF NAVs + NPS)");
+        body.put("days", days);
+        return ResponseEntity.ok(body);
+    }
+
+    @GetMapping("/backfill/status")
+    public ResponseEntity<Map<String, Object>> backfillStatus() {
+        return ResponseEntity.ok(backfillJobService.getStatus());
+    }
+
+    @PostMapping("/backfill/cancel")
+    public ResponseEntity<Map<String, Object>> cancelBackfill() {
+        boolean cancelled = backfillJobService.cancel();
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("cancelled", cancelled);
+        body.put("message", cancelled ? "Backfill job cancellation requested" : "No backfill job is running");
+        return ResponseEntity.ok(body);
     }
 }

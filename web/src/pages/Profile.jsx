@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Building2, ArrowLeft, Palette, Upload, Trash2, Check, Plus, X, FolderOpen, Database, RefreshCw, Loader2, Pencil, ShieldCheck, Wallet } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -554,79 +554,140 @@ function TwoFactorAuth() {
 }
 
 function DataRefresh() {
-  const [syncing, setSyncing] = useState(false)
-  const [syncingBonds, setSyncingBonds] = useState(false)
-  const [done, setDone] = useState(false)
-  const [doneBonds, setDoneBonds] = useState(false)
+  const [backfillStatus, setBackfillStatus] = useState(null)
+  const [starting, setStarting] = useState(false)
+  const [days, setDays] = useState(365)
   const [error, setError] = useState('')
 
-  const handleRefresh = async () => {
-    setSyncing(true)
+  // Poll backfill status while running
+  useEffect(() => {
+    let interval
+    const pollStatus = async () => {
+      try {
+        const { data } = await client.get('/market/backfill/status')
+        setBackfillStatus(data)
+        if (!data.running && interval) {
+          clearInterval(interval)
+        }
+      } catch {}
+    }
+    pollStatus()
+    interval = setInterval(pollStatus, 3000)
+    return () => clearInterval(interval)
+  }, [starting])
+
+  const handleStart = async () => {
+    setStarting(true)
     setError('')
-    setDone(false)
     try {
-      await client.post('/symbols/refresh')
-      setDone(true)
+      const { data } = await client.post(`/market/backfill?days=${days}`)
+      if (data.status === 'already_running') {
+        setError('A backfill job is already running')
+      }
     } catch (e) {
-      setError('Failed to refresh symbols')
+      setError(e.response?.data?.message || 'Failed to start backfill')
     } finally {
-      setSyncing(false)
+      setStarting(false)
     }
   }
 
-  const handleRefreshBonds = async () => {
-    setSyncingBonds(true)
-    setError('')
-    setDoneBonds(false)
+  const handleCancel = async () => {
     try {
-      await client.post('/symbols/refresh/bonds')
-      setDoneBonds(true)
-    } catch (e) {
-      setError('Failed to refresh bond list')
-    } finally {
-      setSyncingBonds(false)
-    }
+      await client.post('/market/backfill/cancel')
+    } catch {}
   }
+
+  const isRunning = backfillStatus?.running
+  const steps = [
+    { key: 'symbols', label: 'Symbol Lists', desc: 'NSE equities, AMFI mutual funds, NSE bonds' },
+    { key: 'equities', label: 'Equity Prices', desc: 'Historical OHLCV data for stocks' },
+    { key: 'mutual_funds', label: 'MF NAV History', desc: 'Daily NAV data for mutual funds' },
+    { key: 'nps', label: 'NPS NAV', desc: 'NPS scheme NAVs from npsnav.in' },
+  ]
+  const completedSteps = backfillStatus?.completedSteps || []
+  const currentStep = backfillStatus?.currentStep
+  const stepResults = backfillStatus?.stepResults || {}
+  const stepErrors = backfillStatus?.stepErrors || {}
 
   return (
     <div className="space-y-4">
-      <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
+      {/* Full Backfill */}
+      <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-[var(--text)]">Equities & Mutual Funds</h3>
-            <p className="text-sm text-[var(--text-muted)] mt-1">Refresh NSE equities and AMFI mutual fund symbol list</p>
+            <h3 className="font-semibold text-[var(--text)]">Data Backfill</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1">
+              Refresh all symbols, backfill price history for equities & mutual funds, update NPS NAVs
+            </p>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium"
-          >
-            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {syncing ? 'Refreshing...' : 'Refresh Symbols'}
-          </button>
+          {!isRunning ? (
+            <div className="flex items-center gap-2">
+              <select value={days} onChange={(e) => setDays(Number(e.target.value))}
+                className="bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)]">
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+                <option value={180}>6 months</option>
+                <option value={365}>1 year</option>
+                <option value={730}>2 years</option>
+                <option value={1095}>3 years</option>
+              </select>
+              <button onClick={handleStart} disabled={starting}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium">
+                {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                {starting ? 'Starting...' : 'Start Backfill'}
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleCancel}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition text-sm font-medium">
+              <X className="w-4 h-4" /> Cancel
+            </button>
+          )}
         </div>
-        {done && <p className="text-sm text-green-400">Equities & MF symbols updated successfully</p>}
-      </div>
 
-      <div className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-[var(--text)]">Bonds & Debentures</h3>
-            <p className="text-sm text-[var(--text-muted)] mt-1">Refresh NSE bond/debenture list (~5,900 instruments with ISIN, coupon, maturity)</p>
+        {/* Progress Steps */}
+        {backfillStatus && (isRunning || backfillStatus.completedAt) && (
+          <div className="space-y-2">
+            {steps.map((step) => {
+              const isCompleted = completedSteps.some(s => s.startsWith(step.key))
+              const hasError = stepErrors[step.key]
+              const isCurrent = currentStep === step.key && isRunning
+              return (
+                <div key={step.key} className={`flex items-center gap-3 p-3 rounded-lg border transition ${
+                  isCurrent ? 'border-blue-500/30 bg-blue-500/5' :
+                  hasError ? 'border-red-500/20 bg-red-500/5' :
+                  isCompleted ? 'border-green-500/20 bg-green-500/5' :
+                  'border-[var(--border)] bg-[var(--bg)]'}`}>
+                  <div className="flex-shrink-0">
+                    {isCurrent ? <Loader2 className="w-5 h-5 text-blue-400 animate-spin" /> :
+                     hasError ? <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center"><X className="w-3 h-3 text-red-400" /></div> :
+                     isCompleted ? <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center"><Check className="w-3 h-3 text-green-400" /></div> :
+                     <div className="w-5 h-5 rounded-full bg-[var(--input-bg)]" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${isCurrent ? 'text-blue-400' : isCompleted ? 'text-green-400' : hasError ? 'text-red-400' : 'text-[var(--text-muted)]'}`}>
+                      {step.label}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)] truncate">
+                      {hasError || stepResults[step.key] || step.desc}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          <button
-            onClick={handleRefreshBonds}
-            disabled={syncingBonds}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium"
-          >
-            {syncingBonds ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {syncingBonds ? 'Refreshing...' : 'Refresh Bonds'}
-          </button>
-        </div>
-        {doneBonds && <p className="text-sm text-green-400">Bond symbols updated successfully</p>}
-      </div>
+        )}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+        {backfillStatus?.completedAt && !isRunning && (
+          <p className="text-xs text-[var(--text-muted)]">
+            Completed at {new Date(backfillStatus.completedAt).toLocaleString('en-IN')}
+            {backfillStatus.equityRecords != null && ` · ${backfillStatus.equityRecords} equity records`}
+            {backfillStatus.mfRecords != null && ` · ${backfillStatus.mfRecords} MF records`}
+          </p>
+        )}
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+      </div>
     </div>
   )
 }
