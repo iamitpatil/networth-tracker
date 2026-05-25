@@ -9,7 +9,7 @@ import {
   TrendingUp, PieChart, Shield, Loader2, Copy, RotateCcw,
   MessageSquare, Wallet, ArrowRight, Paperclip, History,
   Search, CreditCard, Briefcase, Building2, Play,
-  ThumbsUp, ThumbsDown, AlertTriangle, ChevronDown, Brain, Wrench, Upload,
+  ThumbsUp, ThumbsDown, AlertTriangle, ChevronDown, Brain, Wrench, Upload, CheckCircle,
 } from 'lucide-react'
 
 const SUGGESTED_PROMPTS = [
@@ -21,6 +21,68 @@ const SUGGESTED_PROMPTS = [
 
 let _msgId = 0
 function nextId() { return ++_msgId }
+
+/**
+ * Renders JSON data as a readable table for key-value objects,
+ * array of objects as a data table, or falls back to formatted JSON.
+ */
+function JsonView({ data }) {
+  if (!data) return <span className="text-[var(--text-muted)]">—</span>
+
+  // Primitive value
+  if (typeof data !== 'object') return <span className="font-mono">{String(data)}</span>
+
+  // Array of objects → table
+  if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+    const keys = [...new Set(data.flatMap(r => Object.keys(r)))]
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px]">
+          <thead>
+            <tr className="border-b border-[var(--border)]">
+              {keys.map(k => <th key={k} className="px-2 py-1 text-left font-medium text-[var(--text-muted)]">{k}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {data.slice(0, 50).map((row, i) => (
+              <tr key={i} className="border-b border-[var(--border)]/30">
+                {keys.map(k => <td key={k} className="px-2 py-1">{typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '')}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.length > 50 && <p className="text-[9px] text-[var(--text-muted)] mt-1">... and {data.length - 50} more rows</p>}
+      </div>
+    )
+  }
+
+  // Plain array
+  if (Array.isArray(data)) {
+    return <pre className="font-mono whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
+  }
+
+  // Object with nested objects/arrays → key-value table with recursive rendering
+  const entries = Object.entries(data)
+  if (entries.length === 0) return <span className="text-[var(--text-muted)]">{'{}'}</span>
+
+  return (
+    <table className="w-full text-[10px]">
+      <tbody>
+        {entries.map(([key, val]) => (
+          <tr key={key} className="border-b border-[var(--border)]/20">
+            <td className="px-2 py-1 font-medium text-[var(--text-muted)] whitespace-nowrap align-top w-1/3">{key}</td>
+            <td className="px-2 py-1 align-top">
+              {val === null || val === undefined ? <span className="text-[var(--text-secondary)]">—</span>
+                : typeof val === 'object' ? <JsonView data={val} />
+                : typeof val === 'number' ? <span className="font-mono">{Number(val).toLocaleString('en-IN')}</span>
+                : <span>{String(val)}</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
 
 function AgentSubToolCard({ step }) {
   const [expanded, setExpanded] = useState(false)
@@ -219,13 +281,161 @@ function ToolCallCard({ tc }) {
               <div className="text-[10px] text-[var(--text-muted)] font-mono bg-[var(--bg-card)] rounded p-1.5 break-all">
                 <pre className="whitespace-pre-wrap">{JSON.stringify(tc.arguments || {}, null, 2)}</pre>
               </div>
-              <div className={`text-[10px] font-mono bg-[var(--bg-card)] rounded p-1.5 max-h-60 overflow-y-auto break-all ${pending ? 'text-amber-300' : isError ? 'text-red-300' : 'text-green-300'}`}>
-                <pre className="whitespace-pre-wrap">{resultStr}</pre>
+              <div className={`text-[10px] bg-[var(--bg-card)] rounded p-1.5 max-h-60 overflow-y-auto ${pending ? 'text-amber-300' : isError ? 'text-red-300' : 'text-green-300'}`}>
+                <JsonView data={tc.result} />
               </div>
             </>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Editable salary card shown after AI extracts salary slip data.
+ * User can edit all fields before saving to portfolio.
+ */
+function EditableSalaryCard({ data, documentId, onSaved }) {
+  const [form, setForm] = useState(() => {
+    // Build components from various possible structures
+    let components = data?.components || {}
+    // If extraction returned earnings/deductions at top level, nest them
+    if (data?.earnings || data?.deductions) {
+      components = {}
+      if (data.earnings && typeof data.earnings === 'object') components.earnings = data.earnings
+      if (data.deductions && typeof data.deductions === 'object') components.deductions = data.deductions
+    }
+    // If components is flat (no nested objects), keep as-is
+    const payDate = data?.payDate || ''
+    const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(payDate) ? payDate
+      : (() => { try { const p = new Date(payDate); return isNaN(p) ? '' : p.toISOString().slice(0, 10) } catch { return '' } })()
+
+    return {
+      employerName: data?.employerName || '',
+      netPay: data?.netPay || data?.grossPay || '',
+      payDate: normalizedDate,
+      components,
+    }
+  })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const handleComponentChange = (section, key, value) => {
+    if (section) {
+      setForm(prev => ({
+        ...prev,
+        components: {
+          ...prev.components,
+          [section]: { ...prev.components[section], [key]: Number(value) || 0 }
+        }
+      }))
+    } else {
+      setForm(prev => ({
+        ...prev,
+        components: { ...prev.components, [key]: Number(value) || 0 }
+      }))
+    }
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await client.post('/salaries', {
+        employerName: form.employerName,
+        amount: Number(form.netPay) || 0,
+        payDate: form.payDate,
+        notes: 'Imported from salary slip via AI',
+        components: form.components,
+        documentId: documentId || null,
+      })
+      setSaved(true)
+      toast.success('Salary recorded successfully')
+      onSaved?.()
+    } catch (err) {
+      toast.error('Failed to save salary', { description: err.response?.data?.message || err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (saved) {
+    return (
+      <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-400 flex items-center gap-2">
+        <CheckCircle className="w-4 h-4" /> Salary recorded: {form.employerName} — Rs. {Number(form.netPay).toLocaleString('en-IN')} on {form.payDate}
+      </div>
+    )
+  }
+
+  const isNested = Object.values(form.components).some(v => v && typeof v === 'object')
+
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 overflow-hidden">
+      <div className="p-3 border-b border-blue-500/10">
+        <div className="flex items-center gap-2 mb-2">
+          <FileText className="w-4 h-4 text-blue-400" />
+          <span className="text-sm font-medium">Parsed Salary Slip — Review & Save</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-[10px] text-[var(--text-muted)] mb-0.5">Employer</label>
+            <input type="text" value={form.employerName} onChange={(e) => setForm({ ...form, employerName: e.target.value })}
+              className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1.5 text-xs text-[var(--text)]" />
+          </div>
+          <div>
+            <label className="block text-[10px] text-[var(--text-muted)] mb-0.5">Net Pay (Rs.)</label>
+            <input type="number" value={form.netPay} onChange={(e) => setForm({ ...form, netPay: e.target.value })}
+              className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1.5 text-xs text-[var(--text)]" />
+          </div>
+          <div>
+            <label className="block text-[10px] text-[var(--text-muted)] mb-0.5">Pay Date</label>
+            <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })}
+              className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1.5 text-xs text-[var(--text)]" />
+          </div>
+        </div>
+      </div>
+
+      {/* Components */}
+      <div className="p-3 space-y-2 max-h-60 overflow-y-auto">
+        {isNested ? (
+          Object.entries(form.components).map(([section, items]) => {
+            if (!items || typeof items !== 'object') return null
+            const isDeduction = section.toLowerCase().includes('deduction')
+            return (
+              <div key={section}>
+                <p className={`text-[10px] font-semibold mb-1 ${isDeduction ? 'text-red-400' : 'text-green-400'}`}>
+                  {section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                </p>
+                <div className="space-y-1 pl-2 border-l-2 border-[var(--border)]">
+                  {Object.entries(items).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <span className="text-[10px] text-[var(--text-muted)] flex-1 truncate">{k}</span>
+                      <input type="number" value={v} onChange={(e) => handleComponentChange(section, k, e.target.value)}
+                        className={`w-24 bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-[10px] text-right ${isDeduction ? 'text-red-400' : 'text-[var(--text)]'}`} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          Object.entries(form.components).map(([k, v]) => (
+            <div key={k} className="flex items-center gap-2">
+              <span className="text-[10px] text-[var(--text-muted)] flex-1 truncate">{k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+              <input type="number" value={v} onChange={(e) => handleComponentChange(null, k, e.target.value)}
+                className="w-24 bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-[10px] text-right text-[var(--text)]" />
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="p-3 border-t border-blue-500/10 flex justify-end gap-2">
+        <button onClick={handleSave} disabled={saving || !form.employerName || !form.netPay}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-blue-500 hover:bg-blue-600 text-white transition disabled:opacity-50">
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ThumbsUp className="w-3 h-3" />}
+          {saving ? 'Saving...' : 'Save Salary'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -301,6 +511,16 @@ function ThinkingSection({ steps, defaultOpen = false }) {
 
 function PendingActionCard({ action, onConfirm, onReject, loading }) {
   const toolName = action.toolName || 'unknown'
+  const [showDetails, setShowDetails] = useState(false)
+  const friendlyName = {
+    create_transaction: 'Record Transaction',
+    update_cc_spend: 'Save Credit Card Spend',
+    update_salary: 'Record Salary',
+    update_account_balance: 'Update Account Balance',
+    update_holding: 'Update Holding',
+    link_document: 'Link Document',
+  }[toolName] || toolName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
   return (
     <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 overflow-hidden">
       <div className="p-3 space-y-2">
@@ -309,12 +529,24 @@ function PendingActionCard({ action, onConfirm, onReject, loading }) {
             <Wrench className="w-3 h-3 text-amber-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-xs truncate">{toolName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</p>
-            <p className="text-[10px] text-[var(--text-muted)]">Needs approval</p>
+            <p className="font-medium text-xs">{friendlyName}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">Review and approve to add to your portfolio</p>
           </div>
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
         </div>
-        {action.summary && <p className="text-[11px] text-[var(--text)]">{action.summary}</p>}
+        {action.summary && <p className="text-[11px] text-[var(--text)] leading-relaxed">{action.summary}</p>}
+        {action.arguments && (
+          <div>
+            <button onClick={() => setShowDetails(!showDetails)} className="text-[10px] text-blue-400 hover:text-blue-300 transition">
+              {showDetails ? 'Hide details' : 'Show details'}
+            </button>
+            {showDetails && (
+              <pre className="text-[10px] text-[var(--text-muted)] bg-[var(--bg)] rounded p-2 mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                {JSON.stringify(action.arguments, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
         <div className="flex gap-1.5">
           <button onClick={() => onConfirm(action.id)} disabled={loading}
             className="flex-1 flex items-center justify-center gap-1 text-[11px] px-2 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition disabled:opacity-50">
@@ -647,12 +879,14 @@ export default function AIChat() {
     }
   }
 
-  const findTxns = (tcs) => {
+  // Find extracted salary data from tool results
+  const findSalaryData = (tcs) => {
     if (!tcs) return null
     for (const tc of tcs) {
       const r = tc.result
-      if (r?.transactions || r?.cardIssuer) return r
-      if (r?.items) for (const item of r.items) { if (item?.transactions || item?.cardIssuer) return item }
+      const name = tc.tool || tc.name || ''
+      // Match extract_salary_slip tool result
+      if (name.includes('salary') && (r?.grossPay || r?.netPay || r?.components || r?.employerName || r?.earnings)) return r
     }
     return null
   }
@@ -789,6 +1023,35 @@ export default function AIChat() {
                   </div>
                 )}
 
+                {/* Editable salary card after extraction */}
+                {!msg.user && (() => {
+                  const salaryData = findSalaryData(msg.toolCalls)
+                  if (!salaryData) return null
+                  // Find documentId from user message containing [documentId: xxx]
+                  const docIdMatch = messages.find(m => m.user && m.content?.includes('[documentId:'))
+                  const documentId = docIdMatch?.content?.match(/\[documentId:\s*([a-f0-9-]+)\]/)?.[1] || null
+                  // Check if salary was already saved
+                  const alreadySaved = msg.salaryDismissed || messages.some(m =>
+                    (m.toolCalls || []).some(tc => (tc.tool || tc.name || '').includes('update_salary') && tc.type === 'executed')
+                  )
+                  if (alreadySaved) {
+                    return (
+                      <div className="ml-11 mt-3">
+                        <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-400 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" /> Salary already recorded
+                        </div>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className="ml-11 mt-3">
+                      <EditableSalaryCard data={salaryData} documentId={documentId} onSaved={() => {
+                        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, salaryDismissed: true } : m))
+                      }} />
+                    </div>
+                  )
+                })()}
+
                 {!msg.user && msg.pendingActionId && !msg.isConfirmed && (
                   <div className="ml-11 mt-3">
                     {(() => {
@@ -801,7 +1064,8 @@ export default function AIChat() {
                         else if (r?.message) summary = r.message
                         else if (r?.summary) summary = r.summary
                       } catch {}
-                      return <PendingActionCard action={{ id: msg.pendingActionId, toolName, summary }} onConfirm={handleConfirmAction} onReject={handleRejectAction} loading={confirmLoading === msg.pendingActionId} />
+                      const args = pendingTc?.arguments || pendingTc?.args || null
+                      return <PendingActionCard action={{ id: msg.pendingActionId, toolName, summary, arguments: args }} onConfirm={handleConfirmAction} onReject={handleRejectAction} loading={confirmLoading === msg.pendingActionId} />
                     })()}
                   </div>
                 )}

@@ -3,8 +3,10 @@ package com.networth.controller;
 import com.networth.config.AiConfig;
 import com.networth.service.AIChatService;
 import com.networth.service.AIChatService.ChatMessage;
+import com.networth.service.DocumentService;
 import com.networth.service.documentgraph.mcp.McpAIChatService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,14 +23,17 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/ai")
 @RequiredArgsConstructor
+@Slf4j
 public class AIChatController {
 
     private final AIChatService aiChatService;
     private final McpAIChatService mcpAIChatService;
+    private final DocumentService documentService;
     private final AiConfig aiConfig;
 
     @PostMapping("/chat")
@@ -129,6 +134,19 @@ public class AIChatController {
                     e.getMessage().replace("\"", "\\\"") + "\"}");
             servletResponse.getWriter().flush();
             return null; // Response already written
+        }
+
+        // Save uploaded file as a document for linking later
+        String documentId = null;
+        try {
+            UUID userId = UUID.fromString(userDetails.getUsername());
+            var doc = documentService.uploadDocument(userId, file, "AI_UPLOAD", "Uploaded via AI chat",
+                    null, null, null);
+            documentId = doc.getId().toString();
+            // Append documentId to enriched message so frontend/tools can reference it
+            enriched += "\n\n[documentId: " + documentId + "]";
+        } catch (Exception e) {
+            log.warn("Failed to save uploaded document: {}", e.getMessage());
         }
 
         // Success — return SseEmitter directly (Spring handles SSE async natively)

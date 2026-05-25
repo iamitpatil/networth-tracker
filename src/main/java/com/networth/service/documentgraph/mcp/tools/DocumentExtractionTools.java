@@ -41,13 +41,24 @@ Use null for any field you cannot determine. No explanation, no markdown fences,
 
     private static final String SALARY_PROMPT = """
 You are a salary slip parser. Extract all earnings, deductions, and net pay from the salary slip text below.
-Return ONLY a valid JSON object with keys:
+Return ONLY a valid JSON object with these keys:
 - employerName (string)
+- employeeId (string, employee ID if found, else null)
+- employeeName (string, employee name if found, else null)
+- pan (string, PAN number if found, else null)
 - payDate (string, YYYY-MM-DD format)
-- grossPay (number)
-- netPay (number)
-- components (object mapping each line item name to its amount)
+- payPeriod (string, e.g. "April 2025" or "Apr-2025")
+- grossPay (number, total gross earnings)
+- totalDeductions (number, total deductions)
+- netPay (number, take-home pay)
+- earnings (object with nested breakdown, e.g.:
+    {"basicSalary": 45000, "hra": 22500, "specialAllowance": 18000, "conveyanceAllowance": 1600,
+     "medicalAllowance": 1250, "lta": 3750, "performanceBonus": 5000})
+- deductions (object with nested breakdown, e.g.:
+    {"providentFund": 5400, "professionalTax": 200, "incomeTax": 8750, "healthInsurance": 1200})
+- bankAccount (string, bank account number if found, else null)
 
+Extract EVERY earnings and deduction line item separately. Do not merge or skip any component.
 PayDate MUST be in YYYY-MM-DD format. Use null for missing values. No explanation, no markdown, just JSON.
 """;
 

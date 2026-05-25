@@ -7,6 +7,7 @@ import com.networth.service.GoalService;
 import com.networth.service.HealthScoreService;
 import com.networth.service.RebalancingService;
 import com.networth.service.SIPCalendarService;
+import com.networth.service.SalaryService;
 import com.networth.service.SpendAnalyticsService;
 import com.networth.service.analytics.AnalyticsService;
 import com.networth.service.market.NewsService;
@@ -43,6 +44,7 @@ public class FinancialAnalyticsTools {
     private final SpendAnalyticsService spendAnalyticsService;
     private final NewsService newsService;
     private final RebalancingService rebalancingService;
+    private final SalaryService salaryService;
 
     // ── Net Worth & Overview ─────────────────────────────────────
 
@@ -394,5 +396,29 @@ public class FinancialAnalyticsTools {
         Map<String, Object> err = new LinkedHashMap<>();
         err.put("error", message + ": " + errMsg);
         return err;
+    }
+
+    // ── Salary Tools ─────────────────────────────────────
+
+    @Tool(name = "list_salaries", description = "List all salary/payslip records for the user, with employer, amount, date, and components")
+    public Map<String, Object> listSalaries(
+            @ToolParam(description = "User ID (UUID)") String userId) {
+        try {
+            UUID uid = UUID.fromString(userId);
+            var salaries = salaryService.getUserSalaries(uid);
+            List<Map<String, Object>> items = salaries.stream().map(s -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", s.getId().toString());
+                m.put("employerName", s.getEmployerName());
+                m.put("amount", s.getAmount());
+                m.put("payDate", s.getPayDate() != null ? s.getPayDate().toString() : null);
+                m.put("notes", s.getNotes());
+                m.put("components", s.getComponents());
+                return m;
+            }).collect(Collectors.toList());
+            return Map.of("salaries", items, "count", items.size());
+        } catch (Exception e) {
+            return errorResult("Failed to list salaries", e);
+        }
     }
 }
