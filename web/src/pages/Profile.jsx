@@ -646,10 +646,10 @@ function DataRefresh() {
                 <option value={730}>2 years</option>
                 <option value={1095}>3 years</option>
               </select>
-              <button onClick={handleStart} disabled={starting}
+              <button onClick={handleStart} disabled={polling}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium">
-                {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                {starting ? 'Starting...' : 'Start Backfill'}
+                {polling ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                {polling ? 'Starting...' : 'Start Backfill'}
               </button>
             </div>
           ) : (
