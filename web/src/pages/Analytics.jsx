@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Sector, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { TrendingUp, TrendingDown, Calendar, AlertCircle, CheckCircle, XCircle, Clock, BarChart3, PieChart as PieIcon, CalendarDays, Info } from 'lucide-react'
 import client from '../api/client'
 import { formatINR, formatPercent, formatDate } from '../utils/format'
@@ -196,12 +196,14 @@ export default function Analytics() {
                       cy="50%"
                       innerRadius={50}
                       outerRadius={90}
-                      paddingAngle={2}
+                      paddingAngle={1}
+                      strokeWidth={0}
                       dataKey="value"
                       nameKey="assetType"
+                      activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}
                     >
                       {assetAllocation.map((_, idx) => (
-                        <Cell key={idx} fill={CHART_PALETTE[idx % CHART_PALETTE.length]} />
+                        <Cell key={idx} fill={CHART_PALETTE[idx % CHART_PALETTE.length]} cursor="pointer" />
                       ))}
                     </Pie>
                     <Tooltip
@@ -211,6 +213,7 @@ export default function Analytics() {
                         borderRadius: '8px',
                         color: 'var(--text)',
                       }}
+                      itemStyle={{ color: 'var(--text)' }}
                       formatter={(v) => formatINR(v)}
                     />
                     <Legend verticalAlign="bottom" height={36} />

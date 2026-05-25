@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Sector, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
 import { formatINR, formatPercent } from '../utils/format'
@@ -189,11 +189,13 @@ export default function Dashboard() {
                       cy="50%"
                       innerRadius={60}
                       outerRadius={100}
-                      paddingAngle={2}
+                      paddingAngle={1}
+                      strokeWidth={0}
                       dataKey="value"
+                      activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}
                     >
                       {allocation.map((entry, idx) => (
-                        <Cell key={idx} fill={ASSET_COLORS[entry.key] || CHART_PALETTE[idx % CHART_PALETTE.length]} />
+                        <Cell key={idx} fill={ASSET_COLORS[entry.key] || CHART_PALETTE[idx % CHART_PALETTE.length]} cursor="pointer" />
                       ))}
                     </Pie>
                     <Tooltip
@@ -202,6 +204,7 @@ export default function Dashboard() {
                         border: '1px solid var(--border)',
                         borderRadius: '8px',
                       }}
+                      itemStyle={{ color: 'var(--text)' }}
                       formatter={(v) => formatINR(v)}
                     />
                   </PieChart>
