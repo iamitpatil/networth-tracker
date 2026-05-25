@@ -8,6 +8,7 @@ import NewsPanel from '../components/NewsPanel'
 import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 import { ConfirmDialog } from '../components/ui/Modal'
+import StyledSelect from '../components/ui/StyledSelect'
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#14b8a6', '#f97316']
 
@@ -2230,16 +2231,12 @@ function NpsFundRows({ form, setForm, npsAccounts, npsSchemes }) {
                   <label className="block text-xs text-[var(--text-muted)] mb-1">
                     {isTier1 && fund.scheme ? `Scheme ${fund.scheme}` : `Scheme ${idx + 1}`}
                   </label>
-                  <select value={fund.schemeCode || ''}
-                    onChange={(e) => handleSchemeChange(idx, e.target.value)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs">
-                    <option value="">{isTier1 ? 'Select scheme...' : 'Search any scheme...'}</option>
-                    {(isTier1 ? tier1Schemes : npsSchemes).map(s => (
-                      <option key={s.schemeCode} value={s.schemeCode}>
-                        {s.schemeCode} — {s.schemeName}
-                      </option>
-                    ))}
-                  </select>
+                  <StyledSelect value={fund.schemeCode || ''}
+                    onChange={(v) => handleSchemeChange(idx, v)}
+                    placeholder={isTier1 ? 'Select scheme...' : 'Search any scheme...'}
+                    options={(isTier1 ? tier1Schemes : npsSchemes).map(s => ({
+                      value: s.schemeCode, label: `${s.schemeCode} — ${s.schemeName}`
+                    }))} />
                   {fund.schemeCode && <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 truncate">{fund.schemeCode}</p>}
                 </div>
                 <div className="col-span-2">

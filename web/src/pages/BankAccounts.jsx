@@ -3,6 +3,7 @@ import client from '../api/client'
 import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Download, Search } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
 import { ConfirmDialog } from '../components/ui/Modal'
+import StyledSelect from '../components/ui/StyledSelect'
 
 export default function BankAccounts() {
   const { options: bankNames } = useReferenceData('BANK')
@@ -152,37 +153,20 @@ export default function BankAccounts() {
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Bank Name</label>
-                  <div className="relative">
-                    {form.bankName && bankNames.find(b => b.value === form.bankName)?.metadata?.logo && (
-                      <img src={bankNames.find(b => b.value === form.bankName).metadata.logo} alt=""
-                        className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded object-contain" onError={(e) => e.target.style.display='none'} />
-                    )}
-                    <select value={form.bankName || ''} onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-                      className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg ${form.bankName && bankNames.find(b => b.value === form.bankName)?.metadata?.logo ? 'pl-9' : 'px-3'} pr-3 py-2.5`} required>
-                      <option value="">Select bank...</option>
-                      {bankNames.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-                    </select>
-                  </div>
+                  <StyledSelect value={form.bankName || ''} onChange={(v) => setForm({ ...form, bankName: v })}
+                    label="Bank Name *" placeholder="Select bank..." options={bankNames} required showLogo />
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Account Number</label>
                   <input type="text" value={form.accountNumber || ''} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" />
                 </div>
                 <div>
-                  <label className="block text-sm text-[var(--text-muted)] mb-1">Account Type</label>
-                  <select value={form.accountType || 'SAVINGS'} onChange={(e) => setForm({ ...form, accountType: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                    {accountTypes.length > 0 ? accountTypes.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    )) : (
-                      <>
-                        <option value="SAVINGS">Savings</option>
-                        <option value="CURRENT">Current</option>
-                        <option value="FD">Fixed Deposit</option>
-                        <option value="NRE">NRE</option>
-                        <option value="NRO">NRO</option>
-                      </>
-                    )}
-                  </select>
+                  <StyledSelect value={form.accountType || 'SAVINGS'} onChange={(v) => setForm({ ...form, accountType: v })}
+                    label="Account Type"
+                    options={accountTypes.length > 0 ? accountTypes : [
+                      { value: 'SAVINGS', label: 'Savings' }, { value: 'CURRENT', label: 'Current' },
+                      { value: 'FD', label: 'Fixed Deposit' }, { value: 'NRE', label: 'NRE' }, { value: 'NRO', label: 'NRO' },
+                    ]} />
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">IFSC Code</label>

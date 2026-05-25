@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext'
 import { useNavigate } from 'react-router-dom'
 import client from '../api/client'
 import DematAccounts from './DematAccounts'
+import StyledSelect from '../components/ui/StyledSelect'
 import Documents from './Documents'
 import AccountsHub from '../components/AccountsHub'
 
@@ -637,15 +638,12 @@ function DataRefresh() {
           </div>
           {!isRunning ? (
             <div className="flex items-center gap-2">
-              <select value={days} onChange={(e) => setDays(Number(e.target.value))}
-                className="bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)]">
-                <option value={30}>30 days</option>
-                <option value={90}>90 days</option>
-                <option value={180}>6 months</option>
-                <option value={365}>1 year</option>
-                <option value={730}>2 years</option>
-                <option value={1095}>3 years</option>
-              </select>
+              <StyledSelect value={days} onChange={(v) => setDays(Number(v))}
+                options={[
+                  { value: 30, label: '30 days' }, { value: 90, label: '90 days' },
+                  { value: 180, label: '6 months' }, { value: 365, label: '1 year' },
+                  { value: 730, label: '2 years' }, { value: 1095, label: '3 years' },
+                ]} />
               <button onClick={handleStart} disabled={polling}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-[var(--input-bg)] disabled:cursor-not-allowed transition text-sm font-medium">
                 {polling ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}

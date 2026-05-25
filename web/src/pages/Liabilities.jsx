@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3, Loader2 } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
 import CreditCardSpend from '../components/CreditCardSpend'
+import StyledSelect from '../components/ui/StyledSelect'
 import { ConfirmDialog } from '../components/ui/Modal'
 
 const LIABILITY_CATEGORIES = [
@@ -344,12 +345,8 @@ export default function Liabilities() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Lender</label>
-                <select value={form.lender} onChange={(e) => setForm({ ...form, lender: e.target.value })}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" required>
-                  <option value="">Select lender...</option>
-                  {lenders.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                </select>
+                <StyledSelect label="Lender" value={form.lender} onChange={(v) => setForm({ ...form, lender: v })}
+                  placeholder="Select lender..." options={lenders} required showLogo />
               </div>
               <div>
                 <label className="block text-sm text-[var(--text-muted)] mb-1">Original Amount</label>

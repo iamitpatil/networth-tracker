@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
 import { TrendingUp, TrendingDown, Repeat, DollarSign, Filter, Calendar, Search, Users } from 'lucide-react'
+import StyledSelect from '../components/ui/StyledSelect'
 
 export default function Transactions() {
   const { view: familyView } = useFamilyView()
@@ -128,10 +129,8 @@ export default function Transactions() {
               className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-24 placeholder-[var(--text-secondary)]" />
           </div>
 
-          <select value={assetFilter} onChange={(e) => setAssetFilter(e.target.value)}
-            className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)]">
-            {assetTypes.map((a) => <option key={a} value={a}>{a === 'ALL' ? 'All' : a.replace('_', ' ')}</option>)}
-          </select>
+          <StyledSelect value={assetFilter} onChange={setAssetFilter}
+            options={assetTypes.map(a => ({ value: a, label: a === 'ALL' ? 'All Types' : a.replace('_', ' ') }))} />
 
           <div className="flex items-center gap-1">
             {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (

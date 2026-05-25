@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
 import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Banknote, Upload, ChevronDown, ChevronRight, FileText, Download } from 'lucide-react'
 import { ConfirmDialog } from '../components/ui/Modal'
+import StyledSelect from '../components/ui/StyledSelect'
 
 export default function Salaries() {
   const [salaries, setSalaries] = useState([])
@@ -191,13 +192,9 @@ export default function Salaries() {
               <input type="number" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required />
             </div>
             <div>
-              <label className="block text-sm text-[var(--text-muted)] mb-1">Bank Account (optional)</label>
-              <select value={form.bankAccountId || ''} onChange={(e) => setForm({ ...form, bankAccountId: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                <option value="">None</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.accountName} ({a.bankName})</option>
-                ))}
-              </select>
+              <StyledSelect label="Bank Account (optional)" value={form.bankAccountId || ''} onChange={(v) => setForm({ ...form, bankAccountId: v })}
+                placeholder="None"
+                options={accounts.map(a => ({ value: a.id, label: `${a.accountName} (${a.bankName})` }))} />
             </div>
             <div>
               <label className="block text-sm text-[var(--text-muted)] mb-1">Pay Date</label>
