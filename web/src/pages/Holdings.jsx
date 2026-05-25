@@ -123,7 +123,7 @@ export default function Holdings() {
   const [submitting, setSubmitting] = useState(false)
   const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [sortConfig, setSortConfig] = useState({ key: 'totalValue', dir: 'desc' })
-  const [pollInterval, setPollInterval] = useState(10) // seconds, 0 to disable
+  const [pollInterval] = useState(Number(import.meta.env.VITE_PRICE_POLL_SECONDS) || 10)
   const [lastPriceUpdate, setLastPriceUpdate] = useState(null)
   const [filter, setFilter] = useState('all')
   const searchRef = useRef(null)
@@ -1570,25 +1570,12 @@ export default function Holdings() {
           ))}
         </div>
 
-        {/* Poll interval + last update indicator */}
-        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] px-1 mb-2">
-          <div className="flex items-center gap-3">
-            {lastPriceUpdate && (
-              <span>Last updated: {lastPriceUpdate.toLocaleTimeString('en-IN')}</span>
-            )}
-            {pollInterval > 0 && !refreshingPrices && (
-              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />Auto-refresh {pollInterval}s</span>
-            )}
+        {lastPriceUpdate && (
+          <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] px-1 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            Live · {lastPriceUpdate.toLocaleTimeString('en-IN')}
           </div>
-          <select value={pollInterval} onChange={(e) => setPollInterval(Number(e.target.value))}
-            className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)]">
-            <option value={0}>Auto-refresh: Off</option>
-            <option value={5}>Every 5s</option>
-            <option value={10}>Every 10s</option>
-            <option value={30}>Every 30s</option>
-            <option value={60}>Every 60s</option>
-          </select>
-        </div>
+        )}
 
         <div className="overflow-x-auto -mx-4 sm:mx-0">
         <table className="w-full min-w-[1000px]">
