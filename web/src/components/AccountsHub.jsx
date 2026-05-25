@@ -18,7 +18,7 @@ const getBrokerLogo = (name) => {
 }
 
 const NPS_CRAS = [
-  { value: 'PROTEAN', label: 'Protean (NSDL)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://npscra.nsdl.co.in&size=128' },
+  { value: 'PROTEAN', label: 'Protean (NSDL)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://proteantech.in&size=128' },
   { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://kfintech.com&size=128' },
   { value: 'CAMS', label: 'CAMS', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://camsonline.com&size=128' },
 ]
