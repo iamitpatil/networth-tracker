@@ -1525,9 +1525,12 @@ export default function Holdings() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={allocation} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={50} paddingAngle={1} strokeWidth={0}>
-                    {allocation.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    {allocation.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} cursor="pointer" />)}
                   </Pie>
-                  <Tooltip formatter={(v) => `Rs. ${Number(v).toLocaleString('en-IN')}`} contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }} />
+                  <Tooltip formatter={(v) => `Rs. ${Number(v).toLocaleString('en-IN')}`}
+                    contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '13px' }}
+                    itemStyle={{ color: 'var(--text)' }}
+                    cursor={false} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
