@@ -62,6 +62,10 @@ public class Document {
 
     @Column(nullable = false)
     @Builder.Default
+    private boolean encrypted = false;
+
+    @Column(nullable = false)
+    @Builder.Default
     private String category = "OTHER";
 
     private String description;

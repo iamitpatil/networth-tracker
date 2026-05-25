@@ -24,6 +24,7 @@ import java.util.UUID;
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
+    private final FileEncryptionService fileEncryptionService;
 
     @Value("${app.upload.dir:./uploads}")
     private String uploadDir;
@@ -38,7 +39,19 @@ public class DocumentService {
         String storedFilename = UUID.randomUUID() + "_" + originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_");
         Path userDir = Paths.get(uploadDir, userId.toString());
         Files.createDirectories(userDir);
-        Files.copy(file.getInputStream(), userDir.resolve(storedFilename));
+
+        boolean encrypted = false;
+        try {
+            if (fileEncryptionService.isEnabled()) {
+                fileEncryptionService.encryptAndWrite(file.getInputStream(), userDir.resolve(storedFilename));
+                encrypted = true;
+            } else {
+                Files.copy(file.getInputStream(), userDir.resolve(storedFilename));
+            }
+        } catch (Exception e) {
+            log.error("Failed to write file (encrypted={}): {}", fileEncryptionService.isEnabled(), e.getMessage());
+            throw new IOException("Failed to save file: " + e.getMessage(), e);
+        }
 
         Document doc = Document.builder()
                 .userId(userId)
@@ -52,6 +65,7 @@ public class DocumentService {
                 .storedFilename(storedFilename)
                 .contentType(file.getContentType())
                 .fileSize(file.getSize())
+                .encrypted(encrypted)
                 .category(category != null ? category : "OTHER")
                 .description(description)
                 .build();
@@ -182,6 +196,18 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public Path getDocumentPath(Document doc) {
         return Paths.get(uploadDir, doc.getUserId().toString(), doc.getStoredFilename());
+    }
+
+    /**
+     * Get an InputStream for reading the document content.
+     * Automatically decrypts if the document was stored encrypted.
+     */
+    public java.io.InputStream getDocumentInputStream(Document doc) throws Exception {
+        Path filePath = getDocumentPath(doc);
+        if (doc.isEncrypted()) {
+            return fileEncryptionService.readAndDecryptAsStream(filePath);
+        }
+        return Files.newInputStream(filePath);
     }
 
     @Transactional

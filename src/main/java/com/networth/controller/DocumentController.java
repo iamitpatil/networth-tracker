@@ -3,6 +3,7 @@ package com.networth.controller;
 import com.networth.model.entity.Document;
 import com.networth.service.DocumentService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -24,6 +25,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/documents")
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentController {
 
     private final DocumentService documentService;
@@ -128,7 +130,13 @@ public class DocumentController {
             return ResponseEntity.notFound().build();
         }
 
-        InputStream inputStream = Files.newInputStream(filePath);
+        InputStream inputStream;
+        try {
+            inputStream = documentService.getDocumentInputStream(doc);
+        } catch (Exception e) {
+            log.error("Failed to read document {}: {}", id, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
         InputStreamResource resource = new InputStreamResource(inputStream);
 
         String contentType = doc.getContentType() != null ? doc.getContentType() : "application/octet-stream";
