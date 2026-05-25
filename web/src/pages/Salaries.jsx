@@ -196,6 +196,31 @@ export default function Salaries() {
         <form onSubmit={handleSubmit} className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
           <h3 className="text-lg font-semibold">{editing ? 'Edit' : parsedData ? 'Salary from Slip' : 'Add'} Salary Record</h3>
 
+          {/* Upload PDF area */}
+          {!editing && (
+            <div className={`border-2 border-dashed rounded-lg p-4 transition ${parsedData ? 'border-green-500/30 bg-green-500/5' : 'border-[var(--border)] hover:border-blue-500/30'}`}>
+              {parsedData ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-green-400">
+                    <FileText className="w-4 h-4" />
+                    <span>Salary slip parsed — fields pre-filled below</span>
+                  </div>
+                  <button type="button" onClick={() => setParsedData(null)} className="text-xs text-[var(--text-muted)] hover:text-red-400 transition">Clear</button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 cursor-pointer">
+                  <Upload className="w-6 h-6 text-[var(--text-muted)]" />
+                  <span className="text-sm text-[var(--text-muted)]">
+                    {uploading ? 'Parsing salary slip...' : 'Drop salary slip PDF here or click to upload'}
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">PDF, PNG, JPG supported — will auto-fill fields</span>
+                  <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleUpload} className="hidden" disabled={uploading} />
+                  {uploading && <Loader2 className="w-4 h-4 animate-spin text-blue-400" />}
+                </label>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-[var(--text-muted)] mb-1">Employer Name</label>
