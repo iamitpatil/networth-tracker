@@ -51,19 +51,10 @@ const ASSET_COLORS = {
 // Asset types that REQUIRE a demat account (must match backend)
 const ASSET_TYPES_REQUIRING_DEMAT = ['EQUITY', 'ETF', 'MUTUAL_FUND']
 
-const BROKER_DOMAINS = {
-  'Zerodha': 'zerodha.com', 'Groww': 'groww.in', 'Angel One': 'angelone.in',
-  'ICICI Direct': 'icicidirect.com', 'HDFC Securities': 'hdfcsec.com',
-  'Sharekhan': 'sharekhan.com', '5Paisa': '5paisa.com', 'Upstox': 'upstox.com',
-  'Motilal Oswal': 'motilaloswal.com', 'Kotak Securities': 'kotaksecurities.com',
-  'Axis Direct': 'axisdirect.in', 'IIFL': 'iifl.com', 'Edelweiss': 'edelweiss.in',
-  'SBI Securities': 'sbisecurities.in', 'Paytm Money': 'paytmmoney.com',
-  'Dhan': 'dhan.co', 'INDmoney': 'indmoney.com',
-}
-
 const getBrokerLogo = (name) => {
-  const domain = BROKER_DOMAINS[name]
-  return domain ? `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : null
+  if (!name) return null
+  const fname = name.replace(/[& ]/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+  return `/logos/brokers/${fname}.png`
 }
 
 /**
