@@ -106,8 +106,10 @@ public class SymbolService {
     }
 
     private void populateAliases(List<Symbol> symbols) {
-        // Clear existing aliases before re-populating to avoid unique constraint violations
-        symbolAliasRepository.deleteAll();
+        // Use deleteAllInBatch for immediate SQL DELETE (not Hibernate-managed removal)
+        // followed by flush to ensure the delete is committed before inserts
+        symbolAliasRepository.deleteAllInBatch();
+        symbolAliasRepository.flush();
 
         List<SymbolAlias> aliases = symbols.stream()
                 .filter(s -> s.getCategory().equals("EQUITY"))
@@ -119,6 +121,7 @@ public class SymbolService {
                 })
                 .toList();
         symbolAliasRepository.saveAll(aliases);
+        symbolAliasRepository.flush();
         log.info("Populated {} symbol aliases", aliases.size());
     }
 
