@@ -2291,7 +2291,7 @@ function NpsFundRows({ form, setForm, npsAccounts, npsSchemes }) {
                     options={(isTier1 ? tier1Schemes : npsSchemes).map(s => ({
                       value: s.schemeCode, label: `${s.schemeCode} — ${s.schemeName}`
                     }))} />
-                  {fund.schemeCode && <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 truncate">{fund.schemeCode}</p>}
+
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs text-[var(--text-muted)] mb-1">NAV (₹)</label>
