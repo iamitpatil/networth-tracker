@@ -66,6 +66,29 @@ const getBrokerLogo = (name) => {
   return domain ? `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : null
 }
 
+/**
+ * Dynamically find Tier I E/C/G scheme codes for a fund manager
+ * from the npsnav.in schemes list. No hardcoded mapping needed.
+ */
+const findPfmSchemes = (fundManager, schemes) => {
+  if (!fundManager || !schemes?.length) return null
+  const fm = fundManager.toLowerCase()
+  const result = {}
+  for (const s of schemes) {
+    const name = s.schemeName.toUpperCase()
+    // Match: contains fund manager name + TIER I + scheme type (E/C/G)
+    // Exclude: TIER II, GS, DIRECT, POP, NPS LITE, APY, VATSALYA, COMPOSITE, CORPORATE-CG, CENTRAL/STATE GOVT
+    if (!name.includes(fm.split(' ')[0].toUpperCase())) continue
+    if (!name.includes('TIER I') || name.includes('TIER II')) continue
+    if (['GS', 'DIRECT', 'POP', 'NPS LITE', 'APY', 'VATSALYA', 'COMPOSITE', 'CORPORATE', 'CENTRAL GOVT', 'STATE GOVT', 'UPS'].some(x => name.includes(x))) continue
+
+    if (name.includes('SCHEME E') && !result.E) result.E = s.schemeCode
+    else if (name.includes('SCHEME C') && !result.C) result.C = s.schemeCode
+    else if (name.includes('SCHEME G') && !result.G) result.G = s.schemeCode
+  }
+  return (result.E || result.C || result.G) ? result : null
+}
+
 const POPULAR_BONDS = [
   { name: 'RBI Floating Rate Savings Bond 2020 (Taxable)', coupon: 8.05 },
   { name: 'Sovereign Gold Bond (SGB)', coupon: 2.5 },
@@ -100,6 +123,7 @@ export default function Holdings() {
   const [dematDropdownOpen, setDematDropdownOpen] = useState(false)
   const [dematAccounts, setDematAccounts] = useState([])
   const [npsAccounts, setNpsAccounts] = useState([])
+  const [npsSchemes, setNpsSchemes] = useState([]) // all NPS schemes from npsnav.in
   const [assetType, setAssetType] = useState('')
   const [form, setForm] = useState({
     symbol: '',
@@ -305,6 +329,8 @@ export default function Holdings() {
       setInvestmentHistory(i.data || [])
       setDividendSummary(div.data || null)
       setNpsAccounts(acc.data?.npsAccounts || [])
+      // Fetch NPS schemes for Tier II dropdown
+      client.get('/accounts/nps/schemes').then(r => setNpsSchemes(r.data || [])).catch(() => {})
     }).catch(console.error)
       .finally(() => setLoading(false))
   }, [])
@@ -1164,7 +1190,45 @@ export default function Holdings() {
                         value={form.npsAccountId}
                         onChange={(e) => {
                           const acc = npsAccounts.find(a => a.id === e.target.value)
-                          setForm({ ...form, npsAccountId: e.target.value, name: acc ? `NPS - ${acc.pranNumber} (${acc.fundManager || 'Unknown'})` : '' })
+                          if (!acc) { setForm({ ...form, npsAccountId: '', name: '' }); return }
+
+                          const isTier1 = (acc.tier || 'TIER1').toUpperCase().includes('1')
+                          const pfmSchemes = findPfmSchemes(acc.fundManager, npsSchemes)
+                          const name = `NPS - ${acc.pranNumber} (${acc.fundManager || 'Unknown'})`
+
+                          // Build fund rows based on tier
+                          const npsFunds = isTier1 && pfmSchemes
+                            ? ['E', 'C', 'G'].map(s => ({
+                                scheme: s,
+                                label: s === 'E' ? 'Equity (E)' : s === 'C' ? 'Corporate Bonds (C)' : 'Govt Securities (G)',
+                                schemeCode: pfmSchemes[s] || '',
+                                schemeName: '',
+                                nav: '',
+                                units: '',
+                                locked: false, // Tier I: pre-selected but user can switch
+                              }))
+                            : [{ scheme: '', label: '', schemeCode: '', schemeName: '', nav: '', units: '', locked: false }]
+
+                          setForm({ ...form, npsAccountId: e.target.value, name, npsFunds })
+
+                          // Fetch NAVs for Tier I schemes
+                          if (isTier1 && pfmSchemes) {
+                            Promise.all(
+                              ['E', 'C', 'G'].map(s =>
+                                client.get(`/accounts/nps/scheme/${pfmSchemes[s]}`)
+                                  .then(r => ({ scheme: s, nav: r.data?.NAV }))
+                                  .catch(() => ({ scheme: s, nav: null }))
+                              )
+                            ).then(results => {
+                              setForm(prev => ({
+                                ...prev,
+                                npsFunds: prev.npsFunds.map(f => {
+                                  const r = results.find(r => r.scheme === f.scheme)
+                                  return r?.nav ? { ...f, nav: r.nav } : f
+                                })
+                              }))
+                            })
+                          }
                         }}
                         className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
                         required
@@ -1244,69 +1308,11 @@ export default function Holdings() {
                 )}
 
                 {/* NPS: fund-wise NAV & units */}
-                {assetType === 'NPS' ? (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm text-[var(--text-muted)] mb-1">Transaction Date</label>
-                      <input type="datetime-local" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 md:w-1/3" required />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-[var(--text-muted)] mb-2">Fund-wise Details</label>
-                      <p className="text-xs text-[var(--text-secondary)] mb-3">Enter NAV and units for each scheme. Units can be negative (withdrawal/switch out) and fractional.</p>
-                      <div className="space-y-3">
-                        {form.npsFunds.map((fund, idx) => {
-                          const amt = fund.nav && fund.units ? (parseFloat(fund.nav) * parseFloat(fund.units)).toFixed(2) : ''
-                          return (
-                            <div key={fund.scheme} className="grid grid-cols-4 gap-3 items-end">
-                              <div>
-                                <label className="block text-xs text-[var(--text-muted)] mb-1">Scheme {fund.scheme}</label>
-                                <div className="text-sm font-medium text-[var(--text)] bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">{fund.label}</div>
-                              </div>
-                              <div>
-                                <label className="block text-xs text-[var(--text-muted)] mb-1">NAV (₹)</label>
-                                <input type="number" step="0.0001" value={fund.nav}
-                                  onChange={(e) => {
-                                    const updated = [...form.npsFunds]
-                                    updated[idx] = { ...updated[idx], nav: e.target.value }
-                                    setForm({ ...form, npsFunds: updated })
-                                  }}
-                                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm"
-                                  placeholder="55.5300" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-[var(--text-muted)] mb-1">Units</label>
-                                <input type="number" step="0.0001" value={fund.units}
-                                  onChange={(e) => {
-                                    const updated = [...form.npsFunds]
-                                    updated[idx] = { ...updated[idx], units: e.target.value }
-                                    setForm({ ...form, npsFunds: updated })
-                                  }}
-                                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm"
-                                  placeholder="-112.65 or 96.48" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-[var(--text-muted)] mb-1">Amount (₹)</label>
-                                <div className={`text-sm bg-[var(--bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 ${amt && parseFloat(amt) < 0 ? 'text-red-400' : amt ? 'text-green-400' : 'text-[var(--text-muted)]'}`}>
-                                  {amt ? `₹${Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                      {(() => {
-                        const total = form.npsFunds.reduce((s, f) => s + (f.nav && f.units ? parseFloat(f.nav) * parseFloat(f.units) : 0), 0)
-                        return total !== 0 ? (
-                          <div className="flex justify-end mt-2">
-                            <span className={`text-sm font-medium px-3 py-1 rounded-lg ${total < 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
-                              Total: ₹{Math.abs(total).toLocaleString('en-IN', { minimumFractionDigits: 2 })} {total < 0 ? '(Withdrawal)' : ''}
-                            </span>
-                          </div>
-                        ) : null
-                      })()}
-                    </div>
-                  </div>
-                ) : (
+                {assetType === 'NPS' && (
+                  <NpsFundRows form={form} setForm={setForm} npsAccounts={npsAccounts} npsSchemes={npsSchemes} />
+                )}
+
+                {assetType !== 'NPS' && (
                   /* Common fields: date, quantity, price */
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -2155,7 +2161,144 @@ function HoldingsSkeletonLoader() {
             <ShimmerBar className="h-4 w-16" />
             <ShimmerBar className="h-4 w-8" />
           </div>
-        ))}
+         ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * NPS Fund-wise transaction rows.
+ * Tier I: pre-populates E/C/G from fund manager, NAV editable, scheme switchable.
+ * Tier II: free-form scheme selection from any PFM.
+ */
+function NpsFundRows({ form, setForm, npsAccounts, npsSchemes }) {
+  const selectedAcc = npsAccounts.find(a => a.id === form.npsAccountId)
+  if (!selectedAcc) return null
+
+  const isTier1 = (selectedAcc.tier || 'TIER1').toUpperCase().includes('1')
+  const isTier2 = !isTier1
+
+  const updateFund = (idx, field, value) => {
+    const updated = [...form.npsFunds]
+    updated[idx] = { ...updated[idx], [field]: value }
+    setForm({ ...form, npsFunds: updated })
+  }
+
+  const fetchNavForRow = (idx, schemeCode) => {
+    if (!schemeCode) return
+    client.get(`/accounts/nps/scheme/${schemeCode}`)
+      .then(r => { if (r.data?.NAV) updateFund(idx, 'nav', r.data.NAV) })
+      .catch(() => {})
+  }
+
+  const handleSchemeChange = (idx, schemeCode) => {
+    const selected = npsSchemes.find(s => s.schemeCode === schemeCode)
+    const updated = [...form.npsFunds]
+    updated[idx] = { ...updated[idx], schemeCode, schemeName: selected?.schemeName || '' }
+    setForm({ ...form, npsFunds: updated })
+    fetchNavForRow(idx, schemeCode)
+  }
+
+  // Filter schemes for Tier I (same PFM, Tier I only) or Tier II (all)
+  const tier1Schemes = npsSchemes.filter(s => {
+    const n = s.schemeName.toUpperCase()
+    if (!n.includes('TIER I') || n.includes('TIER II')) return false
+    if (['GS', 'DIRECT', 'POP', 'NPS LITE', 'APY', 'VATSALYA', 'COMPOSITE', 'CORPORATE', 'CENTRAL GOVT', 'STATE GOVT', 'UPS'].some(x => n.includes(x))) return false
+    return true
+  })
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm text-[var(--text-muted)] mb-1">Transaction Date</label>
+        <input type="datetime-local" value={form.transactionDate}
+          onChange={(e) => setForm({ ...form, transactionDate: e.target.value })}
+          className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 md:w-1/3" required />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm text-[var(--text-muted)]">Fund-wise Details</label>
+          <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
+            {isTier1 ? 'Tier I — PFM Schemes' : 'Tier II — Any Scheme'}
+          </span>
+        </div>
+        <p className="text-xs text-[var(--text-secondary)] mb-3">
+          {isTier1
+            ? 'Schemes pre-filled from your fund manager. NAV is editable for historical transactions. Units can be negative (withdrawal/switch).'
+            : 'Select any NPS scheme. Units can be negative and fractional.'}
+        </p>
+
+        <div className="space-y-3">
+          {form.npsFunds.map((fund, idx) => {
+            const amt = fund.nav && fund.units ? (parseFloat(fund.nav) * parseFloat(fund.units)).toFixed(2) : ''
+            return (
+              <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-5">
+                  <label className="block text-xs text-[var(--text-muted)] mb-1">
+                    {isTier1 && fund.scheme ? `Scheme ${fund.scheme}` : `Scheme ${idx + 1}`}
+                  </label>
+                  <select value={fund.schemeCode || ''}
+                    onChange={(e) => handleSchemeChange(idx, e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs">
+                    <option value="">{isTier1 ? 'Select scheme...' : 'Search any scheme...'}</option>
+                    {(isTier1 ? tier1Schemes : npsSchemes).map(s => (
+                      <option key={s.schemeCode} value={s.schemeCode}>
+                        {s.schemeCode} — {s.schemeName}
+                      </option>
+                    ))}
+                  </select>
+                  {fund.schemeCode && <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 truncate">{fund.schemeCode}</p>}
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-[var(--text-muted)] mb-1">NAV (₹)</label>
+                  <input type="number" step="0.0001" value={fund.nav}
+                    onChange={(e) => updateFund(idx, 'nav', e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-2 py-2 text-sm"
+                    placeholder="55.53" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-[var(--text-muted)] mb-1">Units</label>
+                  <input type="number" step="0.0001" value={fund.units}
+                    onChange={(e) => updateFund(idx, 'units', e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-2 py-2 text-sm"
+                    placeholder="-112.65" />
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-xs text-[var(--text-muted)] mb-1">Amount</label>
+                  <div className={`text-xs bg-[var(--bg)] border border-[var(--border)] rounded-lg px-2 py-2.5 ${amt && parseFloat(amt) < 0 ? 'text-red-400' : amt ? 'text-green-400' : 'text-[var(--text-muted)]'}`}>
+                    {amt ? `₹${Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {isTier2 && (
+            <div className="flex gap-2">
+              <button type="button"
+                onClick={() => setForm({ ...form, npsFunds: [...form.npsFunds, { scheme: '', schemeCode: '', schemeName: '', nav: '', units: '' }] })}
+                className="text-xs text-blue-400 hover:text-blue-300 transition">+ Add scheme row</button>
+              {form.npsFunds.length > 1 && (
+                <button type="button"
+                  onClick={() => setForm({ ...form, npsFunds: form.npsFunds.slice(0, -1) })}
+                  className="text-xs text-red-400 hover:text-red-300 transition">- Remove last</button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {(() => {
+          const total = form.npsFunds.reduce((s, f) => s + (f.nav && f.units ? parseFloat(f.nav) * parseFloat(f.units) : 0), 0)
+          return total !== 0 ? (
+            <div className="flex justify-end mt-3">
+              <span className={`text-sm font-medium px-3 py-1.5 rounded-lg ${total < 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                Total: ₹{Math.abs(total).toLocaleString('en-IN', { minimumFractionDigits: 2 })} {total < 0 ? '(Withdrawal)' : ''}
+              </span>
+            </div>
+          ) : null
+        })()}
       </div>
     </div>
   )
