@@ -1356,8 +1356,8 @@ export default function Holdings() {
                   </div>
                 )}
 
-                {/* Demat account selector (required for tradeable assets) */}
-                {assetType !== 'PPF' && assetType !== 'EPF' && assetType !== 'NPS' && (
+                {/* Demat account selector (only for tradeable assets that need a demat) */}
+                {(ASSET_TYPES_REQUIRING_DEMAT.includes(assetType) || assetType === 'BOND') && (
                   <div>
                     <label className="block text-sm text-[var(--text-muted)] mb-1">
                       Demat Account
