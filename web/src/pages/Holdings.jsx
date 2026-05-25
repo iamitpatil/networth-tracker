@@ -1773,6 +1773,30 @@ export default function Holdings() {
               })
             )}
           </tbody>
+          {sortedHoldings.length > 0 && (
+            <tfoot>
+              <tr className="bg-[var(--bg)]/80 border-t-2 border-[var(--border)] font-semibold">
+                <td className="px-4 py-3 text-sm">Total ({sortedHoldings.length} holdings)</td>
+                <td className="px-4 py-3"></td>
+                <td className="px-4 py-3"></td>
+                <td className="px-4 py-3"></td>
+                <td className="px-4 py-3"></td>
+                <td className="px-4 py-3 text-right text-sm">{totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td className="px-4 py-3 text-right text-sm">{totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td className={`px-4 py-3 text-right text-sm ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {totalInvested > 0 ? `${totalPnL >= 0 ? '+' : ''}${((totalPnL / totalInvested) * 100).toFixed(2)}%` : '-'}
+                </td>
+                <td className={`px-4 py-3 text-right text-sm ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  <div className="flex items-center justify-end gap-1">
+                    {totalPnL >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                    {Math.abs(totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </div>
+                </td>
+                <td className="px-4 py-3"></td>
+                <td className="px-4 py-3"></td>
+              </tr>
+            </tfoot>
+          )}
         </table>
         </div>
       </div>
