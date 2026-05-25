@@ -1562,20 +1562,21 @@ export default function Holdings() {
 
       {/* Table */}
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--border)] flex flex-wrap gap-2">
-          {['all', ...ASSET_TYPES.map(t => t.value)].map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg text-sm transition ${filter === f ? 'bg-blue-500/20 text-blue-400' : 'text-[var(--text-muted)] hover:bg-[var(--hover-bg)]'}`}>
-              {f === 'all' ? 'All' : ASSET_LABELS[f] || f}
-            </button>
-          ))}
-        </div>
-
-        {lastPriceUpdate && (
-          <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] px-1 mb-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            Live · {lastPriceUpdate.toLocaleTimeString('en-IN')}
+        <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            {['all', ...ASSET_TYPES.map(t => t.value)].map((f) => (
+              <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg text-sm transition ${filter === f ? 'bg-blue-500/20 text-blue-400' : 'text-[var(--text-muted)] hover:bg-[var(--hover-bg)]'}`}>
+                {f === 'all' ? 'All' : ASSET_LABELS[f] || f}
+              </button>
+            ))}
           </div>
-        )}
+          {lastPriceUpdate && (
+            <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Live · {lastPriceUpdate.toLocaleTimeString('en-IN')}
+            </span>
+          )}
+        </div>
 
         <div className="overflow-x-auto -mx-4 sm:mx-0">
         <table className="w-full min-w-[1000px]">
@@ -1605,12 +1606,13 @@ export default function Holdings() {
                   </span>
                 </th>
               ))}
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Dividends</th>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {sortedHoldings.length === 0 ? (
-              <tr><td colSpan="10" className="px-4 py-12 text-center text-[var(--text-secondary)]">No holdings yet. Add your first investment above.</td></tr>
+              <tr><td colSpan="11" className="px-4 py-12 text-center text-[var(--text-secondary)]">No holdings yet. Add your first investment above.</td></tr>
             ) : (
               sortedHoldings.flatMap((group) => {
                 const isExpanded = expandedGroups[group.key]
