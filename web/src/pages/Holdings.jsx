@@ -99,6 +99,7 @@ export default function Holdings() {
   const dematDropdownRef = useRef(null)
   const [dematDropdownOpen, setDematDropdownOpen] = useState(false)
   const [dematAccounts, setDematAccounts] = useState([])
+  const [npsAccounts, setNpsAccounts] = useState([])
   const [assetType, setAssetType] = useState('')
   const [form, setForm] = useState({
     symbol: '',
@@ -110,6 +111,12 @@ export default function Holdings() {
     name: '',
     couponRate: '',
     maturityDate: '',
+    npsAccountId: '',
+    npsFunds: [
+      { scheme: 'E', label: 'Equity (E)', nav: '', units: '' },
+      { scheme: 'C', label: 'Corporate Bonds (C)', nav: '', units: '' },
+      { scheme: 'G', label: 'Govt Securities (G)', nav: '', units: '' },
+    ],
   })
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -261,12 +268,14 @@ export default function Holdings() {
       client.get('/symbols'),
       client.get('/portfolio/investment-over-time?days=365'),
       client.get('/dividends/summary'),
-    ]).then(([h, d, s, i, div]) => {
+      client.get('/accounts').catch(() => ({ data: {} })),
+    ]).then(([h, d, s, i, div, acc]) => {
       setHoldings(h.data || [])
       setDematAccounts(d.data || [])
       setSymbols(s.data || [])
       setInvestmentHistory(i.data || [])
       setDividendSummary(div.data || null)
+      setNpsAccounts(acc.data?.npsAccounts || [])
     }).catch(console.error)
       .finally(() => setLoading(false))
   }, [])
@@ -489,6 +498,12 @@ export default function Holdings() {
       transactionDate: new Date().toISOString().slice(0, 16),
       quantity: '', price: '', transactionType: 'BUY', name: '',
       couponRate: '', maturityDate: '',
+      npsAccountId: '',
+      npsFunds: [
+        { scheme: 'E', label: 'Equity (E)', nav: '', units: '' },
+        { scheme: 'C', label: 'Corporate Bonds (C)', nav: '', units: '' },
+        { scheme: 'G', label: 'Govt Securities (G)', nav: '', units: '' },
+      ],
     })
     setAssetType('')
   }
@@ -1074,6 +1089,24 @@ export default function Holdings() {
                           </div>
                         )}
                       </>
+                    ) : assetType === 'NPS' ? (
+                      <select
+                        value={form.npsAccountId}
+                        onChange={(e) => {
+                          const acc = npsAccounts.find(a => a.id === e.target.value)
+                          setForm({ ...form, npsAccountId: e.target.value, name: acc ? `NPS - ${acc.pranNumber} (${acc.fundManager || 'Unknown'})` : '' })
+                        }}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5"
+                        required
+                      >
+                        <option value="">Select NPS Account...</option>
+                        {npsAccounts.map(acc => (
+                          <option key={acc.id} value={acc.id}>
+                            PRAN: {acc.pranNumber} — {acc.fundManager || 'Unknown'} ({acc.tier || 'Tier I'})
+                            {acc.currentValue ? ` — ₹${Number(acc.currentValue).toLocaleString('en-IN')}` : ''}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         type="text"
@@ -1140,25 +1173,90 @@ export default function Holdings() {
                   </div>
                 )}
 
-                {/* Common fields: date, quantity, price */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm text-[var(--text-muted)] mb-1">Date</label>
-                    <input type="datetime-local" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required />
+                {/* NPS: fund-wise NAV & units */}
+                {assetType === 'NPS' ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-1">Transaction Date</label>
+                      <input type="datetime-local" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 md:w-1/3" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-2">Fund-wise Details</label>
+                      <p className="text-xs text-[var(--text-secondary)] mb-3">Enter NAV and units for each scheme. Units can be negative (withdrawal/switch out) and fractional.</p>
+                      <div className="space-y-3">
+                        {form.npsFunds.map((fund, idx) => {
+                          const amt = fund.nav && fund.units ? (parseFloat(fund.nav) * parseFloat(fund.units)).toFixed(2) : ''
+                          return (
+                            <div key={fund.scheme} className="grid grid-cols-4 gap-3 items-end">
+                              <div>
+                                <label className="block text-xs text-[var(--text-muted)] mb-1">Scheme {fund.scheme}</label>
+                                <div className="text-sm font-medium text-[var(--text)] bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">{fund.label}</div>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-[var(--text-muted)] mb-1">NAV (₹)</label>
+                                <input type="number" step="0.0001" value={fund.nav}
+                                  onChange={(e) => {
+                                    const updated = [...form.npsFunds]
+                                    updated[idx] = { ...updated[idx], nav: e.target.value }
+                                    setForm({ ...form, npsFunds: updated })
+                                  }}
+                                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm"
+                                  placeholder="55.5300" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-[var(--text-muted)] mb-1">Units</label>
+                                <input type="number" step="0.0001" value={fund.units}
+                                  onChange={(e) => {
+                                    const updated = [...form.npsFunds]
+                                    updated[idx] = { ...updated[idx], units: e.target.value }
+                                    setForm({ ...form, npsFunds: updated })
+                                  }}
+                                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm"
+                                  placeholder="-112.65 or 96.48" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-[var(--text-muted)] mb-1">Amount (₹)</label>
+                                <div className={`text-sm bg-[var(--bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 ${amt && parseFloat(amt) < 0 ? 'text-red-400' : amt ? 'text-green-400' : 'text-[var(--text-muted)]'}`}>
+                                  {amt ? `₹${Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {(() => {
+                        const total = form.npsFunds.reduce((s, f) => s + (f.nav && f.units ? parseFloat(f.nav) * parseFloat(f.units) : 0), 0)
+                        return total !== 0 ? (
+                          <div className="flex justify-end mt-2">
+                            <span className={`text-sm font-medium px-3 py-1 rounded-lg ${total < 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                              Total: ₹{Math.abs(total).toLocaleString('en-IN', { minimumFractionDigits: 2 })} {total < 0 ? '(Withdrawal)' : ''}
+                            </span>
+                          </div>
+                        ) : null
+                      })()}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm text-[var(--text-muted)] mb-1">
-                      {isEquity ? 'Shares' : isMF ? 'Units' : assetType === 'GOLD' ? 'Grams' : assetType === 'BOND' ? 'Face Value (₹)' : 'Amount (₹)'}
-                    </label>
-                    <input type="number" step="any" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required placeholder={isEquity ? '10' : isMF ? '150.234' : assetType === 'GOLD' ? '50' : assetType === 'BOND' ? '10000' : '100000'} />
+                ) : (
+                  /* Common fields: date, quantity, price */
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-1">Date</label>
+                      <input type="datetime-local" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-1">
+                        {isEquity ? 'Shares' : isMF ? 'Units' : assetType === 'GOLD' ? 'Grams' : assetType === 'BOND' ? 'Face Value (₹)' : 'Amount (₹)'}
+                      </label>
+                      <input type="number" step="any" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required placeholder={isEquity ? '10' : isMF ? '150.234' : assetType === 'GOLD' ? '50' : assetType === 'BOND' ? '10000' : '100000'} />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[var(--text-muted)] mb-1">
+                        {isEquity ? 'Price/Share' : isMF ? 'NAV' : assetType === 'GOLD' ? 'Price/Gram' : assetType === 'BOND' ? 'Purchase Price (₹)' : 'Rate (if any)'}
+                      </label>
+                      <input type="number" step="any" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required={needsSymbol || assetType === 'BOND'} placeholder={isEquity ? '1450.50' : isMF ? '45.678' : assetType === 'BOND' ? '10000' : '0'} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm text-[var(--text-muted)] mb-1">
-                      {isEquity ? 'Price/Share' : isMF ? 'NAV' : assetType === 'GOLD' ? 'Price/Gram' : assetType === 'BOND' ? 'Purchase Price (₹)' : 'Rate (if any)'}
-                    </label>
-                    <input type="number" step="any" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required={needsSymbol || assetType === 'BOND'} placeholder={isEquity ? '1450.50' : isMF ? '45.678' : assetType === 'BOND' ? '10000' : '0'} />
-                  </div>
-                </div>
+                )}
 
                 {/* Demat account selector (required for tradeable assets) */}
                 {assetType !== 'PPF' && assetType !== 'EPF' && assetType !== 'NPS' && (

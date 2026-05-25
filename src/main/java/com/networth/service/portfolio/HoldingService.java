@@ -301,7 +301,11 @@ public class HoldingService {
     }
 
     private String resolveIsin(String symbol) {
-        return resolveIsin(symbol, null);
+        return resolveIsin(symbol, null, null);
+    }
+
+    private String resolveIsin(String symbol, AssetType assetType) {
+        return resolveIsin(symbol, assetType, null);
     }
 
     /**
@@ -309,8 +313,9 @@ public class HoldingService {
      * For equities: direct PK lookup (TCS.NS → ISIN from isin column).
      * For MFs: the symbols table stores ISIN as PK and scheme name as name,
      * so we need a fuzzy name search to find the ISIN.
+     * @param holdingName optional — used as fallback for fuzzy search when symbol doesn't match
      */
-    private String resolveIsin(String symbol, AssetType assetType) {
+    private String resolveIsin(String symbol, AssetType assetType, String holdingName) {
         // 1. Direct lookup by PK (works for equities; also works if symbol IS already an ISIN)
         var found = symbolRepository.findById(symbol);
         if (found.isPresent()) {
@@ -334,18 +339,25 @@ public class HoldingService {
 
         // 3. For MFs: fuzzy name search (symbol is a scheme name like "Axis Bluechip Fund Direct Growth")
         if (assetType == AssetType.MUTUAL_FUND || (symbol.length() > 15 && !symbol.contains("."))) {
-            String keyword = symbol.split("\\s*[-–]\\s*(Direct|Regular|Growth|IDCW|Plan|Dividend)")[0].trim();
-            if (keyword.length() > 5) {
-                var matches = symbolRepository.searchByCategoryAndName("MUTUAL_FUND", keyword);
-                // Prefer Direct Growth variant
-                var match = matches.stream()
-                        .filter(s -> s.getName().toLowerCase().contains("direct") &&
-                                s.getName().toLowerCase().contains("growth"))
-                        .findFirst()
-                        .or(() -> matches.stream().filter(s -> s.getName().toLowerCase().contains("direct")).findFirst())
-                        .or(() -> matches.stream().findFirst());
-                if (match.isPresent()) {
-                    return match.get().getSymbol(); // PK = ISIN for MFs
+            // Try searching by symbol first, then by holdingName as fallback
+            String[] searchTerms = holdingName != null && !holdingName.equals(symbol)
+                    ? new String[]{symbol, holdingName}
+                    : new String[]{symbol};
+
+            for (String term : searchTerms) {
+                String keyword = term.split("\\s*[-–]\\s*(Direct|Regular|Growth|IDCW|Plan|Dividend)")[0].trim();
+                if (keyword.length() > 5) {
+                    var matches = symbolRepository.searchByCategoryAndName("MUTUAL_FUND", keyword);
+                    // Prefer Direct Growth variant
+                    var match = matches.stream()
+                            .filter(s -> s.getName().toLowerCase().contains("direct") &&
+                                    s.getName().toLowerCase().contains("growth"))
+                            .findFirst()
+                            .or(() -> matches.stream().filter(s -> s.getName().toLowerCase().contains("direct")).findFirst())
+                            .or(() -> matches.stream().findFirst());
+                    if (match.isPresent()) {
+                        return match.get().getSymbol(); // PK = ISIN for MFs
+                    }
                 }
             }
         }
@@ -364,8 +376,8 @@ public class HoldingService {
             if (holding.getIsin() != null && !holding.getIsin().isBlank()) {
                 return holding.getIsin();
             }
-            // Try to resolve it
-            String isin = resolveIsin(holding.getSymbol(), AssetType.MUTUAL_FUND);
+            // Try to resolve it — pass both symbol and name for better fuzzy matching
+            String isin = resolveIsin(holding.getSymbol(), AssetType.MUTUAL_FUND, holding.getName());
             if (isin != null) {
                 // Persist for future lookups
                 holding.setIsin(isin);
@@ -386,7 +398,7 @@ public class HoldingService {
         int fixed = 0;
         for (Holding h : holdings) {
             if ((h.getIsin() == null || h.getIsin().isBlank()) && h.getSymbol() != null) {
-                String isin = resolveIsin(h.getSymbol(), h.getAssetType());
+                String isin = resolveIsin(h.getSymbol(), h.getAssetType(), h.getName());
                 if (isin != null) {
                     h.setIsin(isin);
                     holdingRepository.save(h);
