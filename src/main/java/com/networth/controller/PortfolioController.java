@@ -126,23 +126,11 @@ public class PortfolioController {
         // Price history is public market data — no ownership check needed (supports family view)
         com.networth.model.entity.Holding holding = holdingRepository.findById(UUID.fromString(id))
                 .orElseThrow(() -> new com.networth.exception.ResourceNotFoundException("Holding", id));
-        String symbol = holding.getSymbol();
-        if (holding.getAssetType() == com.networth.model.enums.AssetType.MUTUAL_FUND) {
-            String isin = holding.getIsin();
-            if (isin != null && !isin.isBlank()) {
-                symbol = isin;
-            } else if (holding.getSymbol() != null && holding.getSymbol().length() == 12) {
-                symbol = holding.getSymbol();
-            } else {
-                var found = symbolRepository.findById(holding.getSymbol());
-                if (found.isPresent()) {
-                    symbol = found.get().getSymbol();
-                }
-            }
-        } else if (holding.getAssetType() != com.networth.model.enums.AssetType.EQUITY
-                && holding.getAssetType() != com.networth.model.enums.AssetType.ETF) {
+        if (holding.getAssetType() != AssetType.EQUITY && holding.getAssetType() != AssetType.ETF
+                && holding.getAssetType() != AssetType.MUTUAL_FUND) {
             return ResponseEntity.ok(List.of());
         }
+        String symbol = holdingService.getEffectiveSymbolForPricing(holding);
         LocalDate to = LocalDate.now();
         LocalDate from = to.minusDays(days);
         List<Map<String, Object>> result = stockPriceHistoryRepository

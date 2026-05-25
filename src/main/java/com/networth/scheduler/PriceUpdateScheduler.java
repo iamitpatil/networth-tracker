@@ -7,6 +7,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.UserRepository;
 import com.networth.service.NetWorthHistoryService;
 import com.networth.service.market.PriceService;
+import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,6 +25,7 @@ import java.util.UUID;
 public class PriceUpdateScheduler {
 
     private final HoldingRepository holdingRepository;
+    private final HoldingService holdingService;
     private final PriceService priceService;
     private final NetWorthHistoryService historyService;
     private final UserRepository userRepository;
@@ -67,9 +69,9 @@ public class PriceUpdateScheduler {
             List<Holding> mfHoldings = holdingRepository.findByUserIdAndAssetType(user.getId(), AssetType.MUTUAL_FUND);
             for (Holding holding : mfHoldings) {
                 try {
-                    priceService.refreshPrice(holding.getSymbol(), holding.getAssetType());
-                    // Recalculate holding currentValue from the fetched NAV
-                    BigDecimal currentPrice = priceService.getCurrentPrice(holding.getSymbol(), holding.getAssetType());
+                    String pricingSymbol = holdingService.getEffectiveSymbolForPricing(holding);
+                    priceService.refreshPrice(pricingSymbol, holding.getAssetType());
+                    BigDecimal currentPrice = priceService.getCurrentPrice(pricingSymbol, holding.getAssetType());
                     if (currentPrice != null) {
                         holding.setCurrentPrice(currentPrice);
                         holding.setCurrentValue(holding.getQuantity().multiply(currentPrice));

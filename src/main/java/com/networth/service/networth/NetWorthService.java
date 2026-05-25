@@ -9,6 +9,7 @@ import com.networth.repository.BankAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.LiabilityRepository;
 import com.networth.service.market.PriceService;
+import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class NetWorthService {
     private final LiabilityRepository liabilityRepository;
     private final BankAccountRepository bankAccountRepository;
     private final PriceService priceService;
+    private final HoldingService holdingService;
 
     @Transactional(readOnly = true)
     public NetWorthResponse calculateNetWorth(UUID userId) {
@@ -92,7 +94,8 @@ public class NetWorthService {
 
     private void updateHoldingCurrentPrice(Holding holding) {
         if (holding.getCurrentValue() == null || holding.getCurrentValue().compareTo(BigDecimal.ZERO) == 0) {
-            BigDecimal currentPrice = priceService.getCurrentPrice(holding.getSymbol(), holding.getAssetType());
+            String pricingSymbol = holdingService.getEffectiveSymbolForPricing(holding);
+            BigDecimal currentPrice = priceService.getCurrentPrice(pricingSymbol, holding.getAssetType());
             if (currentPrice != null) {
                 holding.setCurrentPrice(currentPrice);
                 holding.setCurrentValue(holding.getQuantity().multiply(currentPrice));

@@ -7,6 +7,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.StockPriceHistoryRepository;
 import com.networth.repository.UserRepository;
 import com.networth.service.NetWorthHistoryService;
+import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -31,12 +32,12 @@ public class StartupBackfillService {
     private static final int MIN_GAP_DAYS_TO_BACKFILL = 1;
 
     private final HoldingRepository holdingRepository;
+    private final HoldingService holdingService;
     private final StockPriceHistoryRepository historyRepository;
     private final UpstoxHistoricalService upstoxHistoricalService;
     private final AmfiHistoricalService amfiHistoricalService;
     private final NetWorthHistoryService netWorthHistoryService;
     private final UserRepository userRepository;
-    private final com.networth.service.portfolio.HoldingService holdingService;
 
     @EventListener(ApplicationReadyEvent.class)
     @Async
@@ -139,7 +140,7 @@ public class StartupBackfillService {
             boolean anyMissing = false;
 
             for (Holding h : mfHoldings) {
-                String symbol = h.getSymbol();
+                String symbol = holdingService.getEffectiveSymbolForPricing(h);
                 Optional<StockPriceHistory> latest = historyRepository.findLatest(symbol);
                 if (latest.isPresent()) {
                     LocalDate latestDate = latest.get().getPriceDate();

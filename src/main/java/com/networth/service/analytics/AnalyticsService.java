@@ -27,6 +27,7 @@ import java.util.UUID;
 public class AnalyticsService {
 
     private final HoldingRepository holdingRepository;
+    private final HoldingService holdingService;
     private final TransactionRepository transactionRepository;
     private final MarketPriceRepository marketPriceRepository;
     private final XIRRCalculator xirrCalculator;
@@ -186,8 +187,9 @@ public class AnalyticsService {
                 totalValue = totalValue.add(holding.getCurrentValue());
             }
 
+            String pricingSymbol = holdingService.getEffectiveSymbolForPricing(holding);
             List<MarketPrice> prices = marketPriceRepository
-                    .findBySymbolAndAssetTypeOrderByPriceDateDesc(holding.getSymbol(), holding.getAssetType());
+                    .findBySymbolAndAssetTypeOrderByPriceDateDesc(pricingSymbol, holding.getAssetType());
 
             if (prices.size() >= 2) {
                 for (int i = 0; i < prices.size() - 1; i++) {

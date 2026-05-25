@@ -128,11 +128,12 @@ public class SymbolService {
                     if (existing != null) {
                         existing.setName(schemeName);
                         existing.setSchemeCode(schemeCode);
+                        existing.setIsin(isin); // Store ISIN in both PK and isin field
                         symbolRepository.save(existing);
                     } else {
                         symbolRepository.save(Symbol.builder()
                                 .symbol(isin).name(schemeName).category("MUTUAL_FUND")
-                                .sector("Mutual Fund").schemeCode(schemeCode)
+                                .sector("Mutual Fund").schemeCode(schemeCode).isin(isin)
                                 .build());
                     }
                     upserted++;
