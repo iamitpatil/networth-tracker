@@ -102,6 +102,7 @@ public class AccountsHubService {
         if (updates.getSchemePreference() != null) acc.setSchemePreference(updates.getSchemePreference());
         if (updates.getTier() != null) acc.setTier(updates.getTier());
         if (updates.getAssetClass() != null) acc.setAssetClass(updates.getAssetClass());
+        if (updates.getCra() != null) acc.setCra(updates.getCra());
         if (updates.getOpeningDate() != null) acc.setOpeningDate(updates.getOpeningDate());
         if (updates.getEmployerName() != null) acc.setEmployerName(updates.getEmployerName());
         if (updates.getCurrentValue() != null) acc.setCurrentValue(updates.getCurrentValue());

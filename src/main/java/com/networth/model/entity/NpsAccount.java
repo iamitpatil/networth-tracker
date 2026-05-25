@@ -42,6 +42,9 @@ public class NpsAccount {
     @Column(name = "asset_class", length = 5)
     private String assetClass;
 
+    @Column(length = 20)
+    private String cra;
+
     @Column(name = "opening_date")
     private LocalDate openingDate;
 

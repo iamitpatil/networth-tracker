@@ -406,7 +406,7 @@ export default function AccountsHub() {
           ))}
           {activeTab === 'nps' && (data?.npsAccounts || []).map(a => (
             <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
-              subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}${a.schemePreference ? ` • ${a.schemePreference}` : ''}`}
+              subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}${a.schemePreference ? ` • ${a.schemePreference}` : ''}${a.cra ? ` • ${a.cra}` : ''}`}
               detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.employerName || ''}
               accountType="NPS" accountId={a.id}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
@@ -669,15 +669,40 @@ function CreditCardForm({ form, setForm, editingId, onSubmit, onCancel }) {
   )
 }
 
+const NPS_CRAS = [
+  { value: 'PROTEAN', label: 'Protean (NSDL)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://npscra.nsdl.co.in&size=128' },
+  { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://kfintech.com&size=128' },
+  { value: 'CAMS', label: 'CAMS', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://camsonline.com&size=128' },
+]
+
 function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
   const { options: fundManagers } = useReferenceData('NPS_FUND_MANAGER')
   const { options: tiers } = useReferenceData('NPS_TIER')
   const { options: schemes } = useReferenceData('NPS_SCHEME')
+  const selectedCra = NPS_CRAS.find(c => c.value === form.cra)
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="PRAN Number *" value={form.pranNumber} onChange={v => s('pranNumber', v.slice(0,12))} placeholder="12-digit PRAN" required />
+        <div>
+          <label className="block text-xs text-[var(--text-muted)] mb-1">CRA</label>
+          <div className="flex gap-2">
+            {NPS_CRAS.map(cra => (
+              <button key={cra.value} type="button"
+                onClick={() => s('cra', cra.value)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition border ${
+                  form.cra === cra.value
+                    ? 'bg-blue-500/15 text-blue-400 border-blue-500/40'
+                    : 'bg-[var(--input-bg)] text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--text-secondary)]'
+                }`}>
+                <img src={cra.logo} alt="" className="w-4 h-4 rounded object-contain bg-white p-px"
+                  onError={(e) => { e.target.style.display = 'none' }} />
+                {cra.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <Select label="Fund Manager" value={form.fundManager} onChange={v => s('fundManager', v)} options={fundManagers} />
         <Select label="Tier *" value={form.tier} onChange={v => s('tier', v)} options={tiers} required />
         <Select label="Scheme Preference" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={schemes} />
