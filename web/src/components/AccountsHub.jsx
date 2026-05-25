@@ -406,7 +406,7 @@ export default function AccountsHub() {
               detail={a.creditLimit ? `Limit: ${fmt(a.creditLimit)}` : ''}
               extra={a.rewardType ? `${a.rewardType}` : ''}
               badge={a.isActive ? null : 'Inactive'}
-              accountType="CREDIT_CARD" accountId={a.id} logoUrl={getLogo('CARD_ISSUER', a.cardIssuer)}
+              accountType="CREDIT_CARD" accountId={a.id} logoUrl={getLogo('BANK', a.cardIssuer) || getLogo('CARD_ISSUER', a.cardIssuer)}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('credit-cards', a.id, `${a.cardIssuer} card`)} />
           ))}
@@ -637,20 +637,58 @@ function Input({ label, value, onChange, type = 'text', placeholder, required })
 }
 
 function Select({ label, value, onChange, options, required, showLogo }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
   const selected = options.find(o => (typeof o === 'string' ? o : o.value) === value)
-  const logoUrl = selected?.metadata?.logo
+  const selectedLabel = selected ? (typeof selected === 'string' ? selected : selected.label) : null
+  const selectedLogo = selected?.metadata?.logo
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
   return (
-    <div>
+    <div ref={ref}>
       <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
       <div className="relative">
-        {showLogo && logoUrl && (
-          <img src={logoUrl} alt="" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded object-contain" onError={(e) => e.target.style.display='none'} />
+        <button type="button" onClick={() => setOpen(!open)}
+          className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 ${!value && required ? 'border-red-500/30' : ''}`}>
+          <span className="flex items-center gap-2 truncate">
+            {showLogo && selectedLogo && (
+              <img src={selectedLogo} alt="" className="w-4 h-4 rounded object-contain bg-white p-px flex-shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <span className={value ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}>{selectedLabel || 'Select...'}</span>
+          </span>
+          <ChevronDown className={`w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div className="absolute left-0 right-0 top-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 max-h-52 overflow-y-auto">
+            {!required && (
+              <button type="button" onClick={() => { onChange(''); setOpen(false) }}
+                className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-[var(--hover-bg)] transition text-left text-sm ${!value ? 'bg-blue-500/10 text-blue-400' : 'text-[var(--text-muted)]'}`}>
+                Select...
+              </button>
+            )}
+            {options.map(o => {
+              const val = typeof o === 'string' ? o : o.value
+              const lbl = typeof o === 'string' ? o : o.label
+              const logo = o?.metadata?.logo
+              const isSelected = val === value
+              return (
+                <button type="button" key={val} onClick={() => { onChange(val); setOpen(false) }}
+                  className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-[var(--hover-bg)] transition text-left text-sm ${isSelected ? 'bg-blue-500/10 text-blue-400' : ''}`}>
+                  {showLogo && logo && (
+                    <img src={logo} alt="" className="w-4 h-4 rounded object-contain bg-white p-px flex-shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
+                  )}
+                  <span className="truncate">{lbl}</span>
+                </button>
+              )
+            })}
+          </div>
         )}
-        <select value={value || ''} onChange={(e) => onChange(e.target.value)} required={required}
-          className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg ${showLogo && logoUrl ? 'pl-9' : 'px-3'} pr-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50`}>
-          <option value="">Select...</option>
-          {options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
-        </select>
       </div>
     </div>
   )
