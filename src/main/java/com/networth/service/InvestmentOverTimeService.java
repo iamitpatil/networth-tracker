@@ -53,9 +53,16 @@ public class InvestmentOverTimeService {
         Set<UUID> holdingIds = holdings.stream().map(Holding::getId).collect(Collectors.toSet());
 
         // Map holdingId → pricing symbol (ISIN for MFs, symbol for equities)
+        // and track which holdings are market-priced vs non-market (PPF, EPF, FD, NPS, CASH, REAL_ESTATE)
         Map<UUID, String> holdingPricingSymbol = new HashMap<>();
+        Set<UUID> nonMarketHoldings = new HashSet<>();
+        Set<AssetType> NON_MARKET_TYPES = Set.of(
+                AssetType.PPF, AssetType.EPF, AssetType.NPS, AssetType.FD, AssetType.CASH, AssetType.REAL_ESTATE);
         for (Holding h : holdings) {
             holdingPricingSymbol.put(h.getId(), holdingService.getEffectiveSymbolForPricing(h));
+            if (NON_MARKET_TYPES.contains(h.getAssetType())) {
+                nonMarketHoldings.add(h.getId());
+            }
         }
 
         // Load all transactions sorted by date
@@ -74,6 +81,7 @@ public class InvestmentOverTimeService {
         BigDecimal runningInvested = BigDecimal.ZERO;
 
         // Process all transactions (including before cutoff for position tracking)
+        // "invested" = total money put IN (only increases on BUY/SIP/DEPOSIT, never decreases on SELL)
         List<TxnEvent> txnEvents = new ArrayList<>();
         for (TransactionResponse t : allTxns) {
             LocalDate date = t.getTransactionDate().toLocalDate();
@@ -87,7 +95,7 @@ public class InvestmentOverTimeService {
                 runningInvested = runningInvested.add(txAmount);
             } else if (DIVEST_TXNS.contains(t.getTransactionType().name())) {
                 holdingQty.merge(holdingId, txQty.negate(), BigDecimal::add);
-                runningInvested = runningInvested.subtract(txAmount);
+                // Do NOT subtract from invested — "invested" means total money put in
             }
             if (txPrice.compareTo(BigDecimal.ZERO) > 0) {
                 holdingLastTxnPrice.put(holdingId, txPrice);
@@ -135,7 +143,7 @@ public class InvestmentOverTimeService {
 
             // Compute portfolio value using historical prices for this date
             BigDecimal value = computeValueAtDate(date, currentPositions, currentTxnPrices,
-                    holdingPricingSymbol, priceMap);
+                    holdingPricingSymbol, priceMap, nonMarketHoldings);
 
             Map<String, Object> point = new LinkedHashMap<>();
             point.put("date", date.toString());
@@ -149,7 +157,7 @@ public class InvestmentOverTimeService {
         // Always add today as the last point
         if (result.isEmpty() || !result.get(result.size() - 1).get("date").equals(today.toString())) {
             BigDecimal todayValue = computeValueAtDate(today, currentPositions, currentTxnPrices,
-                    holdingPricingSymbol, priceMap);
+                    holdingPricingSymbol, priceMap, nonMarketHoldings);
             Map<String, Object> point = new LinkedHashMap<>();
             point.put("date", today.toString());
             point.put("invested", currentInvested.setScale(2, RoundingMode.HALF_UP));
@@ -161,42 +169,48 @@ public class InvestmentOverTimeService {
     }
 
     /**
-     * Compute total portfolio value at a specific date using historical prices.
-     * For each holding: qty × price_on_date.
-     * Falls back to last transaction price if no market data.
+     * Compute total portfolio value at a specific date.
+     * Market assets (equity, ETF, MF, gold, crypto, bonds): qty × historical market price
+     * Non-market assets (PPF, EPF, FD, NPS, cash, real estate): qty × last transaction price
+     *   (these don't have daily market prices — their value is what you put in)
      */
     private BigDecimal computeValueAtDate(LocalDate date, Map<UUID, BigDecimal> positions,
                                            Map<UUID, BigDecimal> txnPrices,
                                            Map<UUID, String> holdingPricingSymbol,
-                                           Map<String, Map<LocalDate, BigDecimal>> priceMap) {
+                                           Map<String, Map<LocalDate, BigDecimal>> priceMap,
+                                           Set<UUID> nonMarketHoldings) {
         BigDecimal total = BigDecimal.ZERO;
         for (Map.Entry<UUID, BigDecimal> entry : positions.entrySet()) {
             BigDecimal qty = entry.getValue();
             if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             UUID holdingId = entry.getKey();
-            String pricingSymbol = holdingPricingSymbol.get(holdingId);
             BigDecimal price = null;
 
-            // Try historical price for this date (or closest before)
-            if (pricingSymbol != null && priceMap.containsKey(pricingSymbol)) {
-                Map<LocalDate, BigDecimal> symbolPrices = priceMap.get(pricingSymbol);
-                price = symbolPrices.get(date);
-                // If no price on exact date, find the closest previous date
-                if (price == null) {
-                    for (int i = 1; i <= 7; i++) {
-                        price = symbolPrices.get(date.minusDays(i));
-                        if (price != null) break;
+            if (nonMarketHoldings.contains(holdingId)) {
+                // Non-market: use last transaction price (= invested amount per unit)
+                price = txnPrices.getOrDefault(holdingId, BigDecimal.ZERO);
+            } else {
+                // Market asset: look up historical price
+                String pricingSymbol = holdingPricingSymbol.get(holdingId);
+                if (pricingSymbol != null && priceMap.containsKey(pricingSymbol)) {
+                    Map<LocalDate, BigDecimal> symbolPrices = priceMap.get(pricingSymbol);
+                    price = symbolPrices.get(date);
+                    // If no price on exact date, find closest previous (up to 10 days for holidays)
+                    if (price == null) {
+                        for (int i = 1; i <= 10; i++) {
+                            price = symbolPrices.get(date.minusDays(i));
+                            if (price != null) break;
+                        }
                     }
+                }
+                // Final fallback: last transaction price
+                if (price == null) {
+                    price = txnPrices.getOrDefault(holdingId, BigDecimal.ZERO);
                 }
             }
 
-            // Fallback to last transaction price
-            if (price == null) {
-                price = txnPrices.getOrDefault(holdingId, BigDecimal.ZERO);
-            }
-
-            if (price.compareTo(BigDecimal.ZERO) > 0) {
+            if (price != null && price.compareTo(BigDecimal.ZERO) > 0) {
                 total = total.add(qty.multiply(price));
             }
         }
