@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Bitcoin, Home, Wallet, BarChart3 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
 import { useFeature } from '../context/FeatureFlagContext'
@@ -14,10 +14,14 @@ const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4'
 
 const ASSET_TYPES = [
   { value: 'EQUITY', label: 'Stocks', icon: TrendingUp, color: 'blue' },
+  { value: 'ETF', label: 'ETF', icon: BarChart3, color: 'indigo' },
   { value: 'MUTUAL_FUND', label: 'Mutual Funds', icon: TrendingUp, color: 'green' },
   { value: 'BOND', label: 'Bonds', icon: Landmark, color: 'cyan' },
   { value: 'GOLD', label: 'Gold / SGB', icon: Gem, color: 'amber' },
+  { value: 'CRYPTO', label: 'Crypto', icon: Bitcoin, color: 'yellow' },
+  { value: 'REAL_ESTATE', label: 'Real Estate', icon: Home, color: 'emerald' },
   { value: 'FD', label: 'Fixed Deposit', icon: Banknote, color: 'purple' },
+  { value: 'CASH', label: 'Cash', icon: Wallet, color: 'slate' },
   { value: 'PPF', label: 'PPF', icon: ShieldCheck, color: 'teal' },
   { value: 'EPF', label: 'EPF', icon: PiggyBank, color: 'orange' },
   { value: 'NPS', label: 'NPS', icon: Landmark, color: 'pink' },
@@ -25,25 +29,34 @@ const ASSET_TYPES = [
 
 const TYPE_TRANSACTIONS = {
   EQUITY: ['BUY', 'SELL', 'SIP', 'LUMPSUM'],
+  ETF: ['BUY', 'SELL'],
   MUTUAL_FUND: ['SIP', 'LUMPSUM', 'SELL'],
   BOND: ['BUY', 'SELL'],
   GOLD: ['BUY', 'SELL'],
+  CRYPTO: ['BUY', 'SELL'],
+  REAL_ESTATE: ['BUY', 'SELL'],
   FD: ['OPEN', 'RENEW', 'WITHDRAW'],
+  CASH: ['DEPOSIT', 'WITHDRAWAL'],
   PPF: ['DEPOSIT', 'WITHDRAWAL'],
   EPF: ['CONTRIBUTION', 'WITHDRAWAL'],
   NPS: ['CONTRIBUTION', 'WITHDRAWAL'],
 }
 
 const ASSET_LABELS = {
-  EQUITY: 'Stock', MUTUAL_FUND: 'MF', BOND: 'Bond', GOLD: 'Gold', FD: 'FD', PPF: 'PPF', EPF: 'EPF', NPS: 'NPS',
+  EQUITY: 'Stock', ETF: 'ETF', MUTUAL_FUND: 'MF', BOND: 'Bond', GOLD: 'Gold',
+  CRYPTO: 'Crypto', REAL_ESTATE: 'Property', FD: 'FD', CASH: 'Cash', PPF: 'PPF', EPF: 'EPF', NPS: 'NPS',
 }
 
 const ASSET_COLORS = {
   EQUITY: 'bg-blue-500/20 text-blue-400',
+  ETF: 'bg-indigo-500/20 text-indigo-400',
   MUTUAL_FUND: 'bg-green-500/20 text-green-400',
   BOND: 'bg-cyan-500/20 text-cyan-400',
   GOLD: 'bg-amber-500/20 text-amber-400',
+  CRYPTO: 'bg-yellow-500/20 text-yellow-400',
+  REAL_ESTATE: 'bg-emerald-500/20 text-emerald-400',
   FD: 'bg-purple-500/20 text-purple-400',
+  CASH: 'bg-slate-500/20 text-slate-400',
   PPF: 'bg-teal-500/20 text-teal-400',
   EPF: 'bg-orange-500/20 text-orange-400',
   NPS: 'bg-pink-500/20 text-pink-400',
@@ -182,9 +195,10 @@ export default function Holdings() {
     [form.symbol, symbols]
   )
   const isEquity = assetType === 'EQUITY'
+  const isETF = assetType === 'ETF'
   const isMF = assetType === 'MUTUAL_FUND'
   const isBond = assetType === 'BOND'
-  const needsSymbol = isEquity || isMF || isBond
+  const needsSymbol = isEquity || isETF || isMF || isBond
 
   const filteredSymbols = useMemo(() => {
     const categoryMap = { 'MUTUAL_FUND': 'MUTUAL_FUND', 'BOND': 'BOND' }
@@ -474,7 +488,7 @@ export default function Holdings() {
 
   useEffect(() => {
     if (isMF) setForm((f) => ({ ...f, transactionType: 'SIP' }))
-    else if (isEquity || isBond) setForm((f) => ({ ...f, transactionType: 'BUY' }))
+    else if (isEquity || isETF || isBond) setForm((f) => ({ ...f, transactionType: 'BUY' }))
   }, [assetType, isEquity, isMF, isBond])
 
   useEffect(() => {

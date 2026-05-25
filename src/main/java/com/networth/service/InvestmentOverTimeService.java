@@ -2,30 +2,38 @@ package com.networth.service;
 
 import com.networth.model.dto.TransactionResponse;
 import com.networth.model.entity.Holding;
+import com.networth.model.entity.StockPriceHistory;
 import com.networth.model.enums.AssetType;
 import com.networth.repository.HoldingRepository;
+import com.networth.repository.StockPriceHistoryRepository;
+import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.RedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Computes investment portfolio value over time using:
+ * 1. Transaction history to track positions (qty held per holding per day)
+ * 2. Daily historical prices from stock_price_history to value each position
+ * 3. Falls back to transaction price when no market data is available
+ */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class InvestmentOverTimeService {
 
     private final TransactionService transactionService;
-    private final NetWorthHistoryService netWorthHistoryService;
     private final HoldingRepository holdingRepository;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final HoldingService holdingService;
+    private final StockPriceHistoryRepository priceHistoryRepository;
 
-    private static final String HISTORY_KEY_PREFIX = "networth:history:";
     private static final Set<String> INVEST_TXNS = Set.of("BUY", "SIP", "LUMPSUM", "DEPOSIT", "CONTRIBUTION", "OPEN");
     private static final Set<String> DIVEST_TXNS = Set.of("SELL", "WITHDRAWAL", "WITHDRAW");
 
@@ -34,35 +42,46 @@ public class InvestmentOverTimeService {
     }
 
     public List<Map<String, Object>> getInvestmentOverTime(UUID userId, int days, AssetType assetType) {
-        LocalDate cutoff = LocalDate.now().minusDays(days);
+        LocalDate today = LocalDate.now();
+        LocalDate cutoff = today.minusDays(days);
 
-        List<TransactionResponse> allTransactions = transactionService.getUserTransactions(userId.toString());
-        Set<UUID> filteredHoldingIds = getFilteredHoldingIds(userId, assetType);
+        // Get holdings and their pricing symbols
+        List<Holding> holdings = assetType != null
+                ? holdingRepository.findByUserIdAndAssetType(userId, assetType)
+                : holdingRepository.findByUserId(userId);
 
-        // Sort ALL transactions by date (including before cutoff — needed for position tracking)
-        List<TransactionResponse> allFiltered = allTransactions.stream()
-                .filter(t -> filteredHoldingIds.contains(UUID.fromString(t.getHoldingId())))
+        Set<UUID> holdingIds = holdings.stream().map(Holding::getId).collect(Collectors.toSet());
+
+        // Map holdingId → pricing symbol (ISIN for MFs, symbol for equities)
+        Map<UUID, String> holdingPricingSymbol = new HashMap<>();
+        for (Holding h : holdings) {
+            holdingPricingSymbol.put(h.getId(), holdingService.getEffectiveSymbolForPricing(h));
+        }
+
+        // Load all transactions sorted by date
+        List<TransactionResponse> allTxns = transactionService.getUserTransactions(userId.toString()).stream()
+                .filter(t -> holdingIds.contains(UUID.fromString(t.getHoldingId())))
                 .sorted(Comparator.comparing(t -> t.getTransactionDate().toLocalDate()))
                 .toList();
 
-        // Track per-holding: cumulative quantity and last known price
-        Map<UUID, BigDecimal> holdingQty = new LinkedHashMap<>();
-        Map<UUID, BigDecimal> holdingLastPrice = new LinkedHashMap<>();
+        // Load historical prices for all relevant symbols in the date range
+        Set<String> pricingSymbols = new HashSet<>(holdingPricingSymbol.values());
+        Map<String, Map<LocalDate, BigDecimal>> priceMap = loadPriceHistory(pricingSymbols, cutoff, today);
 
-        // Build timeline: for each transaction date, record cumulative invested + portfolio value
-        // Value = sum of (qty held * last known price) for each holding AT that point in time
+        // Build position timeline: track qty per holding at each transaction date
+        Map<UUID, BigDecimal> holdingQty = new HashMap<>();
+        Map<UUID, BigDecimal> holdingLastTxnPrice = new HashMap<>();
         BigDecimal runningInvested = BigDecimal.ZERO;
-        List<Map<String, Object>> result = new ArrayList<>();
-        LocalDate lastDate = null;
 
-        for (TransactionResponse t : allFiltered) {
+        // Process all transactions (including before cutoff for position tracking)
+        List<TxnEvent> txnEvents = new ArrayList<>();
+        for (TransactionResponse t : allTxns) {
             LocalDate date = t.getTransactionDate().toLocalDate();
             UUID holdingId = UUID.fromString(t.getHoldingId());
             BigDecimal txQty = t.getQuantity() != null ? t.getQuantity().abs() : BigDecimal.ZERO;
             BigDecimal txPrice = t.getPrice() != null ? t.getPrice() : BigDecimal.ZERO;
             BigDecimal txAmount = t.getAmount() != null ? t.getAmount() : txPrice.multiply(txQty);
 
-            // Update position and last known price for this holding
             if (INVEST_TXNS.contains(t.getTransactionType().name())) {
                 holdingQty.merge(holdingId, txQty, BigDecimal::add);
                 runningInvested = runningInvested.add(txAmount);
@@ -70,87 +89,143 @@ public class InvestmentOverTimeService {
                 holdingQty.merge(holdingId, txQty.negate(), BigDecimal::add);
                 runningInvested = runningInvested.subtract(txAmount);
             }
-            // Always update last known price from transaction
             if (txPrice.compareTo(BigDecimal.ZERO) > 0) {
-                holdingLastPrice.put(holdingId, txPrice);
+                holdingLastTxnPrice.put(holdingId, txPrice);
             }
 
-            // Only emit data points within the requested range
-            if (date.isBefore(cutoff)) continue;
-            // Avoid duplicate points for same date — skip if same as last emitted
-            if (date.equals(lastDate)) {
-                // Update the last point in result instead of adding a new one
-                if (!result.isEmpty()) {
-                    Map<String, Object> lastPoint = result.get(result.size() - 1);
-                    lastPoint.put("invested", runningInvested.setScale(2, RoundingMode.HALF_UP));
-                    lastPoint.put("value", computePortfolioValue(holdingQty, holdingLastPrice));
-                }
-                continue;
-            }
-
-            lastDate = date;
-            Map<String, Object> point = new LinkedHashMap<>();
-            point.put("date", date.toString());
-            point.put("invested", runningInvested.setScale(2, RoundingMode.HALF_UP));
-            point.put("value", computePortfolioValue(holdingQty, holdingLastPrice));
-            result.add(point);
+            txnEvents.add(new TxnEvent(date, new HashMap<>(holdingQty), new HashMap<>(holdingLastTxnPrice), runningInvested));
         }
 
-        // Add today's point with current prices
-        LocalDate today = LocalDate.now();
-        if (lastDate == null || !lastDate.equals(today)) {
-            List<Holding> currentHoldings = assetType != null
-                    ? holdingRepository.findByUserIdAndAssetType(userId, assetType)
-                    : holdingRepository.findByUserId(userId);
-            BigDecimal currentValue = currentHoldings.stream()
-                    .filter(h -> h.getCurrentValue() != null)
-                    .map(Holding::getCurrentValue)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Generate data points: one per week (or per day for short ranges)
+        int interval = days <= 90 ? 1 : days <= 365 ? 7 : 30;
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        // Determine the snapshot of positions at the cutoff
+        Map<UUID, BigDecimal> positionsAtCutoff = new HashMap<>();
+        Map<UUID, BigDecimal> pricesAtCutoff = new HashMap<>();
+        BigDecimal investedAtCutoff = BigDecimal.ZERO;
+        for (TxnEvent evt : txnEvents) {
+            if (evt.date.isAfter(cutoff)) break;
+            positionsAtCutoff = evt.positions;
+            pricesAtCutoff = evt.lastPrices;
+            investedAtCutoff = evt.invested;
+        }
+
+        Map<UUID, BigDecimal> currentPositions = new HashMap<>(positionsAtCutoff);
+        Map<UUID, BigDecimal> currentTxnPrices = new HashMap<>(pricesAtCutoff);
+        BigDecimal currentInvested = investedAtCutoff;
+
+        // Track which txn event index we're at
+        int txnIdx = 0;
+        // Skip events before cutoff
+        while (txnIdx < txnEvents.size() && !txnEvents.get(txnIdx).date.isAfter(cutoff)) {
+            txnIdx++;
+        }
+
+        LocalDate date = cutoff;
+        while (!date.isAfter(today)) {
+            // Apply any transactions on or before this date
+            while (txnIdx < txnEvents.size() && !txnEvents.get(txnIdx).date.isAfter(date)) {
+                TxnEvent evt = txnEvents.get(txnIdx);
+                currentPositions = evt.positions;
+                currentTxnPrices = evt.lastPrices;
+                currentInvested = evt.invested;
+                txnIdx++;
+            }
+
+            // Compute portfolio value using historical prices for this date
+            BigDecimal value = computeValueAtDate(date, currentPositions, currentTxnPrices,
+                    holdingPricingSymbol, priceMap);
 
             Map<String, Object> point = new LinkedHashMap<>();
+            point.put("date", date.toString());
+            point.put("invested", currentInvested.setScale(2, RoundingMode.HALF_UP));
+            point.put("value", value.setScale(2, RoundingMode.HALF_UP));
+            result.add(point);
+
+            date = date.plusDays(interval);
+        }
+
+        // Always add today as the last point
+        if (result.isEmpty() || !result.get(result.size() - 1).get("date").equals(today.toString())) {
+            BigDecimal todayValue = computeValueAtDate(today, currentPositions, currentTxnPrices,
+                    holdingPricingSymbol, priceMap);
+            Map<String, Object> point = new LinkedHashMap<>();
             point.put("date", today.toString());
-            point.put("invested", runningInvested.setScale(2, RoundingMode.HALF_UP));
-            point.put("value", currentValue.setScale(2, RoundingMode.HALF_UP));
+            point.put("invested", currentInvested.setScale(2, RoundingMode.HALF_UP));
+            point.put("value", todayValue.setScale(2, RoundingMode.HALF_UP));
             result.add(point);
         }
 
         return result;
     }
 
-    private BigDecimal computePortfolioValue(Map<UUID, BigDecimal> holdingQty, Map<UUID, BigDecimal> holdingLastPrice) {
+    /**
+     * Compute total portfolio value at a specific date using historical prices.
+     * For each holding: qty × price_on_date.
+     * Falls back to last transaction price if no market data.
+     */
+    private BigDecimal computeValueAtDate(LocalDate date, Map<UUID, BigDecimal> positions,
+                                           Map<UUID, BigDecimal> txnPrices,
+                                           Map<UUID, String> holdingPricingSymbol,
+                                           Map<String, Map<LocalDate, BigDecimal>> priceMap) {
         BigDecimal total = BigDecimal.ZERO;
-        for (Map.Entry<UUID, BigDecimal> entry : holdingQty.entrySet()) {
+        for (Map.Entry<UUID, BigDecimal> entry : positions.entrySet()) {
             BigDecimal qty = entry.getValue();
-            BigDecimal price = holdingLastPrice.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-            if (qty.compareTo(BigDecimal.ZERO) > 0 && price.compareTo(BigDecimal.ZERO) > 0) {
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            UUID holdingId = entry.getKey();
+            String pricingSymbol = holdingPricingSymbol.get(holdingId);
+            BigDecimal price = null;
+
+            // Try historical price for this date (or closest before)
+            if (pricingSymbol != null && priceMap.containsKey(pricingSymbol)) {
+                Map<LocalDate, BigDecimal> symbolPrices = priceMap.get(pricingSymbol);
+                price = symbolPrices.get(date);
+                // If no price on exact date, find the closest previous date
+                if (price == null) {
+                    for (int i = 1; i <= 7; i++) {
+                        price = symbolPrices.get(date.minusDays(i));
+                        if (price != null) break;
+                    }
+                }
+            }
+
+            // Fallback to last transaction price
+            if (price == null) {
+                price = txnPrices.getOrDefault(holdingId, BigDecimal.ZERO);
+            }
+
+            if (price.compareTo(BigDecimal.ZERO) > 0) {
                 total = total.add(qty.multiply(price));
             }
         }
-        return total.setScale(2, RoundingMode.HALF_UP);
+        return total;
     }
 
-    private Set<UUID> getFilteredHoldingIds(UUID userId, AssetType assetType) {
-        if (assetType == null) {
-            return holdingRepository.findByUserId(userId).stream()
-                    .map(Holding::getId)
-                    .collect(Collectors.toSet());
+    /**
+     * Bulk-load historical prices for all symbols in the date range.
+     * Returns: symbol → (date → close price)
+     */
+    private Map<String, Map<LocalDate, BigDecimal>> loadPriceHistory(Set<String> symbols, LocalDate from, LocalDate to) {
+        Map<String, Map<LocalDate, BigDecimal>> result = new HashMap<>();
+        for (String symbol : symbols) {
+            if (symbol == null) continue;
+            List<StockPriceHistory> history = priceHistoryRepository
+                    .findBySymbolAndPriceDateBetweenOrderByPriceDate(symbol, from, to);
+            if (!history.isEmpty()) {
+                Map<LocalDate, BigDecimal> dateMap = new LinkedHashMap<>();
+                for (StockPriceHistory h : history) {
+                    if (h.getClose() != null) {
+                        dateMap.put(h.getPriceDate(), h.getClose());
+                    }
+                }
+                result.put(symbol, dateMap);
+            }
         }
-        return holdingRepository.findByUserIdAndAssetType(userId, assetType).stream()
-                .map(Holding::getId)
-                .collect(Collectors.toSet());
+        return result;
     }
 
-    private BigDecimal getValueForAssetType(Map<String, Object> snapshot, AssetType assetType) {
-        if (assetType == null) {
-            BigDecimal equity = (BigDecimal) snapshot.getOrDefault("equityValue", BigDecimal.ZERO);
-            BigDecimal debt = (BigDecimal) snapshot.getOrDefault("debtValue", BigDecimal.ZERO);
-            BigDecimal gold = snapshot.containsKey("goldValue") && snapshot.get("goldValue") instanceof BigDecimal g ? g : BigDecimal.ZERO;
-            return equity.add(debt).add(gold);
-        }
-        return switch (assetType) {
-            case EQUITY, ETF -> (BigDecimal) snapshot.getOrDefault("equityValue", BigDecimal.ZERO);
-            case GOLD, SGB -> (BigDecimal) snapshot.getOrDefault("goldValue", BigDecimal.ZERO);
-            default -> (BigDecimal) snapshot.getOrDefault("debtValue", BigDecimal.ZERO);
-        };
-    }
+    private record TxnEvent(LocalDate date, Map<UUID, BigDecimal> positions,
+                             Map<UUID, BigDecimal> lastPrices, BigDecimal invested) {}
 }
