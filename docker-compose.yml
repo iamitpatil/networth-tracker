@@ -1,3 +1,11 @@
+# Development — just infrastructure services
+# Run the app and frontend locally (outside Docker)
+#
+# Usage:
+#   docker compose up -d          # start postgres + redis
+#   mvn spring-boot:run           # start backend on :8080
+#   cd web && npm run dev         # start frontend on :3000
+
 services:
   postgres:
     image: postgres:16-alpine

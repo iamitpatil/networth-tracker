@@ -10,6 +10,7 @@ uploads/
 models/
 mobile/
 web/node_modules/
+web/dist/
 docs/screenshots/
 *.log
 dump.rdb
