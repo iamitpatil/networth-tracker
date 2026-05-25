@@ -63,15 +63,20 @@ public class BackfillJobService {
 
             if (!running.get()) { cancelled(); return; }
 
+            // Cancellation check passed into inner loops for immediate abort
+            java.util.function.Supplier<Boolean> cancelCheck = running::get;
+
             // Step 2: Backfill equity price history
             updateStep("equities", "Backfilling equity price history...");
             try {
                 LocalDate to = LocalDate.now();
                 LocalDate from = to.minusDays(historyDays);
-                int count = upstoxHistoricalService.backfillAll(from, to);
+                int count = upstoxHistoricalService.backfillAll(from, to, cancelCheck);
+                if (!running.get()) { cancelled(); return; }
                 completeStep("equities", count + " equity price records backfilled");
                 status.put("equityRecords", count);
             } catch (Exception e) {
+                if (!running.get()) { cancelled(); return; }
                 log.error("Equity backfill failed: {}", e.getMessage());
                 stepError("equities", "Equity backfill failed: " + e.getMessage());
             }
@@ -83,10 +88,12 @@ public class BackfillJobService {
             try {
                 LocalDate to = LocalDate.now();
                 LocalDate from = to.minusDays(historyDays);
-                int count = amfiHistoricalService.backfillAll(from, to);
+                int count = amfiHistoricalService.backfillAll(from, to, cancelCheck);
+                if (!running.get()) { cancelled(); return; }
                 completeStep("mutual_funds", count + " MF NAV records backfilled");
                 status.put("mfRecords", count);
             } catch (Exception e) {
+                if (!running.get()) { cancelled(); return; }
                 log.error("MF backfill failed: {}", e.getMessage());
                 stepError("mutual_funds", "MF backfill failed: " + e.getMessage());
             }

@@ -75,6 +75,14 @@ public class AmfiHistoricalService {
     }
 
     public int backfillAll(LocalDate fromDate, LocalDate toDate) {
+        return backfillAll(fromDate, toDate, () -> true);
+    }
+
+    /**
+     * Backfill with cancellation support. The cancelCheck supplier is called
+     * before each day chunk — return false to abort.
+     */
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
         Set<String> targetIsins = collectMfIsins();
         if (targetIsins.isEmpty()) {
             log.warn("No MF ISINs found to backfill");
@@ -85,6 +93,11 @@ public class AmfiHistoricalService {
         LocalDate chunkStart = fromDate;
 
         while (chunkStart.isBefore(toDate)) {
+            if (!cancelCheck.get()) {
+                log.info("MF backfill cancelled at {}, {} records so far", chunkStart, totalSaved);
+                backfillStatus.put("recordsBackfilled", totalSaved);
+                return totalSaved;
+            }
             LocalDate chunkEnd = chunkStart.plusDays(MAX_DAYS_PER_REQUEST - 1);
             if (chunkEnd.isAfter(toDate)) chunkEnd = toDate;
             int saved = backfillChunk(chunkStart, chunkEnd, targetIsins);

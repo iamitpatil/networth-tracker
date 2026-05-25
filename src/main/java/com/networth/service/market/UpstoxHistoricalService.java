@@ -43,24 +43,34 @@ public class UpstoxHistoricalService {
     private String baseUrl;
 
     /**
-     * Backfill price history for ALL equity symbols in the symbols table,
-     * not just user holdings. This pre-fetches data so it's available instantly
-     * when a user adds a new holding.
+     * Backfill price history for ALL equity symbols in the symbols table.
      */
     @Transactional
     public int backfillAll(LocalDate fromDate, LocalDate toDate) {
+        return backfillAll(fromDate, toDate, () -> true);
+    }
+
+    /**
+     * Backfill with cancellation support. The cancelCheck supplier is called
+     * before each symbol — return false to abort.
+     */
+    @Transactional
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
         if (accessToken == null || accessToken.isBlank()) {
             log.warn("No Upstox analytics token configured, skipping equity backfill");
             return 0;
         }
 
-        // Collect all equity symbols with ISINs from the symbols table
         List<Symbol> equitySymbols = symbolRepository.findByCategory("EQUITY");
         int total = 0;
         int processed = 0;
         int skipped = 0;
 
         for (Symbol sym : equitySymbols) {
+            if (!cancelCheck.get()) {
+                log.info("Equity backfill cancelled at {}/{} symbols, {} records", processed, equitySymbols.size(), total);
+                return total;
+            }
             String isin = sym.getIsin();
             if (isin == null || isin.isBlank()) {
                 skipped++;
@@ -69,16 +79,16 @@ public class UpstoxHistoricalService {
             total += backfillSymbol(sym.getSymbol(), isin, fromDate, toDate);
             processed++;
 
-            // Log progress every 100 symbols
             if (processed % 100 == 0) {
                 log.info("Equity backfill progress: {}/{} symbols processed, {} records so far",
                         processed, equitySymbols.size(), total);
             }
         }
 
-        // Also backfill any holdings that might have symbols not in the symbols table
+        // Also backfill holdings not in the symbols table
         List<Holding> holdings = holdingRepository.findAll();
         for (Holding h : holdings) {
+            if (!cancelCheck.get()) return total;
             if (h.getAssetType() == AssetType.EQUITY || h.getAssetType() == AssetType.ETF) {
                 String isin = resolveAndPersistIsin(h);
                 if (isin != null && !isin.isBlank()) {
