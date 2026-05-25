@@ -17,6 +17,12 @@ const getBrokerLogo = (name) => {
   return domain ? `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : null
 }
 
+const NPS_CRAS = [
+  { value: 'PROTEAN', label: 'Protean (NSDL)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://npscra.nsdl.co.in&size=128' },
+  { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://kfintech.com&size=128' },
+  { value: 'CAMS', label: 'CAMS', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://camsonline.com&size=128' },
+]
+
 const TABS = [
   { id: 'bank', label: 'Bank', icon: Landmark, color: 'blue' },
   { id: 'demat', label: 'Demat', icon: Building2, color: 'indigo' },
@@ -404,14 +410,17 @@ export default function AccountsHub() {
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('credit-cards', a.id, `${a.cardIssuer} card`)} />
           ))}
-          {activeTab === 'nps' && (data?.npsAccounts || []).map(a => (
-            <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
-              subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}${a.schemePreference ? ` • ${a.schemePreference}` : ''}${a.cra ? ` • ${a.cra}` : ''}`}
-              detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.employerName || ''}
-              accountType="NPS" accountId={a.id}
-              onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
-              onDelete={() => handleDelete('nps', a.id, `NPS ${a.pranNumber}`)} />
-          ))}
+          {activeTab === 'nps' && (data?.npsAccounts || []).map(a => {
+            const craLogo = NPS_CRAS.find(c => c.value === a.cra)?.logo
+            return (
+              <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
+                subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}${a.schemePreference ? ` • ${a.schemePreference}` : ''}${a.cra ? ` • ${a.cra}` : ''}`}
+                detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.employerName || ''}
+                accountType="NPS" accountId={a.id} logoUrl={craLogo}
+                onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
+                onDelete={() => handleDelete('nps', a.id, `NPS ${a.pranNumber}`)} />
+            )
+          })}
           {activeTab === 'ppf' && (data?.ppfAccounts || []).map(a => (
             <AccountRow key={a.id} icon={PiggyBank} color="amber" title={`PPF - ${a.bankOrPostOffice}`}
               subtitle={`A/C: ${a.accountNumber}${a.branch ? ` • ${a.branch}` : ''}`}
@@ -668,12 +677,6 @@ function CreditCardForm({ form, setForm, editingId, onSubmit, onCancel }) {
     </FormWrapper>
   )
 }
-
-const NPS_CRAS = [
-  { value: 'PROTEAN', label: 'Protean (NSDL)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://npscra.nsdl.co.in&size=128' },
-  { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://kfintech.com&size=128' },
-  { value: 'CAMS', label: 'CAMS', logo: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://camsonline.com&size=128' },
-]
 
 function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
