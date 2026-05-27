@@ -3,6 +3,7 @@ import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
 import { TrendingUp, TrendingDown, Repeat, DollarSign, Filter, Calendar, Search, Users } from 'lucide-react'
 import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
 
 export default function Transactions() {
   const { view: familyView } = useFamilyView()
@@ -74,17 +75,17 @@ export default function Transactions() {
     LUMPSUM: 'text-amber-400 bg-amber-400/10',
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       <div>
         <h1 className="text-2xl font-bold">Transactions</h1>
         <p className="text-[var(--text-muted)] text-sm mt-1">{transactions.length} total · {filtered.length} shown</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
+        <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)] transition-all duration-200 hover:border-blue-500/30 hover:-translate-y-0.5">
           <div className="flex items-center justify-between">
             <div><p className="text-[var(--text-muted)] text-sm">Total Buys</p><p className="text-2xl font-bold text-blue-400 mt-1">{summary.buys}</p></div>
             <TrendingUp className="w-8 h-8 text-blue-400/30" />
@@ -149,7 +150,8 @@ export default function Transactions() {
       </div>
 
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
-        <table className="w-full">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full min-w-[600px]">
           <thead className="bg-[var(--input-bg)] text-left">
             <tr>
               <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Date</th>
@@ -193,6 +195,7 @@ export default function Transactions() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

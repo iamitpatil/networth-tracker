@@ -344,9 +344,9 @@ export default function Dashboard() {
                       <span className="text-sm font-medium truncate">{goal.name}</span>
                       <span className="text-xs text-[var(--text-muted)]">{progress.toFixed(0)}%</span>
                     </div>
-                    <div className="w-full bg-[var(--input-bg)] rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden shadow-inner">
                       <div
-                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        className="h-full bg-gradient-to-r from-blue-500 via-blue-400 to-blue-600 rounded-full transition-all duration-700 ease-out"
                         style={{ width: `${progress}%` }}
                       />
                     </div>

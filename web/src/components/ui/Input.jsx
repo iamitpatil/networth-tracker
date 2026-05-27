@@ -27,11 +27,11 @@ export default function Input({
         aria-invalid={error ? 'true' : undefined}
         aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
         className={`
-          w-full px-3 py-2 rounded-lg
+          w-full px-3 py-2.5 rounded-lg
           bg-[var(--input-bg)] border border-[var(--border)]
           text-[var(--text)] placeholder:text-[var(--text-muted)]
           focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500
-          transition-colors
+          transition-all duration-200
           ${error ? 'border-red-500 focus:ring-red-500/40 focus:border-red-500' : ''}
           ${props.disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}

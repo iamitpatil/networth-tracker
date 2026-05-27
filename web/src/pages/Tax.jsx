@@ -415,7 +415,8 @@ export default function Tax() {
                 Capital Gains Details
               </h2>
             </div>
-            <table className="w-full">
+            <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full min-w-[500px]">
               <thead className="bg-[var(--input-bg)] text-left">
                 <tr>
                   <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Asset</th>
@@ -441,6 +442,7 @@ export default function Tax() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Tax Harvesting Opportunities */}
@@ -487,26 +489,28 @@ export default function Tax() {
                 Tax Rules Reference
               </h2>
             </div>
-            <table className="w-full">
-              <thead className="bg-[var(--input-bg)] text-left">
-                <tr>
-                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Asset Type</th>
-                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Tax Rate</th>
-                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Threshold</th>
-                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Notes</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {TAX_RULES.map((rule, idx) => (
-                  <tr key={idx} className="hover:bg-[var(--hover-bg)]">
-                    <td className="px-4 py-3 font-medium text-sm">{rule.asset}</td>
-                    <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-400/10 text-blue-400">{rule.rate}</span></td>
-                    <td className="px-4 py-3 text-[var(--text-muted)] text-sm">{rule.threshold}</td>
-                    <td className="px-4 py-3 text-[var(--text-muted)] text-sm">{rule.notes}</td>
+            <div className="overflow-x-auto scrollbar-thin">
+              <table className="w-full min-w-[500px]">
+                <thead className="bg-[var(--input-bg)] text-left">
+                  <tr>
+                    <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Asset Type</th>
+                    <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Tax Rate</th>
+                    <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Threshold</th>
+                    <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Notes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {TAX_RULES.map((rule, idx) => (
+                    <tr key={idx} className="hover:bg-[var(--hover-bg)]">
+                      <td className="px-4 py-3 font-medium text-sm">{rule.asset}</td>
+                      <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-400/10 text-blue-400">{rule.rate}</span></td>
+                      <td className="px-4 py-3 text-[var(--text-muted)] text-sm">{rule.threshold}</td>
+                      <td className="px-4 py-3 text-[var(--text-muted)] text-sm">{rule.notes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

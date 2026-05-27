@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import client from '../api/client'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { useFeature } from '../context/FeatureFlagContext'
+import { PageSkeleton } from '../components/ui'
 
 const BROKERS = [
   'Zerodha', 'Groww', 'Angel One', 'ICICI Direct', 'HDFC Securities',
@@ -279,7 +280,7 @@ export default function DematAccounts() {
     )
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">

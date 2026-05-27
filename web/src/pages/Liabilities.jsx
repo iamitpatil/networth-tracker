@@ -6,6 +6,7 @@ import { useReferenceData } from '../hooks/useReferenceData'
 import CreditCardSpend from '../components/CreditCardSpend'
 import StyledSelect from '../components/ui/StyledSelect'
 import { ConfirmDialog } from '../components/ui/Modal'
+import { PageSkeleton } from '../components/ui'
 
 const LIABILITY_CATEGORIES = [
   {
@@ -175,10 +176,10 @@ export default function Liabilities() {
     })
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

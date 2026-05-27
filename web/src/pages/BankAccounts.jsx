@@ -4,6 +4,7 @@ import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCirc
 import { useReferenceData } from '../hooks/useReferenceData'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
 
 export default function BankAccounts() {
   const { options: bankNames } = useReferenceData('BANK')
@@ -106,7 +107,7 @@ export default function BankAccounts() {
     loadTransactions()
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">
@@ -301,7 +302,8 @@ export default function BankAccounts() {
                 </div>
               ) : (
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
-                  <table className="w-full">
+                  <div className="overflow-x-auto scrollbar-thin">
+                  <table className="w-full min-w-[600px]">
                     <thead className="bg-[var(--bg)]/50 text-left">
                       <tr>
                         <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Amount</th>
@@ -356,6 +358,7 @@ export default function BankAccounts() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </>

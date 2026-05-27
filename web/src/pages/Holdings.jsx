@@ -1610,7 +1610,7 @@ export default function Holdings() {
           )}
         </div>
 
-        <div className="overflow-x-auto -mx-4 sm:mx-0">
+        <div className="overflow-x-auto -mx-4 sm:mx-0 scrollbar-thin">
         <table className="w-full min-w-[1000px]">
           <thead className="bg-[var(--bg)]/50 text-left sticky top-0 z-10">
             <tr>

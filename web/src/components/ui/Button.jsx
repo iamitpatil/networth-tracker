@@ -1,11 +1,11 @@
 import { Loader2 } from 'lucide-react'
 
 const variants = {
-  primary: 'bg-blue-500 hover:bg-blue-600 text-white border-transparent',
-  secondary: 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)] text-[var(--text)] border border-[var(--border)]',
-  danger: 'bg-red-500 hover:bg-red-600 text-white border-transparent',
+  primary: 'bg-blue-500 hover:bg-blue-600 text-white border-transparent hover:-translate-y-0.5 hover:shadow-md hover:shadow-blue-500/20',
+  secondary: 'bg-[var(--input-bg)] hover:bg-[var(--hover-bg)] text-[var(--text)] border border-[var(--border)] hover:-translate-y-0.5',
+  danger: 'bg-red-500 hover:bg-red-600 text-white border-transparent hover:-translate-y-0.5 hover:shadow-md hover:shadow-red-500/20',
   ghost: 'bg-transparent hover:bg-[var(--hover-bg)] text-[var(--text)] border-transparent',
-  outline: 'bg-transparent hover:bg-[var(--hover-bg)] text-[var(--text)] border border-[var(--border)]',
+  outline: 'bg-transparent hover:bg-[var(--hover-bg)] text-[var(--text)] border border-[var(--border)] hover:-translate-y-0.5',
   link: 'bg-transparent hover:text-blue-300 text-blue-400 border-transparent p-0',
 }
 
@@ -35,9 +35,9 @@ export default function Button({
       className={`
         inline-flex items-center justify-center gap-2
         rounded-lg font-medium
-        transition-all duration-150
-        focus:outline-none focus:ring-2 focus:ring-blue-500/40
-        disabled:opacity-50 disabled:cursor-not-allowed
+        transition-all duration-200 ease-out
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]
+        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0
         ${variants[variant]}
         ${variant === 'link' ? '' : sizes[size]}
         ${className}

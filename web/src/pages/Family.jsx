@@ -3,6 +3,7 @@ import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
 import { Users, Plus, X, Check, Ban, LogOut, Trash2, Mail, UserPlus, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { ConfirmDialog } from '../components/ui/Modal'
+import { PageSkeleton } from '../components/ui'
 
 export default function Family() {
   const { fetchPending, fetchFamilies } = useFamilyView()
@@ -117,7 +118,7 @@ export default function Family() {
     })
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">

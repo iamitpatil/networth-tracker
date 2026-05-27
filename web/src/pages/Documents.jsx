@@ -3,6 +3,7 @@ import { FileText, Plus, Trash2, Download, Upload, X, Loader2, FolderOpen, Build
 import client from '../api/client'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
 
 const CATEGORIES = ['INVOICE', 'ID_PROOF', 'STATEMENT', 'REPORT', 'OTHER']
 
@@ -141,7 +142,7 @@ export default function Documents() {
     if (file) setSelectedFile(file)
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">

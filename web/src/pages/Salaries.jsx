@@ -3,6 +3,8 @@ import client from '../api/client'
 import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Banknote, Upload, ChevronDown, ChevronRight, FileText, Download } from 'lucide-react'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
+import { formatINR } from '../utils/format'
 
 export default function Salaries() {
   const [salaries, setSalaries] = useState([])
@@ -167,10 +169,10 @@ export default function Salaries() {
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     }).reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0), [salaries])
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Salary Records</h1>
@@ -267,73 +269,75 @@ export default function Salaries() {
             <p className="text-sm mt-1">Add your salary or upload a slip to track income</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-[var(--bg)]/50 text-left">
-              <tr>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Employer</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Bank Account</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Date</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Components</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Slip</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {salaries.map((s) => (
-                <tr key={s.id} className="hover:bg-[var(--hover-bg)]">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Briefcase className="w-4 h-4 text-blue-400" />
-                      <div>
-                        <p className="font-medium">{s.employerName}</p>
-                        {s.notes && <p className="text-xs text-[var(--text-muted)]">{s.notes}</p>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">
-                    <div className="flex items-center justify-end gap-1">
-                      <Banknote className="w-4 h-4 text-green-400" />
-                      Rs. {(parseFloat(s.amount) || 0).toLocaleString('en-IN')}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                    {s.bankAccountId ? accounts.find(a => a.id === s.bankAccountId)?.accountName || '-' : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                    {s.payDate ? new Date(s.payDate).toLocaleDateString('en-IN') : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {s.components && typeof s.components === 'object' && Object.keys(s.components).length > 0 ? (
-                      <button onClick={() => setExpandedRow(expandedRow === s.id ? null : s.id)}
-                        className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition">
-                        {expandedRow === s.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        {Object.keys(s.components).length} items
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)]">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {salaryDocs[s.id] ? (
-                      <button onClick={() => handleDownload(s.id)}
-                        className="flex items-center gap-1 text-sm text-emerald-400 hover:text-emerald-300 transition">
-                        <Download className="w-4 h-4" /> Slip
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)]">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1">
-                      <button onClick={() => openEdit(s)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleDelete(s.id)} aria-label="Delete salary" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </td>
+<div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full min-w-[700px]">
+              <thead className="bg-[var(--bg)]/50 text-left">
+                <tr>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Employer</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Bank Account</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Date</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Components</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Slip</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {salaries.map((s) => (
+                  <tr key={s.id} className="hover:bg-[var(--hover-bg)]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Briefcase className="w-4 h-4 text-blue-400" />
+                        <div>
+                          <p className="font-medium">{s.employerName}</p>
+                          {s.notes && <p className="text-xs text-[var(--text-muted)]">{s.notes}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">
+                      <p className="text-green-400">{formatINR(s.amount)}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{s.frequency}</p>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {accounts.find(a => a.id === s.bankAccountId)?.accountName || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {s.payDate ? new Date(s.payDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {s.components && Object.entries(s.components).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(s.components).slice(0, 3).map(([key, val]) => (
+                            <span key={key} className="px-1.5 py-0.5 bg-[var(--input-bg)] rounded text-xs">
+                              {key}: {formatINR(val)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.paySlipUrl ? (
+                        <button onClick={() => handleDownload(s.id)}
+                          className="flex items-center gap-1 text-sm text-emerald-400 hover:text-emerald-300 transition">
+                          <Download className="w-4 h-4" /> Slip
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => openEdit(s)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(s.id)} aria-label="Delete salary" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
