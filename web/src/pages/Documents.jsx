@@ -119,7 +119,7 @@ export default function Documents() {
 
   async function handleDownload(doc) {
     try {
-      const { data, headers } = await client.get(`/documents/${doc.id}/download`, {
+      const { data } = await client.get(`/documents/${doc.id}/download`, {
         responseType: 'blob',
       })
       const url = window.URL.createObjectURL(new Blob([data]))

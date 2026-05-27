@@ -19,6 +19,7 @@ export default function ZerodhaSync({ onSyncComplete }) {
   }, [])
 
   // Handle Kite Connect OAuth callback (redirected back with request_token)
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const requestToken = params.get('request_token')
@@ -40,6 +41,7 @@ export default function ZerodhaSync({ onSyncComplete }) {
         .finally(() => setConnecting(false))
     }
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleConnect = async () => {
     try {

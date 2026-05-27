@@ -229,7 +229,6 @@ function ToolCallCard({ tc }) {
   const dur = tc.durationMs != null ? (tc.durationMs / 1000).toFixed(1) + 's' : null
   const pending = tc.type === 'pending_approval'
   const isError = tc.type === 'error' || tc.result?.isError
-  const resultStr = tc.result ? JSON.stringify(tc.result, null, 2) : ''
   const hasAgentSteps = tc.agentSteps && tc.agentSteps.length > 0
 
   return (
@@ -439,36 +438,6 @@ function EditableSalaryCard({ data, documentId, onSaved }) {
   )
 }
 
-function TransactionCard({ data }) {
-  const txns = data?.transactions || []
-  if (!txns.length) return null
-  const total = data?.totalAmountDue || data?.newCharges || 0
-  return (
-    <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 overflow-hidden">
-      <div className="p-3 border-b border-purple-500/10 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold">{data.cardIssuer || ''} {data.cardType || ''} {data.cardLastFourDigits ? '• ' + data.cardLastFourDigits : ''}</p>
-          <p className="text-[11px] text-[var(--text-muted)]">{txns.length} transactions</p>
-        </div>
-        <p className="text-lg font-bold text-purple-400">₹{Number(total).toLocaleString()}</p>
-      </div>
-      <div className="divide-y divide-purple-500/10 max-h-60 overflow-y-auto">
-        {txns.map((t, i) => (
-          <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
-            <div className="flex-1 min-w-0">
-              <p className="truncate font-medium">{t.description || t.category || 'Transaction'}</p>
-              <p className="text-[11px] text-[var(--text-muted)]">{t.category || ''}{t.date ? ' • ' + t.date : ''}</p>
-            </div>
-            <p className={`font-mono font-medium ml-2 ${Number(t.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {Number(t.amount) < 0 ? '−' : '+'}₹{Math.abs(Number(t.amount)).toLocaleString()}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function ThinkingSection({ steps, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -633,7 +602,7 @@ export default function AIChat() {
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let buffer = '', currentEvent = '', pendingData = ''
-      let botContent = '', botSessionId = sessionId, botPendingActionId = null
+      let botContent = '', botPendingActionId = null
       const botMsgId = nextId()
       let accTools = []     // flat list for bot message toolCalls
       let accSteps = []     // ordered timeline of reasoning + tools
@@ -753,7 +722,6 @@ export default function AIChat() {
                 setLiveSteps([...accSteps])
               } else if (currentEvent === 'response') {
                 botContent = d.content || ''
-                botSessionId = d.sessionId || sessionId
                 if (d.pendingActionId) botPendingActionId = d.pendingActionId
                 if (d.sessionId) setSessionId(d.sessionId)
                 setMessages(prev => [...prev, {
@@ -792,7 +760,7 @@ export default function AIChat() {
         }])
       }
       loadSessions()
-    } catch (err) {
+    } catch {
       try {
         const { data } = await client.post('/ai/chat-v2', { message: text, sessionId })
         setMessages(prev => [...prev, { user: false, content: data.response, id: nextId(), toolCalls: data.toolCalls || [], pendingActionId: data.pendingActionId || null }])
@@ -846,7 +814,7 @@ export default function AIChat() {
   }
 
   const loadSessions = async () => {
-    try { const { data } = await client.get('/ai/sessions'); setSessions(data.sessions || []) } catch {}
+    try { const { data } = await client.get('/ai/sessions'); setSessions(data.sessions || []) } catch { /* ignored */ }
   }
 
   const loadSession = async (id) => {
@@ -867,7 +835,7 @@ export default function AIChat() {
 
   const deleteSession = async (id, e) => {
     e.stopPropagation()
-    try { await client.delete(`/ai/sessions/${id}`); setSessions(s => s.filter(x => x.id !== id)); if (sessionId === id) { setSessionId(null); setMessages([]) }; toast.success('Deleted') } catch {}
+    try { await client.delete(`/ai/sessions/${id}`); setSessions(s => s.filter(x => x.id !== id)); if (sessionId === id) { setSessionId(null); setMessages([]) }; toast.success('Deleted') } catch { /* ignored */ }
   }
 
   const clearChat = () => { setSessionId(null); setMessages([]); setLoading(false); setLiveSteps([]); setLiveThought('') }
@@ -1062,7 +1030,7 @@ export default function AIChat() {
                         if (typeof r === 'string') { const p = JSON.parse(r); summary = p.message || p.summary || summary }
                         else if (r?.message) summary = r.message
                         else if (r?.summary) summary = r.summary
-                      } catch {}
+                      } catch { /* ignored */ }
                       const args = pendingTc?.arguments || pendingTc?.args || null
                       return <PendingActionCard action={{ id: msg.pendingActionId, toolName, summary, arguments: args }} onConfirm={handleConfirmAction} onReject={handleRejectAction} loading={confirmLoading === msg.pendingActionId} />
                     })()}

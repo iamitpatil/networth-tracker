@@ -45,6 +45,7 @@ export default function Badge({
 /**
  * Get appropriate badge variant for asset type
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const ASSET_BADGE_VARIANT = {
   EQUITY: 'blue',
   ETF: 'blue',

@@ -55,7 +55,7 @@ function LiveToolCall({ toolCall, isActive }) {
 }
 
 // Completed tool call card (non-live)
-function ToolCallCard({ toolCall, index }) {
+function ToolCallCard({ toolCall }) {
   const [expanded, setExpanded] = useState(false)
   const toolName = toolCall.tool || toolCall.name || 'unknown'
   const duration = toolCall.durationMs ? (toolCall.durationMs / 1000).toFixed(1) + 's' : null
@@ -133,46 +133,6 @@ function PendingActionCard({ action, onConfirm, onReject, loading }) {
   )
 }
 
-// Transaction card — extracted from credit card bills etc.
-function TransactionCard({ data }) {
-  const transactions = data?.transactions || []
-  const total = data?.totalAmountDue || data?.newCharges || 0
-  const issuer = data?.cardIssuer || ''
-  const cardType = data?.cardType || ''
-  const lastFour = data?.cardLastFourDigits || ''
-
-  if (!transactions.length) return null
-
-  return (
-    <div className="ml-8 mt-2 rounded-lg border border-purple-500/20 bg-purple-500/5 overflow-hidden">
-      <div className="p-2.5 border-b border-purple-500/10">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold">
-              {issuer} {cardType} {lastFour ? '• ' + lastFour : ''}
-            </p>
-            <p className="text-[10px] text-[var(--text-muted)]">{transactions.length} transactions</p>
-          </div>
-          <p className="text-sm font-bold text-purple-400">₹{Number(total).toLocaleString()}</p>
-        </div>
-      </div>
-      <div className="divide-y divide-purple-500/10 max-h-48 overflow-y-auto">
-        {transactions.map((t, i) => (
-          <div key={i} className="flex items-center justify-between px-2.5 py-1.5 text-[11px]">
-            <div className="flex-1 min-w-0">
-              <p className="truncate font-medium">{t.description || t.category || 'Transaction'}</p>
-              <p className="text-[var(--text-muted)] text-[10px]">{t.category || ''} {t.date ? '• ' + t.date : ''}</p>
-            </div>
-            <p className={`font-mono font-medium ml-2 ${Number(t.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {Number(t.amount) < 0 ? '' : '+'}₹{Math.abs(Number(t.amount)).toLocaleString()}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function FloatingReasoningCard({ step, isLive = false }) {
   const [expanded, setExpanded] = useState(isLive && !step.done)
   return (
@@ -234,7 +194,7 @@ export default function FloatingChat() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [mcpTools, setMcpTools] = useState([])
+  const [, setMcpTools] = useState([])
   const [sessionId, setSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [showSessions, setShowSessions] = useState(false)
@@ -252,7 +212,7 @@ export default function FloatingChat() {
     try {
       const { data } = await client.get('/ai/sessions')
       setSessions(data.sessions || [])
-    } catch {}
+    } catch { /* ignored */ }
     setSessionsLoading(false)
   }, [])
 
@@ -528,21 +488,6 @@ export default function FloatingChat() {
   }
 
   const handleDragOver = (e) => e.preventDefault()
-
-  // Extract transaction data from tool results
-  const findTransactionData = (toolCalls) => {
-    if (!toolCalls) return null
-    for (const tc of toolCalls) {
-      const result = tc.result
-      if (result?.transactions || result?.cardIssuer) return result
-      if (result?.items) {
-        for (const item of result.items) {
-          if (item?.transactions || item?.cardIssuer) return item
-        }
-      }
-    }
-    return null
-  }
 
   return (
     <>

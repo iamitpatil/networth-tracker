@@ -39,10 +39,6 @@ function getTypeInfo(typeValue) {
   return TYPE_MAP[typeValue] || { label: typeValue, icon: Wallet, color: 'gray', description: '' }
 }
 
-function getCategoryForType(typeValue) {
-  return LIABILITY_CATEGORIES.find(c => c.types.some(t => t.value === typeValue)) || LIABILITY_CATEGORIES[0]
-}
-
 const colorMap = {
   blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', ring: 'ring-blue-500/30' },
   indigo: { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/20', ring: 'ring-indigo-500/30' },
@@ -58,7 +54,6 @@ const fmt = (v) => v != null ? `₹${Number(v).toLocaleString('en-IN')}` : '—'
 export default function Liabilities() {
   const [activeTab, setActiveTab] = useState('loans')
   const { options: lenders } = useReferenceData('LOAN_LENDER')
-  const [totalLiabilities, setTotalLiabilities] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [localLiabilities, setLocalLiabilities] = useState([])
@@ -77,9 +72,6 @@ export default function Liabilities() {
   })
 
   useEffect(() => {
-    client.get('/net-worth/breakdown')
-      .then((res) => setTotalLiabilities(res.data.totalLiabilities || 0))
-      .catch(() => {})
     client.get('/liabilities')
       .then((res) => setLocalLiabilities(res.data || []))
       .catch(() => {})

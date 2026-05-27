@@ -126,7 +126,7 @@ export default function Profile() {
     try {
       await client.delete(`/themes/${id}`)
       window.location.reload()
-    } catch {}
+    } catch { /* ignored */ }
   }
 
   const handleEdit = (theme) => {
@@ -567,7 +567,7 @@ function DataRefresh() {
         const { data } = await client.get('/market/backfill/status')
         setBackfillStatus(data)
         if (!data.running) setPolling(false)
-      } catch {}
+      } catch { /* ignored */ }
     }, 2000)
     return () => clearInterval(interval)
   }, [polling])
@@ -608,7 +608,7 @@ function DataRefresh() {
   const handleCancel = async () => {
     try {
       await client.post('/market/backfill/cancel')
-    } catch {}
+    } catch { /* ignored */ }
   }
 
   const isRunning = backfillStatus?.running

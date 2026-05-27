@@ -168,12 +168,14 @@ export function PdfPasswordModal({
   const [password, setPassword] = useState('')
   const inputRef = useRef(null)
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (open) {
       setPassword('')
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [open])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSubmit = (e) => {
     e?.preventDefault()

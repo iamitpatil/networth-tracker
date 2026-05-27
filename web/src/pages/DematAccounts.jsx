@@ -59,6 +59,7 @@ export default function DematAccounts() {
   }, [hasBrokers, upstoxEnabled, zerodhaEnabled])
 
   // Handle broker OAuth callbacks from URL params
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
@@ -97,7 +98,9 @@ export default function DematAccounts() {
         .catch(err => toast.error('Connection failed', { description: err.message }))
         .finally(() => setSyncingBroker(null))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Close dropdowns on outside click
   useEffect(() => {

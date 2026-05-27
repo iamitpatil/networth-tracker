@@ -1,3 +1,5 @@
+import { useId } from 'react'
+
 /**
  * Form input with label and error display.
  */
@@ -11,7 +13,8 @@ export default function Input({
   id,
   ...props
 }) {
-  const inputId = id || `input-${Math.random().toString(36).slice(2, 9)}`
+  const generatedId = useId()
+  const inputId = id || generatedId
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -47,7 +50,8 @@ export default function Input({
 }
 
 export function Select({ label, error, hint, required, children, className = '', id, ...props }) {
-  const selectId = id || `select-${Math.random().toString(36).slice(2, 9)}`
+  const generatedSelectId = useId()
+  const selectId = id || generatedSelectId
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -81,7 +85,8 @@ export function Select({ label, error, hint, required, children, className = '',
 }
 
 export function Textarea({ label, error, hint, required, className = '', id, ...props }) {
-  const textareaId = id || `textarea-${Math.random().toString(36).slice(2, 9)}`
+  const generatedTextareaId = useId()
+  const textareaId = id || generatedTextareaId
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>

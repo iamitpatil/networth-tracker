@@ -21,7 +21,6 @@ import {
   Bot,
   ChevronDown,
   Users,
-  Brain,
 } from 'lucide-react'
 import FloatingChat from './FloatingChat'
 import AppLogo from './AppLogo'

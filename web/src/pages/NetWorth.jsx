@@ -36,10 +36,6 @@ export default function NetWorth() {
   const [liabilities, setLiabilities] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchAll()
-  }, [])
-
   async function fetchAll() {
     try {
       setLoading(true)
@@ -76,6 +72,10 @@ export default function NetWorth() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchAll()
+  }, [])
 
   if (loading) return <PageSkeleton />
 

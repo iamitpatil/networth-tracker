@@ -37,14 +37,14 @@ export default function CreditCardSpend() {
   const [monthAnalysis, setMonthAnalysis] = useState(null)
   const [loadingMonth, setLoadingMonth] = useState(false)
 
-  useEffect(() => {
-    loadSpendHistory()
-  }, [])
-
   const loadSpendHistory = () => {
     client.get('/liabilities/cc-spend/reports').then(r => setSpendReports(r.data || [])).catch(() => {})
     client.get('/liabilities/cc-spend/trend').then(r => setSpendTrend(r.data || [])).catch(() => {})
   }
+
+  useEffect(() => {
+    loadSpendHistory()
+  }, [])
 
   const loadMonthDetail = async (month) => {
     setSelectedMonth(month)
@@ -352,7 +352,7 @@ export default function CreditCardSpend() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={[...spendTrend].reverse()}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={m => { const [y,mo] = (m||'').split('-'); return ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo] || m }} />
+                    <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={m => { const [,mo] = (m||'').split('-'); return ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo] || m }} />
                     <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={v => v >= 100000 ? `${(v/100000).toFixed(1)}L` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} width={45} />
                     <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} labelFormatter={m => { const [y,mo] = (m||'').split('-'); return `${['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo]} ${y}` }} />
                     <Bar dataKey="total" fill="#6366F1" radius={[4,4,0,0]} />

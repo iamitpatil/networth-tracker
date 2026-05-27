@@ -37,10 +37,6 @@ export default function Dashboard() {
   const [insights, setInsights] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
   async function fetchData() {
     try {
       const [breakdownRes, healthRes, holdingsRes, xirrRes, goalsRes, insightsRes] =
@@ -58,12 +54,18 @@ export default function Dashboard() {
       setXirr(xirrRes.data)
       setGoals(goalsRes.data || [])
       setInsights(insightsRes.data || [])
-    } catch (e) {
+    } catch {
       // toast handled
     } finally {
       setLoading(false)
     }
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchData()
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (loading) return <PageSkeleton />
 

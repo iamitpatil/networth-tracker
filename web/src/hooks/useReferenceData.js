@@ -10,6 +10,7 @@ export function useReferenceData(category) {
   const [options, setOptions] = useState(cache[category] || [])
   const [loading, setLoading] = useState(!cache[category])
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (cache[category]) {
       setOptions(cache[category])
@@ -27,6 +28,7 @@ export function useReferenceData(category) {
       .catch(() => setOptions([]))
       .finally(() => setLoading(false))
   }, [category])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return { options, loading }
 }

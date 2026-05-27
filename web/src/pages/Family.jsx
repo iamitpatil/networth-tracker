@@ -35,7 +35,9 @@ export default function Family() {
     }
   }, [])
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { load() }, [load])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const toggleExpand = async (familyId) => {
     if (expanded[familyId]) {

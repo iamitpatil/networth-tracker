@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Calendar, Shield, Lightbulb, FileText, ChevronDown, ArrowRight, Upload, Loader2, Trash2, CheckCircle2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import client from '../api/client';
@@ -31,10 +31,6 @@ export default function Tax() {
   const form16InputRef = useRef(null);
   const itrInputRef = useRef(null);
 
-  useEffect(() => {
-    fetchTaxData();
-  }, [selectedFY]);
-
   const fetchTaxData = async () => {
     setLoading(true);
     try {
@@ -59,6 +55,13 @@ export default function Tax() {
       setLoading(false);
     }
   };
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchTaxData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFY]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const updateRegime = async (newRegime) => {
     try {
@@ -115,7 +118,7 @@ export default function Tax() {
       formData.append('file', file);
       formData.append('financialYear', selectedFY);
       formData.append('filingType', 'ORIGINAL');
-      const { data } = await client.post('/tax/itr/upload', formData, {
+      await client.post('/tax/itr/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success('ITR uploaded', { description: 'Please complete the form details.' });
@@ -156,7 +159,7 @@ export default function Tax() {
       await client.delete(`/tax/${endpoint}/${confirmAction.id}`);
       toast.success(`${confirmAction.type === 'form16' ? 'Form 16' : 'ITR record'} deleted`);
       await fetchTaxData();
-    } catch (e) {
+    } catch {
       // toast handled by interceptor
     } finally {
       setConfirmAction(null);

@@ -64,6 +64,14 @@ export default function AccountsHub() {
     return refs.find(r => r.value === name)?.metadata?.logo || null
   }
 
+  const loadAll = async () => {
+    try {
+      const { data: d } = await client.get('/accounts')
+      setData(d)
+    } catch { /* ignored */ } finally { setLoading(false) }
+  }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { loadAll() }, [])
 
   // Fetch broker statuses
@@ -113,7 +121,10 @@ export default function AccountsHub() {
         .catch(err => toast.error('Connection failed', { description: err.message }))
         .finally(() => setSyncingBroker(null))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Close import dropdown on outside click
   useEffect(() => {
@@ -122,13 +133,6 @@ export default function AccountsHub() {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [importOpen])
-
-  const loadAll = async () => {
-    try {
-      const { data: d } = await client.get('/accounts')
-      setData(d)
-    } catch {} finally { setLoading(false) }
-  }
 
   const resetForm = () => { setForm({}); setShowForm(false); setEditingId(null) }
 
@@ -721,7 +725,6 @@ function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const { options: fundManagers } = useReferenceData('NPS_FUND_MANAGER')
   const { options: tiers } = useReferenceData('NPS_TIER')
   const { options: schemes } = useReferenceData('NPS_SCHEME')
-  const selectedCra = NPS_CRAS.find(c => c.value === form.cra)
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

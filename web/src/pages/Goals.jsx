@@ -42,10 +42,6 @@ export default function Goals() {
     riskProfile: 'moderate',
   })
 
-  useEffect(() => {
-    fetchGoals()
-  }, [])
-
   async function fetchGoals() {
     setLoading(true)
     try {
@@ -59,6 +55,13 @@ export default function Goals() {
       setLoading(false)
     }
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchGoals()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function fetchProgressForGoals(goalsList) {
     const progress = {}

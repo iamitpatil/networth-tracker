@@ -16,7 +16,7 @@ export default function Salaries() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [parsedData, setParsedData] = useState(null)
-  const [expandedRow, setExpandedRow] = useState(null)
+  const [expandedRow] = useState(null)
   const [salaryDocs, setSalaryDocs] = useState({})
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
@@ -33,13 +33,14 @@ export default function Salaries() {
         try {
           const res = await client.get(`/salaries/${sal.id}/document`)
           docs[sal.id] = res.data
-        } catch {}
+        } catch { /* ignored */ }
       }
       setSalaryDocs(docs)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [])
 
   const resetForm = () => setForm({ employerName: '', amount: '', bankAccountId: '', payDate: new Date().toISOString().slice(0, 10), notes: '', components: { earnings: {}, deductions: {} } })
@@ -78,7 +79,7 @@ export default function Salaries() {
           try {
             const res = await client.get(`/salaries/${data.id}/document`)
             setSalaryDocs((d) => ({ ...d, [data.id]: res.data }))
-          } catch {}
+          } catch { /* ignored */ }
         }
       }
       setShowForm(false); setParsedData(null)
@@ -158,7 +159,7 @@ export default function Salaries() {
       a.href = url; a.download = doc.originalFilename
       document.body.appendChild(a); a.click()
       a.remove(); window.URL.revokeObjectURL(url)
-    } catch {}
+    } catch { /* ignored */ }
   }
 
   const totalMonthly = useMemo(() =>

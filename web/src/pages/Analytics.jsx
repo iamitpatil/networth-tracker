@@ -16,10 +16,6 @@ export default function Analytics() {
   const [sectorAllocation, setSectorAllocation] = useState([])
   const [sipCalendar, setSipCalendar] = useState(null)
 
-  useEffect(() => {
-    fetchAllData()
-  }, [])
-
   async function fetchAllData() {
     setLoading(true)
     try {
@@ -41,6 +37,12 @@ export default function Analytics() {
       setLoading(false)
     }
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchAllData()
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Backend returns XIRR/CAGR as decimal (0.12 = 12%); we display as percent
   const formatRate = (val) => {

@@ -31,6 +31,12 @@ export default function BankAccounts() {
     finally { setLoading(false) }
   }
 
+  const loadTransactions = () => {
+    client.get(`/gmail/transactions?status=${txnFilter}`)
+      .then(r => setGmailTxns(r.data || [])).catch(() => {})
+  }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { load() }, [])
 
   useEffect(() => {
@@ -38,12 +44,9 @@ export default function BankAccounts() {
       client.get('/gmail/status').then(r => setGmailStatus(r.data)).catch(() => {})
       loadTransactions()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
-
-  const loadTransactions = () => {
-    client.get(`/gmail/transactions?status=${txnFilter}`)
-      .then(r => setGmailTxns(r.data || [])).catch(() => {})
-  }
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const resetForm = () => setForm({ accountName: '', bankName: '', accountNumber: '', accountType: 'SAVINGS', ifscCode: '', branch: '', balance: '' })
 

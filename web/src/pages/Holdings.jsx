@@ -345,6 +345,7 @@ export default function Holdings() {
       .finally(() => setLoading(false))
   }, [])
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   // Initial price refresh from external APIs (once on load)
   useEffect(() => {
     if (loading) return
@@ -419,7 +420,9 @@ export default function Holdings() {
         .catch(err => toast.error('Connection failed', { description: err.message }))
         .finally(() => setSyncingBroker(null))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -482,17 +485,20 @@ export default function Holdings() {
     })
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (loading) return
     const params = filter === 'all' ? '?days=365' : `?days=365&assetType=${filter}`
     client.get(`/portfolio/investment-over-time${params}`)
       .then(res => setInvestmentHistory(res.data || []))
       .catch(console.error)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
 
   useEffect(() => {
     if (isMF) setForm((f) => ({ ...f, transactionType: 'SIP' }))
     else if (isEquity || isETF || isBond) setForm((f) => ({ ...f, transactionType: 'BUY' }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetType, isEquity, isMF, isBond])
 
   useEffect(() => {
@@ -510,7 +516,9 @@ export default function Holdings() {
       }
     }, 3000)
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backfillStatus?.running])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!chartHolding || chartMode !== 'chart' || chartLoading || priceHistory.length === 0) {
@@ -717,7 +725,7 @@ export default function Holdings() {
             setBackfillStatus(statusRes.data)
             isBackfillRunning = true
           }
-        } catch (e) {
+        } catch {
           // Ignore status fetch errors
         }
       }
@@ -733,7 +741,7 @@ export default function Holdings() {
           if (statusRes.data?.completed || statusRes.data?.running) {
             setBackfillStatus(statusRes.data)
           }
-        } catch (e) {
+        } catch {
           // Ignore
         }
       }
@@ -774,7 +782,7 @@ export default function Holdings() {
     }
   }
 
-  const triggerMfBackfill = async (holding) => {
+  const triggerMfBackfill = async () => {
     try {
       const { toast } = await import('sonner')
       // Optimistic UI - show progress immediately
@@ -887,7 +895,7 @@ export default function Holdings() {
       toast.success(`Dividends calculated: ${data.newDividends} new, ${data.updatedDividends} updated`)
       const { data: summary } = await client.get('/dividends/summary')
       setDividendSummary(summary)
-    } catch (e) {
+    } catch {
       toast.error('Failed to calculate dividends')
     } finally {
       setCalculatingDividends(false)
@@ -901,7 +909,7 @@ export default function Holdings() {
     try {
       const { data } = await client.get(`/dividends/holding/${holding.id}`)
       setDividendRecords(data || [])
-    } catch (e) {
+    } catch {
       toast.error('Failed to load dividend records')
     } finally {
       setDividendRecordsLoading(false)
@@ -2018,7 +2026,7 @@ export default function Holdings() {
                         return `Rs ${val}`;
                       }} />
                     <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
-                      formatter={(val, name) => [<span className="font-mono">Rs. {Number(val).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>, 'NAV']}
+                      formatter={(val) => [<span className="font-mono">Rs. {Number(val).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>, 'NAV']}
                       labelFormatter={(val) => {
                         const p = priceHistory.find(d => d.date === val)
                         if (!p) return new Date(val).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' })

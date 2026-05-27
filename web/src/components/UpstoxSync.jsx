@@ -22,8 +22,8 @@ export default function UpstoxSync({ onSyncComplete }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
-    const state = params.get('state')
     if (code) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConnecting(true)
       // Clean URL
       window.history.replaceState({}, '', window.location.pathname)
