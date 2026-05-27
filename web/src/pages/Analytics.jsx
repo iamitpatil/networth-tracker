@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { PieChart, Pie, Cell, Sector, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, Calendar, AlertCircle, CheckCircle, XCircle, Clock, BarChart3, PieChart as PieIcon, CalendarDays, Info } from 'lucide-react'
+import { TrendingUp, Calendar, AlertCircle, CheckCircle, XCircle, Clock, BarChart3, PieChart as PieIcon, CalendarDays, Info } from 'lucide-react'
 import client from '../api/client'
-import { formatINR, formatPercent, formatDate } from '../utils/format'
+import { formatINR, formatDate } from '../utils/format'
 import { CHART_PALETTE } from '../utils/colors'
 import { Card, PageHeader, PageSkeleton, EmptyState, Badge, Tooltip as UITooltip } from '../components/ui'
 

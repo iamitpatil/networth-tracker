@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react'
-import client from '../api/client'
-
 const cache = {} // in-memory cache per category
 
 /**

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { FileText, Plus, Trash2, Download, Upload, X, Loader2, FolderOpen, Building2 } from 'lucide-react'
+import { FileText, Trash2, Download, Upload, Loader2, FolderOpen, Building2 } from 'lucide-react'
 import client from '../api/client'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
-import { Link2, Unlink, RefreshCw, Loader2, CheckCircle, ExternalLink } from 'lucide-react'
+import { Link2, Unlink, RefreshCw, Loader2, ExternalLink } from 'lucide-react'
 import { ConfirmDialog } from './ui/Modal'
 
 export default function UpstoxSync({ onSyncComplete }) {

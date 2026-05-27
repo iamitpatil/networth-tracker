@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import client from '../api/client'
-import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Download, Search } from 'lucide-react'
+import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Search } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'

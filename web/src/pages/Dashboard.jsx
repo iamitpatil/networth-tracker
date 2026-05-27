@@ -3,16 +3,15 @@ import client from '../api/client'
 import {
   TrendingUp, TrendingDown, Target, Activity, Lightbulb, Wallet,
   PieChart as PieChartIcon, ArrowUpRight, Coins, Landmark, Gem,
-  Building2, Bitcoin, Receipt, AlertCircle, Sparkles,
+  Building2, Bitcoin, Receipt, Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   PieChart, Pie, Cell, Sector, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts'
 import { formatINR, formatPercent } from '../utils/format'
 import { CHART_PALETTE, ASSET_COLORS } from '../utils/colors'
-import { Card, StatCard, PageHeader, PageSkeleton, EmptyState, Badge, Tooltip as UITooltip } from '../components/ui'
+import { Card, PageHeader, PageSkeleton, EmptyState, Tooltip as UITooltip } from '../components/ui'
 
 const ASSET_ICONS = {
   EQUITY: Landmark,

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import client from '../api/client'
-import { Upload, FileText, CheckCircle, AlertCircle, X, FileSpreadsheet, FileImage, Building2, Landmark, Loader2 } from 'lucide-react'
+import { Upload, FileText, CheckCircle, AlertCircle, X, FileSpreadsheet, FileImage, Landmark, Loader2 } from 'lucide-react'
 
 const sources = [
   { id: 'zerodha', label: 'Zerodha', desc: 'Equity transactions from console exports', icon: FileSpreadsheet, format: 'CSV' },

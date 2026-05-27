@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link2, Unlink, Loader2, Search, X, Percent } from 'lucide-react'
+import { Link2, Unlink, Loader2, Search, X } from 'lucide-react'
 import client from '../api/client'
 import { toast } from 'sonner'
 

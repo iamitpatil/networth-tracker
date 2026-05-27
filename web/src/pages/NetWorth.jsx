@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, CreditCard, Home, Car, Shield, AlertTriangle, GraduationCap, Briefcase } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, CreditCard, Home, Car, Shield, GraduationCap, Briefcase } from 'lucide-react'
 import client from '../api/client'
 import { formatINR, formatPercent, formatDate } from '../utils/format'
 import { ASSET_COLORS } from '../utils/colors'

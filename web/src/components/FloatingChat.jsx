@@ -5,11 +5,10 @@ import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import client from '../api/client'
 import {
-  Send, Sparkles, FileText, X, Check, Minimize2, Maximize2,
-  Loader2, User, RotateCcw, MessageSquare, CreditCard, Wallet,
-  Building2, Briefcase, Search, Play, ArrowRight, Paperclip,
+  Send, Sparkles, FileText, X, Minimize2, Maximize2,
+  Loader2, User, RotateCcw, MessageSquare, ArrowRight, Paperclip,
   History, Trash2, AlertTriangle, ThumbsUp, ThumbsDown, Bot,
-  ExternalLink, Brain, ChevronDown, Wrench,
+  ExternalLink, Brain, Wrench,
 } from 'lucide-react'
 
 // Tool icons/colors removed — using universal Wrench icon

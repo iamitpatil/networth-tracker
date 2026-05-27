@@ -3,7 +3,7 @@ import client from '../api/client'
 import { toast } from 'sonner'
 import {
   Landmark, Building2, CreditCard, Shield, PiggyBank, Briefcase,
-  Plus, Trash2, Pencil, X, ChevronDown, ChevronUp, Eye, EyeOff,
+  Plus, Trash2, Pencil, X, ChevronDown,
   Upload, FileText, Download, Loader2, Paperclip
 } from 'lucide-react'
 import { ConfirmDialog } from './ui/Modal'

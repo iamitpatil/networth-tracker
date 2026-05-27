@@ -5,10 +5,9 @@ import { toast } from 'sonner'
 import client from '../api/client'
 import { PdfPasswordModal } from '../components/ui/Modal'
 import {
-  Send, Bot, User, FileText, Sparkles, Trash2,
+  Send, Bot, User, FileText, Trash2,
   TrendingUp, PieChart, Shield, Loader2, Copy, RotateCcw,
   MessageSquare, Wallet, ArrowRight, Paperclip, History,
-  Search, CreditCard, Briefcase, Building2, Play,
   ThumbsUp, ThumbsDown, AlertTriangle, ChevronDown, Brain, Wrench, Upload, CheckCircle,
 } from 'lucide-react'
 

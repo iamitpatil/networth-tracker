@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
-import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Banknote, Upload, ChevronDown, ChevronRight, FileText, Download } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Upload, FileText, Download } from 'lucide-react'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
 import { PageSkeleton } from '../components/ui'

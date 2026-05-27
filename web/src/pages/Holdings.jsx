@@ -568,7 +568,7 @@ export default function Holdings() {
     chart.timeScale().fitContent()
 
     return () => {
-      try { chart.remove() } catch (_) {}
+      try { chart.remove() } catch { /* ignored */ }
       container.innerHTML = ''
     }
   }, [chartHolding, chartMode, chartLoading, priceHistory])
