@@ -3,6 +3,8 @@ package com.networth.service.tax;
 import com.networth.model.entity.Holding;
 import com.networth.model.enums.AssetType;
 import com.networth.repository.HoldingRepository;
+import com.networth.service.tax.rules.CapitalGainsRules;
+import com.networth.service.tax.rules.TaxRuleRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,16 +23,17 @@ import java.util.UUID;
 public class TaxHarvestService {
 
     private final HoldingRepository holdingRepository;
-
-    private static final BigDecimal EXEMPTION_LIMIT = new BigDecimal("125000");
+    /** Rates and the LTCG exemption come from here, so they cannot drift from the tax report. */
+    private final TaxRuleRegistry ruleRegistry;
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findHarvestingOpportunities(UUID userId, String financialYear) {
         List<Holding> holdings = holdingRepository.findByUserId(userId);
         List<Map<String, Object>> opportunities = new ArrayList<>();
 
+        CapitalGainsRules rules = ruleRegistry.forFinancialYear(financialYear).capitalGains();
         BigDecimal usedExemption = calculateUsedExemption(userId, financialYear);
-        BigDecimal remainingExemption = EXEMPTION_LIMIT.subtract(usedExemption);
+        BigDecimal remainingExemption = rules.ltcgExemption().subtract(usedExemption);
 
         for (Holding holding : holdings) {
             if (holding.getAssetType() != AssetType.EQUITY
@@ -61,7 +64,7 @@ public class TaxHarvestService {
                     "holdingDays", holdingDays,
                     "isLongTerm", holdingDays >= 365,
                     "nearLTCGThreshold", nearLTCGThreshold,
-                    "taxSavings", calculateTaxSavings(unrealizedGain, holdingDays, remainingExemption),
+                    "taxSavings", calculateTaxSavings(unrealizedGain, holdingDays, remainingExemption, rules),
                     "action", nearLTCGThreshold ? "wait_for_ltcg" : "sell_and_rebuy"
             );
 
@@ -99,17 +102,25 @@ public class TaxHarvestService {
                 holding.getCreatedAt().toLocalDate(), LocalDate.now());
     }
 
-    private BigDecimal calculateTaxSavings(BigDecimal gain, long holdingDays, BigDecimal remainingExemption) {
+    /**
+     * NOTE: the exemption handling here looks inverted — {@code gain.min(remainingExemption)}
+     * is the portion *inside* the exemption, i.e. the part that is not taxed, and the
+     * short-term branch ignores the exemption entirely. Behaviour is deliberately preserved
+     * while rates are centralised; correcting it is tracked separately so that a rates change
+     * and a logic change do not land in the same commit.
+     */
+    private BigDecimal calculateTaxSavings(BigDecimal gain, long holdingDays,
+                                           BigDecimal remainingExemption, CapitalGainsRules rules) {
         if (gain.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
 
         BigDecimal taxableGain = gain.min(remainingExemption);
 
-        if (holdingDays >= 365) {
-            return taxableGain.multiply(new BigDecimal("0.125"));
+        if (holdingDays >= rules.longTermThresholdFor(AssetType.EQUITY)) {
+            return taxableGain.multiply(rules.ltcgRate());
         } else {
-            return gain.multiply(new BigDecimal("0.20"));
+            return gain.multiply(rules.stcgRate());
         }
     }
 }

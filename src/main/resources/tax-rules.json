@@ -1,0 +1,2531 @@
+{
+  "formatVersion": 1,
+  "_format": {
+    "description": "Indian tax rates and calculation rules per financial year and per regime. Loaded and strictly validated at application startup by TaxRuleRegistry; an invalid or incomplete entry fails the boot rather than silently mis-computing tax.",
+    "editing": [
+      "Add a financial year by appending to financialYears, oldest-first ordering by convention.",
+      "All monetary amounts and rates are JSON STRINGS so they parse as exact BigDecimal, never binary floats.",
+      "Rates are fractions: \"0.125\" means 12.5 percent.",
+      "Set verified=true only once the figures are checked against an authoritative source.",
+      "Run `mvn test -Dtest=TaxRuleRegistryTest` after editing; the tests pin known figures."
+    ],
+    "fields": {
+      "financialYear": "\"YYYY-YYYY\", spanning consecutive years, e.g. \"2024-2025\".",
+      "verified": "true if checked against an authoritative source; false means best-effort, needs a CA review.",
+      "periods": "One entry unless rates changed mid-year. Periods must be contiguous and together cover 1 April to 31 March exactly.",
+      "periods[].effectiveFrom/effectiveTo": "Inclusive ISO dates bounding the period.",
+      "periods[].cessRate": "Health and education cess applied to total tax of every kind.",
+      "periods[].note": "Provenance or caveat. Surfaced in review and in the API.",
+      "capitalGains.ltcgRate": "Long-term rate on equity and equity-oriented MF. \"0\" means exempt (s.10(38) era, FY 2004-05 to FY 2017-18).",
+      "capitalGains.stcgRate": "Short-term rate on the same.",
+      "capitalGains.ltcgExemption": "Annual exemption on long-term equity gains. \"0\" where none applies.",
+      "capitalGains.cryptoRate": "Flat rate on virtual digital assets under s.115BBH, which begins FY 2022-23.",
+      "capitalGains.longTermThresholdDays": "Holding days at or above which a disposal is long-term, per AssetType.",
+      "capitalGains.defaultLongTermDays": "Fallback threshold for asset types not listed.",
+      "deductions": "Chapter VI-A ceilings: 80C, 80CCD(1B) NPS, 80D self, 80D senior-citizen parents.",
+      "regimes": "Keyed by TaxRegime. OLD is required. NEW exists only from FY 2020-21 (s.115BAC); asking for it in an earlier year is an error.",
+      "regimes.*.slabs": "Ascending by upTo. Marginal: only income inside a band is taxed at its rate. Exactly one slab has upTo=null and it must be last, meaning 'and above'.",
+      "regimes.*.standardDeduction": "Salary standard deduction. \"0\" where none applied that year.",
+      "regimes.*.rebate": "Section 87A: tax reduced by up to maxRebate when taxable income is at or below incomeThreshold. Both \"0\" where no rebate existed.",
+      "regimes.*.surchargeBands": "Ascending by incomeAbove. The highest band whose threshold the income exceeds applies.",
+      "regimes.*.surchargeCap": "Maximum surcharge rate, or null for uncapped. The new regime caps at \"0.25\" where the old regime reaches \"0.37\".",
+      "regimes.*.allowsDeductions": "Whether chapter VI-A deductions and HRA may be claimed under this regime."
+    }
+  },
+  "financialYears": [
+    {
+      "financialYear": "2000-2001",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2000-04-01",
+          "effectiveTo": "2001-03-31",
+          "cessRate": "0",
+          "note": "Pre-STT: equity LTCG 10% without indexation, STCG at slab rates. Salary standard deduction of this era was formula-based and is not modelled",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.3",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "50000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "60000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "150000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2001-2002",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2001-04-01",
+          "effectiveTo": "2002-03-31",
+          "cessRate": "0",
+          "note": "Pre-STT era; 2% surcharge. Salary standard deduction of this era was formula-based and is not modelled",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.3",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "50000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "60000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "60000",
+                  "rate": "0.02"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2002-2003",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2002-04-01",
+          "effectiveTo": "2003-03-31",
+          "cessRate": "0",
+          "note": "Pre-STT era; 5% surcharge. Salary standard deduction of this era was formula-based and is not modelled",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.3",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "50000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "60000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "60000",
+                  "rate": "0.05"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2003-2004",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2003-04-01",
+          "effectiveTo": "2004-03-31",
+          "cessRate": "0",
+          "note": "Pre-STT era; last year before s.10(38) exemption. Salary standard deduction of this era was formula-based and is not modelled",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.3",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "50000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "60000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "850000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2004-2005",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2004-04-01",
+          "effectiveTo": "2005-03-31",
+          "cessRate": "0.02",
+          "note": "STT introduced Oct 2004; equity LTCG exempt u/s 10(38); STCG 10% u/s 111A",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.1",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "50000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "60000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "850000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2005-2006",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2005-04-01",
+          "effectiveTo": "2006-03-31",
+          "cessRate": "0.02",
+          "note": "s.80C replaces the s.88 rebate; nil band raised to Rs 1L",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.1",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "100000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "250000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "1000000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2006-2007",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2006-04-01",
+          "effectiveTo": "2007-03-31",
+          "cessRate": "0.02",
+          "note": "Slabs unchanged",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.1",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "100000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "250000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "1000000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2007-2008",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2007-04-01",
+          "effectiveTo": "2008-03-31",
+          "cessRate": "0.03",
+          "note": "Secondary and higher education cess added, total 3%",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.1",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "110000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "150000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "250000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "1000000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2008-2009",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2008-04-01",
+          "effectiveTo": "2009-03-31",
+          "cessRate": "0.03",
+          "note": "STCG on equity raised to 15% u/s 111A; nil band raised to Rs 1.5L",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "150000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "300000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "1000000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2009-2010",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2009-04-01",
+          "effectiveTo": "2010-03-31",
+          "cessRate": "0.03",
+          "note": "Individual surcharge removed",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "160000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "300000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2010-2011",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2010-04-01",
+          "effectiveTo": "2011-03-31",
+          "cessRate": "0.03",
+          "note": "Slabs widened substantially",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "160000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "800000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2011-2012",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2011-04-01",
+          "effectiveTo": "2012-03-31",
+          "cessRate": "0.03",
+          "note": "Nil band raised to Rs 1.8L",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "180000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "800000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2012-2013",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2012-04-01",
+          "effectiveTo": "2013-03-31",
+          "cessRate": "0.03",
+          "note": "Nil band Rs 2L; 20% band extended to Rs 10L",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "200000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "0",
+                "maxRebate": "0"
+              },
+              "surchargeBands": [],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2013-2014",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2013-04-01",
+          "effectiveTo": "2014-03-31",
+          "cessRate": "0.03",
+          "note": "s.87A rebate introduced at Rs 2,000; surcharge on income above Rs 1cr",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "100000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "200000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "2000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2014-2015",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2014-04-01",
+          "effectiveTo": "2015-03-31",
+          "cessRate": "0.03",
+          "note": "Nil band Rs 2.5L; 80C limit raised to Rs 1.5L",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "0",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "2000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.1"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2015-2016",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2015-04-01",
+          "effectiveTo": "2016-03-31",
+          "cessRate": "0.03",
+          "note": "Surcharge raised to 12%",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "2000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.12"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2016-2017",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2016-04-01",
+          "effectiveTo": "2017-03-31",
+          "cessRate": "0.03",
+          "note": "s.87A rebate Rs 5,000; surcharge 15%",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "5000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2017-2018",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2017-04-01",
+          "effectiveTo": "2018-03-31",
+          "cessRate": "0.03",
+          "note": "Lowest band cut from 10% to 5%; surcharge band at Rs 50L added; last year of s.10(38)",
+          "capitalGains": {
+            "ltcgRate": "0",
+            "stcgRate": "0.15",
+            "ltcgExemption": "0",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "350000",
+                "maxRebate": "2500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2018-2019",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2018-04-01",
+          "effectiveTo": "2019-03-31",
+          "cessRate": "0.04",
+          "note": "s.112A reintroduces equity LTCG at 10% over Rs 1L with 31 Jan 2018 grandfathering; standard deduction returns at Rs 40,000; cess 4%",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "40000",
+              "rebate": {
+                "incomeThreshold": "350000",
+                "maxRebate": "2500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2019-2020",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2019-04-01",
+          "effectiveTo": "2020-03-31",
+          "cessRate": "0.04",
+          "note": "Standard deduction Rs 50,000; s.87A rebate Rs 12,500 up to Rs 5L; surcharge bands extended to 25% and 37%",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2020-2021",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2020-04-01",
+          "effectiveTo": "2021-03-31",
+          "cessRate": "0.04",
+          "note": "s.115BAC introduces the optional new regime: seven bands, no standard deduction",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "750000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "1250000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": "1500000",
+                  "rate": "0.25"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2021-2022",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2021-04-01",
+          "effectiveTo": "2022-03-31",
+          "cessRate": "0.04",
+          "note": "New regime unchanged from FY 2020-21",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "750000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "1250000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": "1500000",
+                  "rate": "0.25"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2022-2023",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2022-04-01",
+          "effectiveTo": "2023-03-31",
+          "cessRate": "0.04",
+          "note": "s.115BBH taxes virtual digital assets at a flat 30% with no set-off of losses",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "750000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "1250000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": "1500000",
+                  "rate": "0.25"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "0",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2023-2024",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2023-04-01",
+          "effectiveTo": "2024-03-31",
+          "cessRate": "0.04",
+          "note": "New regime becomes the default: six bands, Rs 50,000 standard deduction, s.87A rebate Rs 25,000 to Rs 7L, surcharge capped at 25%",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "300000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "600000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "900000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1200000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "1500000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "700000",
+                "maxRebate": "25000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": "0.25",
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2024-2025",
+      "verified": false,
+      "periods": [
+        {
+          "effectiveFrom": "2024-04-01",
+          "effectiveTo": "2024-07-22",
+          "cessRate": "0.04",
+          "note": "Pre Finance (No. 2) Act 2024: equity LTCG 10% over Rs 1L, STCG 15%",
+          "capitalGains": {
+            "ltcgRate": "0.1",
+            "stcgRate": "0.15",
+            "ltcgExemption": "100000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "300000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "700000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1200000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "1500000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "75000",
+              "rebate": {
+                "incomeThreshold": "700000",
+                "maxRebate": "25000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": "0.25",
+              "allowsDeductions": false
+            }
+          }
+        },
+        {
+          "effectiveFrom": "2024-07-23",
+          "effectiveTo": "2025-03-31",
+          "cessRate": "0.04",
+          "note": "From 23 Jul 2024: equity LTCG 12.5% over Rs 1.25L, STCG 20%; new regime standard deduction raised to Rs 75,000",
+          "capitalGains": {
+            "ltcgRate": "0.125",
+            "stcgRate": "0.2",
+            "ltcgExemption": "125000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "300000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "700000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1200000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "1500000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "75000",
+              "rebate": {
+                "incomeThreshold": "700000",
+                "maxRebate": "25000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": "0.25",
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2025-2026",
+      "verified": true,
+      "periods": [
+        {
+          "effectiveFrom": "2025-04-01",
+          "effectiveTo": "2026-03-31",
+          "cessRate": "0.04",
+          "note": "Verified against a published slab table. Budget 2025 new regime: seven bands from Rs 4L; s.87A rebate Rs 60,000 making income to Rs 12L effectively tax free. Marginal relief just above Rs 12L is NOT yet modelled",
+          "capitalGains": {
+            "ltcgRate": "0.125",
+            "stcgRate": "0.2",
+            "ltcgExemption": "125000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "400000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "800000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1200000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1600000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "2000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": "2400000",
+                  "rate": "0.25"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "75000",
+              "rebate": {
+                "incomeThreshold": "1200000",
+                "maxRebate": "60000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": "0.25",
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "financialYear": "2026-2027",
+      "verified": true,
+      "periods": [
+        {
+          "effectiveFrom": "2026-04-01",
+          "effectiveTo": "2027-03-31",
+          "cessRate": "0.04",
+          "note": "Budget 2026 announced no significant slab changes; FY 2025-26 rules carry forward",
+          "capitalGains": {
+            "ltcgRate": "0.125",
+            "stcgRate": "0.2",
+            "ltcgExemption": "125000",
+            "cryptoRate": "0.3",
+            "defaultLongTermDays": 730,
+            "longTermThresholdDays": {
+              "EQUITY": 365,
+              "MUTUAL_FUND": 365,
+              "GOLD": 1095,
+              "REAL_ESTATE": 1095,
+              "FD": 1095,
+              "BOND": 1095,
+              "ETF": 365,
+              "SGB": 1095
+            }
+          },
+          "deductions": {
+            "limit80C": "150000",
+            "limit80CCD1B": "50000",
+            "limit80DSelf": "25000",
+            "limit80DParentsSenior": "50000"
+          },
+          "regimes": {
+            "OLD": {
+              "slabs": [
+                {
+                  "upTo": "250000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "500000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "50000",
+              "rebate": {
+                "incomeThreshold": "500000",
+                "maxRebate": "12500"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": null,
+              "allowsDeductions": true
+            },
+            "NEW": {
+              "slabs": [
+                {
+                  "upTo": "400000",
+                  "rate": "0"
+                },
+                {
+                  "upTo": "800000",
+                  "rate": "0.05"
+                },
+                {
+                  "upTo": "1200000",
+                  "rate": "0.1"
+                },
+                {
+                  "upTo": "1600000",
+                  "rate": "0.15"
+                },
+                {
+                  "upTo": "2000000",
+                  "rate": "0.2"
+                },
+                {
+                  "upTo": "2400000",
+                  "rate": "0.25"
+                },
+                {
+                  "upTo": null,
+                  "rate": "0.3"
+                }
+              ],
+              "standardDeduction": "75000",
+              "rebate": {
+                "incomeThreshold": "1200000",
+                "maxRebate": "60000"
+              },
+              "surchargeBands": [
+                {
+                  "incomeAbove": "5000000",
+                  "rate": "0.1"
+                },
+                {
+                  "incomeAbove": "10000000",
+                  "rate": "0.15"
+                },
+                {
+                  "incomeAbove": "20000000",
+                  "rate": "0.25"
+                },
+                {
+                  "incomeAbove": "50000000",
+                  "rate": "0.37"
+                }
+              ],
+              "surchargeCap": "0.25",
+              "allowsDeductions": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,69 +1,53 @@
 package com.networth.service.tax;
 
 import com.networth.model.enums.TaxRegime;
+import com.networth.service.tax.rules.RegimeRules;
+import com.networth.service.tax.rules.Slab;
+import com.networth.service.tax.rules.TaxRuleRegistry;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Computes Indian income tax based on FY 2024-25 slab rates.
+ * Computes Indian income tax for a given financial year and regime.
  *
- * NEW Regime (Default since FY 2023-24):
- * - 0 to 3L: 0%
- * - 3L to 7L: 5%
- * - 7L to 10L: 10%
- * - 10L to 12L: 15%
- * - 12L to 15L: 20%
- * - Above 15L: 30%
- * - Standard deduction: ₹75,000
- * - Rebate u/s 87A: Up to ₹25,000 if income ≤ ₹7L (effectively no tax up to ₹7L)
- *
- * OLD Regime:
- * - 0 to 2.5L: 0%
- * - 2.5L to 5L: 5%
- * - 5L to 10L: 20%
- * - Above 10L: 30%
- * - Standard deduction: ₹50,000
- * - Rebate u/s 87A: Up to ₹12,500 if income ≤ ₹5L
- * - 80C, 80D, HRA, etc. deductions allowed
- *
- * Plus 4% Health & Education Cess on tax
- * Plus Surcharge for high incomes (>50L)
+ * <p>Slabs, standard deductions, the section 87A rebate and surcharge bands are not defined
+ * here — they come from {@link TaxRuleRegistry}, which holds them per financial year and per
+ * regime. This class only applies them.
  */
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class TaxRegimeCalculator {
 
-    private static final BigDecimal CESS_RATE = new BigDecimal("0.04");
+    private final TaxRuleRegistry ruleRegistry;
 
     /**
-     * Calculate income tax based on tax regime and total taxable income.
+     * Income tax for a taxable income under one regime, using the rules in force for the
+     * given financial year.
      */
-    public TaxComputation calculateTax(BigDecimal taxableIncome, TaxRegime regime) {
+    public TaxComputation calculateTax(BigDecimal taxableIncome, TaxRegime regime, String financialYear) {
+        var ruleSet = ruleRegistry.forFinancialYear(financialYear);
+        RegimeRules rules = ruleSet.regime(regime);
         if (taxableIncome == null || taxableIncome.compareTo(BigDecimal.ZERO) <= 0) {
             return TaxComputation.zero(regime);
         }
 
-        BigDecimal tax;
-        BigDecimal rebate;
-
-        if (regime == TaxRegime.NEW) {
-            tax = computeNewRegimeTax(taxableIncome);
-            rebate = computeNewRegimeRebate(taxableIncome, tax);
-        } else {
-            tax = computeOldRegimeTax(taxableIncome);
-            rebate = computeOldRegimeRebate(taxableIncome, tax);
-        }
-
+        BigDecimal tax = applySlabs(taxableIncome, rules.slabs());
+        BigDecimal rebate = rules.rebate().applicableTo(taxableIncome, tax);
         BigDecimal taxAfterRebate = tax.subtract(rebate).max(BigDecimal.ZERO);
-        BigDecimal surcharge = computeSurcharge(taxableIncome, taxAfterRebate);
+
+        BigDecimal surchargeRate = rules.surchargeRateFor(taxableIncome);
+        BigDecimal surcharge = taxAfterRebate.multiply(surchargeRate).setScale(2, RoundingMode.HALF_UP);
+
         BigDecimal taxWithSurcharge = taxAfterRebate.add(surcharge);
-        BigDecimal cess = taxWithSurcharge.multiply(CESS_RATE).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal totalTax = taxWithSurcharge.add(cess);
+        BigDecimal cess = taxWithSurcharge.multiply(ruleSet.cessRate()).setScale(2, RoundingMode.HALF_UP);
 
         return TaxComputation.builder()
                 .regime(regime)
@@ -73,34 +57,43 @@ public class TaxRegimeCalculator {
                 .taxAfterRebate(taxAfterRebate)
                 .surcharge(surcharge)
                 .cess(cess)
-                .totalTax(totalTax)
+                .totalTax(taxWithSurcharge.add(cess))
                 .build();
     }
 
     /**
-     * Compare both regimes and recommend the better one.
+     * Compare both regimes for a financial year and recommend the cheaper one.
+     *
+     * <p>Standard deductions default to the year's statutory values rather than to constants,
+     * so passing null gives the correct figure for the year being compared.
      */
     public RegimeComparison compareRegimes(
             BigDecimal grossSalary,
             BigDecimal totalDeductions,
             BigDecimal hraExemption,
             BigDecimal standardDeductionOld,
-            BigDecimal standardDeductionNew) {
+            BigDecimal standardDeductionNew,
+            String financialYear) {
 
-        // OLD regime: gross - deductions (80C, 80D, HRA, std deduction)
+        RegimeRules oldRules = ruleRegistry.forFinancialYear(financialYear).regime(TaxRegime.OLD);
+        RegimeRules newRules = ruleRegistry.forFinancialYear(financialYear).regime(TaxRegime.NEW);
+
+        BigDecimal stdOld = standardDeductionOld != null ? standardDeductionOld : oldRules.standardDeduction();
+        BigDecimal stdNew = standardDeductionNew != null ? standardDeductionNew : newRules.standardDeduction();
+
+        // Old regime allows chapter VI-A deductions and HRA; the new regime does not.
         BigDecimal taxableOld = grossSalary
-                .subtract(standardDeductionOld != null ? standardDeductionOld : new BigDecimal("50000"))
+                .subtract(stdOld)
                 .subtract(hraExemption != null ? hraExemption : BigDecimal.ZERO)
                 .subtract(totalDeductions != null ? totalDeductions : BigDecimal.ZERO)
                 .max(BigDecimal.ZERO);
 
-        // NEW regime: gross - standard deduction only (no other deductions)
         BigDecimal taxableNew = grossSalary
-                .subtract(standardDeductionNew != null ? standardDeductionNew : new BigDecimal("75000"))
+                .subtract(stdNew)
                 .max(BigDecimal.ZERO);
 
-        TaxComputation oldTax = calculateTax(taxableOld, TaxRegime.OLD);
-        TaxComputation newTax = calculateTax(taxableNew, TaxRegime.NEW);
+        TaxComputation oldTax = calculateTax(taxableOld, TaxRegime.OLD, financialYear);
+        TaxComputation newTax = calculateTax(taxableNew, TaxRegime.NEW, financialYear);
 
         TaxRegime recommended = oldTax.getTotalTax().compareTo(newTax.getTotalTax()) <= 0
                 ? TaxRegime.OLD : TaxRegime.NEW;
@@ -114,97 +107,28 @@ public class TaxRegimeCalculator {
                 .build();
     }
 
-    // ===== NEW Regime =====
-
-    private BigDecimal computeNewRegimeTax(BigDecimal income) {
-        double inc = income.doubleValue();
-        double tax = 0;
-
-        if (inc > 1500000) {
-            tax += (inc - 1500000) * 0.30;
-            inc = 1500000;
-        }
-        if (inc > 1200000) {
-            tax += (inc - 1200000) * 0.20;
-            inc = 1200000;
-        }
-        if (inc > 1000000) {
-            tax += (inc - 1000000) * 0.15;
-            inc = 1000000;
-        }
-        if (inc > 700000) {
-            tax += (inc - 700000) * 0.10;
-            inc = 700000;
-        }
-        if (inc > 300000) {
-            tax += (inc - 300000) * 0.05;
-        }
-
-        return BigDecimal.valueOf(tax).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal computeNewRegimeRebate(BigDecimal income, BigDecimal tax) {
-        // u/s 87A: Up to ₹25,000 rebate if income ≤ ₹7L
-        if (income.compareTo(new BigDecimal("700000")) <= 0) {
-            return tax.min(new BigDecimal("25000"));
-        }
-        return BigDecimal.ZERO;
-    }
-
-    // ===== OLD Regime =====
-
-    private BigDecimal computeOldRegimeTax(BigDecimal income) {
-        double inc = income.doubleValue();
-        double tax = 0;
-
-        if (inc > 1000000) {
-            tax += (inc - 1000000) * 0.30;
-            inc = 1000000;
-        }
-        if (inc > 500000) {
-            tax += (inc - 500000) * 0.20;
-            inc = 500000;
-        }
-        if (inc > 250000) {
-            tax += (inc - 250000) * 0.05;
-        }
-
-        return BigDecimal.valueOf(tax).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal computeOldRegimeRebate(BigDecimal income, BigDecimal tax) {
-        // u/s 87A: Up to ₹12,500 rebate if income ≤ ₹5L
-        if (income.compareTo(new BigDecimal("500000")) <= 0) {
-            return tax.min(new BigDecimal("12500"));
-        }
-        return BigDecimal.ZERO;
-    }
-
     /**
-     * Surcharge on tax for high-income earners.
-     * Applies to both regimes (slightly different in NEW after FY 2023-24).
+     * Applies progressive slabs in BigDecimal.
      *
-     * 50L < income <= 1Cr:  10% surcharge
-     * 1Cr < income <= 2Cr:  15% surcharge
-     * 2Cr < income <= 5Cr:  25% surcharge (OLD) / 25% (NEW, capped at 25% from FY 2023-24)
-     * Above 5Cr:            37% (OLD) / 25% (NEW, capped at 25%)
+     * <p>Replaces two hand-rolled descending loops that accumulated tax in {@code double}.
+     * Slabs are marginal: only the income falling inside a band is taxed at that band's rate.
      */
-    private BigDecimal computeSurcharge(BigDecimal income, BigDecimal tax) {
-        BigDecimal inc = income;
-        double rate = 0;
+    BigDecimal applySlabs(BigDecimal income, List<Slab> slabs) {
+        BigDecimal tax = BigDecimal.ZERO;
+        BigDecimal lowerBound = BigDecimal.ZERO;
 
-        if (inc.compareTo(new BigDecimal("50000000")) > 0) {
-            rate = 0.37;
-        } else if (inc.compareTo(new BigDecimal("20000000")) > 0) {
-            rate = 0.25;
-        } else if (inc.compareTo(new BigDecimal("10000000")) > 0) {
-            rate = 0.15;
-        } else if (inc.compareTo(new BigDecimal("5000000")) > 0) {
-            rate = 0.10;
+        for (Slab slab : slabs) {
+            if (income.compareTo(lowerBound) <= 0) {
+                break;
+            }
+            BigDecimal upperBound = slab.isOpenEnded() ? income : slab.upTo().min(income);
+            BigDecimal amountInBand = upperBound.subtract(lowerBound).max(BigDecimal.ZERO);
+            tax = tax.add(amountInBand.multiply(slab.rate()));
+            if (!slab.isOpenEnded()) {
+                lowerBound = slab.upTo();
+            }
         }
-
-        if (rate == 0) return BigDecimal.ZERO;
-        return tax.multiply(BigDecimal.valueOf(rate)).setScale(2, RoundingMode.HALF_UP);
+        return tax.setScale(2, RoundingMode.HALF_UP);
     }
 
     // ===== DTOs =====

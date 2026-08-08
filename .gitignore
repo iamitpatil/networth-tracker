@@ -96,3 +96,6 @@ yarn-error.log
 *.db
 *.sqlite
 *.sqlite3
+
+# graphify knowledge graph output (regenerable: /graphify)
+graphify-out/

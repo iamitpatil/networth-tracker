@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import client from '../api/client';
 import { ConfirmDialog } from '../components/ui';
 
-const FINANCIAL_YEARS = ['2024-2025', '2023-2024', '2022-2023', '2021-2022', '2020-2021'];
 
 const TAX_RULES = [
   { asset: 'Equity LTCG', rate: '12.5%', threshold: 'Above ₹1.25L', notes: 'Long term (>1 year)' },
@@ -15,7 +14,14 @@ const TAX_RULES = [
 ];
 
 export default function Tax() {
-  const [selectedFY, setSelectedFY] = useState('2024-2025');
+  // Populated from /tax/financial-years so the selector can only offer years the backend
+  // has rules for. `unverifiedFYs` are shown with a caveat rather than presented as settled.
+  const [financialYears, setFinancialYears] = useState([]);
+  const [unverifiedFYs, setUnverifiedFYs] = useState([]);
+  // Years where more than one regime existed. Before FY 2020-21 there was only the old
+  // regime, so a comparison is meaningless and the button is hidden.
+  const [comparableFYs, setComparableFYs] = useState([]);
+  const [selectedFY, setSelectedFY] = useState(null);
   const [summary, setSummary] = useState(null);
   const [harvestingOpps, setHarvestingOpps] = useState([]);
   const [util80C, setUtil80C] = useState(null);
@@ -31,7 +37,24 @@ export default function Tax() {
   const form16InputRef = useRef(null);
   const itrInputRef = useRef(null);
 
+  // Load the supported years first; the tax fetch below waits for a selectedFY.
+  const fetchFinancialYears = async () => {
+    try {
+      const { data } = await client.get('/tax/financial-years');
+      const years = data?.financialYears || [];
+      setFinancialYears(years);
+      setUnverifiedFYs(data?.unverified || []);
+      setComparableFYs(data?.comparable || []);
+      // Prefer the current financial year, falling back to the newest we have rules for.
+      setSelectedFY(years.includes(data?.current) ? data.current : years[0] || null);
+    } catch (error) {
+      console.error('Error fetching supported financial years:', error);
+      setLoading(false);
+    }
+  };
+
   const fetchTaxData = async () => {
+    if (!selectedFY) return;
     setLoading(true);
     try {
       const [summaryRes, harvestingRes, util80CRes, regimeRes, form16Res, itrRes] = await Promise.all([
@@ -58,6 +81,10 @@ export default function Tax() {
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    fetchFinancialYears();
+  }, []);
+
+  useEffect(() => {
     fetchTaxData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFY]);
@@ -79,11 +106,17 @@ export default function Tax() {
         grossSalary: gross,
         totalDeductions: util80C?.utilized || 0,
         hraExemption: 0,
+        // Without this the backend defaults to the current year, so a comparison for a
+        // past year would silently be computed with today's rates.
+        financialYear: selectedFY,
       });
       setComparison(data);
       setShowRegimeCompare(true);
     } catch (e) {
       console.error('Compare failed', e);
+      // Surface the reason. The backend explains, for instance, that the new regime did
+      // not exist before FY 2020-21 - previously this failed silently.
+      toast.error(e?.response?.data?.message || 'Could not compare regimes');
     }
   };
 
@@ -206,18 +239,20 @@ export default function Tax() {
             className="flex items-center gap-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-4 py-2 hover:border-blue-500 transition-colors"
           >
             <Calendar className="w-4 h-4 text-blue-400" />
-            <span className="font-medium text-sm">{selectedFY}</span>
+            <span className="font-medium text-sm">{selectedFY || '—'}</span>
             <ChevronDown className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
           {dropdownOpen && (
-            <div className="absolute right-0 mt-2 w-44 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg shadow-xl z-10 overflow-hidden">
-              {FINANCIAL_YEARS.map((fy) => (
+            <div className="absolute right-0 mt-2 w-56 max-h-72 overflow-y-auto bg-[var(--input-bg)] border border-[var(--border)] rounded-lg shadow-xl z-10 overflow-hidden">
+              {financialYears.map((fy) => (
                 <button
                   key={fy}
                   onClick={() => { setSelectedFY(fy); setDropdownOpen(false); }}
                   className={`w-full text-left px-4 py-2 text-sm hover:bg-[var(--hover-bg)] transition-colors ${selectedFY === fy ? 'text-blue-400 bg-[var(--hover-bg)]' : 'text-[var(--text)]'}`}
+                  title={unverifiedFYs.includes(fy) ? 'Rates for this year are unverified - confirm before filing' : undefined}
                 >
                   {fy}
+                  {unverifiedFYs.includes(fy) && <span className="ml-2 text-[10px] text-amber-400">unverified</span>}
                 </button>
               ))}
             </div>
@@ -256,9 +291,15 @@ export default function Tax() {
                 <Shield className="w-5 h-5 text-purple-400" />
                 Tax Regime
               </h2>
-              <button onClick={compareRegimes} className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
-                Compare Both →
-              </button>
+              {comparableFYs.includes(selectedFY) ? (
+                <button onClick={compareRegimes} className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                  Compare Both →
+                </button>
+              ) : (
+                <span className="text-xs text-[var(--text-muted)]" title="The new regime under section 115BAC begins FY 2020-2021">
+                  Only one regime existed in {selectedFY}
+                </span>
+              )}
             </div>
             <div className="flex gap-3">
               <button

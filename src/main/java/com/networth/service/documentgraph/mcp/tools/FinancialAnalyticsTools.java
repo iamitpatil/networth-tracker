@@ -16,6 +16,7 @@ import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.PortfolioSummaryService;
 import com.networth.service.tax.CapitalGainsCalculator;
 import com.networth.service.tax.TaxRegimeCalculator;
+import com.networth.service.tax.rules.TaxRuleRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -38,6 +39,7 @@ public class FinancialAnalyticsTools {
     private final AnalyticsService analyticsService;
     private final CapitalGainsCalculator capitalGainsCalculator;
     private final TaxRegimeCalculator taxRegimeCalculator;
+    private final TaxRuleRegistry taxRuleRegistry;
     private final GoalService goalService;
     private final EMIService emiService;
     private final SIPCalendarService sipCalendarService;
@@ -160,12 +162,15 @@ public class FinancialAnalyticsTools {
     public Map<String, Object> compareTaxRegimes(
             @ToolParam(description = "Annual gross salary in INR") Number grossSalary,
             @ToolParam(description = "Total deductions under old regime (80C, 80D, HRA, etc.) in INR") Number totalDeductions,
-            @ToolParam(description = "HRA exemption amount in INR (0 if not applicable)", required = false) Number hraExemption) {
+            @ToolParam(description = "HRA exemption amount in INR (0 if not applicable)", required = false) Number hraExemption,
+            @ToolParam(description = "Financial year, e.g. 2025-2026 or 2025-26. Defaults to the current financial year.", required = false) String financialYear) {
         try {
             BigDecimal salary = BigDecimal.valueOf(grossSalary.doubleValue());
             BigDecimal deductions = BigDecimal.valueOf(totalDeductions.doubleValue());
             BigDecimal hra = hraExemption != null ? BigDecimal.valueOf(hraExemption.doubleValue()) : BigDecimal.ZERO;
-            var comparison = taxRegimeCalculator.compareRegimes(salary, deductions, hra, null, null);
+            String fy = (financialYear != null && !financialYear.isBlank())
+                    ? financialYear : taxRuleRegistry.currentFinancialYear();
+            var comparison = taxRegimeCalculator.compareRegimes(salary, deductions, hra, null, null, fy);
             return comparison.toMap();
         } catch (Exception e) {
             return errorResult("Failed to compare tax regimes", e);
