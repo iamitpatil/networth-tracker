@@ -36,6 +36,15 @@ public class SecurityConfig {
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Authorize the initial request only. Spring Security 6 also filters
+                        // ASYNC and ERROR dispatches by default, which breaks SSE: the
+                        // security context is cleared when the original request returns, so
+                        // the async re-dispatch of a streaming response is seen as anonymous
+                        // and rejected. Because the SSE response has already been committed,
+                        // the 403 cannot be written either, surfacing as
+                        // "Unable to handle the Spring Security Exception because the
+                        // response is already committed" instead of a usable error.
+                        .shouldFilterAllDispatcherTypes(false)
                         .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
                         .requestMatchers("/api/v1/features").permitAll()
                         .requestMatchers("/api/v1/reference-data/**").permitAll()
