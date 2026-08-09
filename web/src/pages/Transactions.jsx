@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
 import { TrendingUp, TrendingDown, Repeat, DollarSign, Users } from 'lucide-react'
-import { PageSkeleton } from '../components/ui'
+import { PageSkeleton, ColumnFilter } from '../components/ui'
 
 export default function Transactions() {
   const { view: familyView } = useFamilyView()
@@ -142,61 +142,78 @@ export default function Transactions() {
 
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[880px]">
+          <table className="w-full min-w-[680px]">
           <thead className="bg-[var(--input-bg)] text-left">
+            {/* Each filterable column carries a funnel next to its label. The icon tints when
+                that column is filtered, so which columns are narrowing the data is visible
+                without opening anything. Qty, Price and Amount have no filter, so no icon. */}
             <tr>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Date</th>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Holding</th>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Type</th>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)] text-right">Qty</th>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)] text-right">Price</th>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
-              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Broker</th>
-            </tr>
-            {/* Filters sit under the column they act on, so it is obvious what each one
-                narrows. Columns with nothing to filter are left empty to keep the grid
-                aligned rather than borrowing a neighbour's space. */}
-            <tr className="border-t border-[var(--border)]">
-              <th className="px-4 pb-3 align-top">
-                <div className="flex flex-col gap-1">
-                  <input type="date" aria-label="From date" value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)} className={cellInput} />
-                  <input type="date" aria-label="To date" value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)} className={cellInput} />
-                </div>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">
+                <span className="inline-flex items-center gap-1.5">
+                  Date
+                  <ColumnFilter label="Date" active={!!(dateFrom || dateTo)}
+                    onClear={() => { setDateFrom(''); setDateTo('') }}>
+                    <label className="block text-[10px] text-[var(--text-secondary)]">From</label>
+                    <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                      className={cellInput} />
+                    <label className="block text-[10px] text-[var(--text-secondary)]">To</label>
+                    <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                      className={cellInput} />
+                  </ColumnFilter>
+                </span>
               </th>
-              <th className="px-4 pb-3 align-top">
-                <div className="flex flex-col gap-1">
-                  <input type="text" aria-label="Search symbol or name" placeholder="Search symbol..."
-                    value={symbolSearch} onChange={(e) => setSymbolSearch(e.target.value)} className={cellInput} />
-                  <select aria-label="Asset type" value={assetFilter}
-                    onChange={(e) => setAssetFilter(e.target.value)} className={cellInput}>
-                    {assetTypes.map((a) => (
-                      <option key={a} value={a}>{a === 'ALL' ? 'All asset types' : a.replace('_', ' ')}</option>
-                    ))}
-                  </select>
-                </div>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">
+                <span className="inline-flex items-center gap-1.5">
+                  Holding
+                  <ColumnFilter label="Holding" active={!!symbolSearch || assetFilter !== 'ALL'}
+                    onClear={() => { setSymbolSearch(''); setAssetFilter('ALL') }}>
+                    <input type="text" placeholder="Search symbol or name" value={symbolSearch}
+                      onChange={(e) => setSymbolSearch(e.target.value)} className={cellInput} />
+                    <select aria-label="Asset type" value={assetFilter}
+                      onChange={(e) => setAssetFilter(e.target.value)} className={cellInput}>
+                      {assetTypes.map((a) => (
+                        <option key={a} value={a}>{a === 'ALL' ? 'All asset types' : a.replace('_', ' ')}</option>
+                      ))}
+                    </select>
+                  </ColumnFilter>
+                </span>
               </th>
-              <th className="px-4 pb-3 align-top">
-                {/* Five buttons do not fit a column this narrow, so the type filter becomes a
-                    select. The counts above already show the BUY/SELL/SIP split. */}
-                <select aria-label="Transaction type" value={activeFilter}
-                  onChange={(e) => setActiveFilter(e.target.value)} className={cellInput}>
-                  {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (
-                    <option key={f} value={f}>{f === 'ALL' ? 'All types' : f}</option>
-                  ))}
-                </select>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">
+                <span className="inline-flex items-center gap-1.5">
+                  Type
+                  <ColumnFilter label="Type" active={activeFilter !== 'ALL'}
+                    onClear={() => setActiveFilter('ALL')}>
+                    {/* Buttons here rather than a select: the panel has room, and one tap
+                        picks a type instead of two to open and choose. */}
+                    <div className="grid grid-cols-2 gap-1">
+                      {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (
+                        <button key={f} type="button" onClick={() => setActiveFilter(f)}
+                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            activeFilter === f
+                              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+                              : 'bg-[var(--input-bg)] text-[var(--text-muted)] hover:bg-[var(--hover-bg)] border border-[var(--border)]'
+                          }`}>{f}</button>
+                      ))}
+                    </div>
+                  </ColumnFilter>
+                </span>
               </th>
-              <th className="px-4 pb-3" />
-              <th className="px-4 pb-3" />
-              <th className="px-4 pb-3" />
-              <th className="px-4 pb-3 align-top">
-                <select aria-label="Broker" value={brokerFilter}
-                  onChange={(e) => setBrokerFilter(e.target.value)} className={cellInput}>
-                  <option value="ALL">All brokers</option>
-                  {brokers.map((b) => <option key={b} value={b}>{b}</option>)}
-                  <option value="NONE">(none)</option>
-                </select>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Qty</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Price</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
+              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">
+                <span className="inline-flex items-center gap-1.5">
+                  Broker
+                  <ColumnFilter label="Broker" active={brokerFilter !== 'ALL'}
+                    onClear={() => setBrokerFilter('ALL')}>
+                    <select aria-label="Broker" value={brokerFilter}
+                      onChange={(e) => setBrokerFilter(e.target.value)} className={cellInput}>
+                      <option value="ALL">All brokers</option>
+                      {brokers.map((b) => <option key={b} value={b}>{b}</option>)}
+                      <option value="NONE">(none)</option>
+                    </select>
+                  </ColumnFilter>
+                </span>
               </th>
             </tr>
           </thead>
