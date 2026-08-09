@@ -280,7 +280,7 @@ public class UpstoxHistoricalService {
     /**
      * Daily backfill at 3 AM. Only fetches the gap since the last record per symbol.
      */
-    @Scheduled(cron = "0 0 3 * * ?")
+    @Scheduled(cron = "0 0 3 * * ?", zone = "Asia/Kolkata")
     public void scheduledDailyBackfill() {
         if (accessToken == null || accessToken.isBlank()) return;
         log.info("Running daily price history backfill...");

@@ -2,6 +2,7 @@ package com.networth.controller;
 
 import com.networth.model.dto.*;
 import com.networth.service.FamilyDataService;
+import com.networth.service.FamilyService;
 import com.networth.service.InvestmentOverTimeService;
 import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
@@ -41,6 +42,7 @@ public class PortfolioController {
     private final TransactionImportService transactionImportService;
     private final PortfolioSummaryService portfolioSummaryService;
     private final FamilyDataService familyDataService;
+    private final FamilyService familyService;
     private final InvestmentOverTimeService investmentOverTimeService;
     private final HoldingRepository holdingRepository;
     private final StockPriceHistoryRepository stockPriceHistoryRepository;
@@ -170,13 +172,29 @@ public class PortfolioController {
         return ResponseEntity.ok(familyDataService.getSummary(uid, isFam(params)));
     }
 
+    /**
+     * Daily price history for a holding's symbol.
+     *
+     * <p>The series itself is public market data, but the holding is not: without a check this
+     * answered for any holding UUID, so it confirmed whether a given holding existed and what
+     * asset class it was. Access is allowed to the owner and to approved family members, which is
+     * what the family view needs — it renders other members' holdings.
+     */
     @GetMapping("/holdings/{id}/price-history")
     public ResponseEntity<List<Map<String, Object>>> getPriceHistory(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestParam(defaultValue = "90") int days) {
-        // Price history is public market data — no ownership check needed (supports family view)
         com.networth.model.entity.Holding holding = holdingRepository.findById(UUID.fromString(id))
                 .orElseThrow(() -> new com.networth.exception.ResourceNotFoundException("Holding", id));
+
+        UUID viewerId = UUID.fromString(userDetails.getUsername());
+        if (!holding.getUserId().equals(viewerId)
+                && !familyService.getApprovedMemberIds(viewerId).contains(holding.getUserId())) {
+            // Same exception as a missing holding, deliberately: a distinct "forbidden" would
+            // still confirm the holding exists, which is the leak being closed.
+            throw new com.networth.exception.ResourceNotFoundException("Holding", id);
+        }
         if (holding.getAssetType() != AssetType.EQUITY && holding.getAssetType() != AssetType.ETF
                 && holding.getAssetType() != AssetType.MUTUAL_FUND) {
             return ResponseEntity.ok(List.of());

@@ -183,16 +183,6 @@ public class DocumentService {
         return findOwnedDocument(userId, id);
     }
 
-    /**
-     * @deprecated Use {@link #getDocument(UUID, UUID)} instead. This method does not check ownership.
-     */
-    @Deprecated
-    @Transactional(readOnly = true)
-    public Document getDocumentUnsafe(UUID id) {
-        return documentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Document", id.toString()));
-    }
-
     @Transactional(readOnly = true)
     public Path getDocumentPath(Document doc) {
         return Paths.get(uploadDir, doc.getUserId().toString(), doc.getStoredFilename());

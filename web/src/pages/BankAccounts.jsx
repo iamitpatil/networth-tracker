@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import client from '../api/client'
 import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Search } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
@@ -100,14 +101,28 @@ export default function BankAccounts() {
     finally { setGmailLoading(false) }
   }
 
+  // Confirming is what moves the account balance, so accounts are reloaded too. The server
+  // rejects a second confirm rather than applying it twice, and explains why it refused, so the
+  // message is surfaced instead of failing as a silent unhandled rejection.
   const handleConfirm = async (id) => {
-    await client.post(`/gmail/transactions/${id}/confirm`)
-    loadTransactions(); load()
+    try {
+      await client.post(`/gmail/transactions/${id}/confirm`)
+      loadTransactions(); load()
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error
+        || 'Could not confirm this transaction')
+    }
   }
 
+  // Ignoring changes no balance, so there is nothing for the accounts list to pick up.
   const handleIgnore = async (id) => {
-    await client.post(`/gmail/transactions/${id}/ignore`)
-    loadTransactions()
+    try {
+      await client.post(`/gmail/transactions/${id}/ignore`)
+      loadTransactions()
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error
+        || 'Could not ignore this transaction')
+    }
   }
 
   if (loading) return <PageSkeleton />

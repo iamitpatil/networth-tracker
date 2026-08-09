@@ -2,6 +2,7 @@ package com.networth.config;
 
 import com.networth.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,6 +28,13 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    /**
+     * Origins allowed to call the API from a browser. Defaults to the dev servers; production
+     * should set {@code CORS_ALLOWED_ORIGINS} to the real front-end hostname.
+     */
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -66,12 +74,30 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 
+    /**
+     * CORS policy, driven by {@code app.cors.allowed-origins}.
+     *
+     * <p>This was a hardcoded {@code "*"}. Credentials are not allowed, and the API authenticates
+     * with a bearer token rather than a cookie, so a wildcard could not be used to ride a logged-in
+     * session -- but it did let any page on the internet call the API and read the response, which
+     * matters as soon as a token leaks or an endpoint is made public.
+     *
+     * <p>{@code setAllowedOriginPatterns} rather than {@code setAllowedOrigins} so that a
+     * deployment can use a wildcard subdomain such as {@code https://*.example.com} if it needs to;
+     * plain {@code setAllowedOrigins} rejects patterns.
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedOriginPatterns(allowedOrigins);
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
+        // Kept false: the API reads its credential from the Authorization header, so browsers do
+        // not need to attach cookies. Leaving it false also keeps a wildcard pattern legal, which
+        // the CORS spec forbids once credentials are allowed.
+        configuration.setAllowCredentials(false);
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

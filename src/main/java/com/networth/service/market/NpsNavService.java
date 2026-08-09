@@ -240,7 +240,7 @@ public class NpsNavService {
      * Daily scheduled refresh at 9 PM IST (3:30 PM UTC).
      * NPS NAVs are typically published by evening.
      */
-    @Scheduled(cron = "0 30 15 * * ?")
+    @Scheduled(cron = "0 30 15 * * ?", zone = "Asia/Kolkata")
     public void scheduledNpsNavRefresh() {
         log.info("Starting scheduled NPS NAV refresh");
         refreshSchemes();

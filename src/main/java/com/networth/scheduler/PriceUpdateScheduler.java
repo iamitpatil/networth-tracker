@@ -59,7 +59,7 @@ public class PriceUpdateScheduler {
         log.info("Equity price update completed. Updated {} prices.", totalUpdated);
     }
 
-    @Scheduled(cron = "0 30 23 * * *")
+    @Scheduled(cron = "0 30 23 * * *", zone = "Asia/Kolkata")
     public void updateNavPrices() {
         log.info("Starting NAV update from AMFI...");
 
@@ -89,7 +89,7 @@ public class PriceUpdateScheduler {
         log.info("NAV update completed. Updated {} NAVs.", totalUpdated);
     }
 
-    @Scheduled(cron = "0 0 1 * * *")
+    @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Kolkata")
     public void snapshotNetWorth() {
         log.info("Starting daily net worth snapshots...");
 

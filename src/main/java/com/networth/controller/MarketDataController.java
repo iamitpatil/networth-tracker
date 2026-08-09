@@ -28,6 +28,7 @@ public class MarketDataController {
     private final BackfillJobService backfillJobService;
     private final HoldingRepository holdingRepository;
     private final SymbolRepository symbolRepository;
+    private final com.networth.service.FamilyService familyService;
 
     @PostMapping("/backfill-prices")
     public ResponseEntity<?> backfillPrices(
@@ -51,13 +52,30 @@ public class MarketDataController {
         }
     }
 
+    /**
+     * Backfills price history for one holding's symbol, on demand when its chart is opened.
+     *
+     * <p>Requires the caller to own the holding, or to share an approved family with its owner --
+     * the chart is reachable from the family view. Previously any holding UUID was accepted, and
+     * because the method writes a resolved ISIN back to the row, that let one user modify
+     * another's holding rather than merely read it.
+     */
     @PostMapping("/backfill-holding/{holdingId}")
     public ResponseEntity<?> backfillHolding(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String holdingId,
             @RequestParam(defaultValue = "365") int days) {
         try {
             Holding holding = holdingRepository.findById(UUID.fromString(holdingId))
                     .orElseThrow(() -> new IllegalArgumentException("Holding not found"));
+
+            UUID viewerId = UUID.fromString(userDetails.getUsername());
+            if (!holding.getUserId().equals(viewerId)
+                    && !familyService.getApprovedMemberIds(viewerId).contains(holding.getUserId())) {
+                // Indistinguishable from a missing holding on purpose: a separate "forbidden"
+                // would still confirm the holding exists.
+                throw new IllegalArgumentException("Holding not found");
+            }
 
             // Resolve ISIN if missing
             String isin = holding.getIsin();

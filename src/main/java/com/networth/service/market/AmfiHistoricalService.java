@@ -267,7 +267,7 @@ public class AmfiHistoricalService {
         return isins;
     }
 
-    @Scheduled(cron = "0 30 3 * * ?")
+    @Scheduled(cron = "0 30 3 * * ?", zone = "Asia/Kolkata")
     public void scheduledDailyBackfill() {
         log.info("Running daily AMFI NAV history backfill...");
         try {

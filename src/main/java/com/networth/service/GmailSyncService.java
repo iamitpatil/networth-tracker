@@ -92,11 +92,15 @@ public class GmailSyncService {
 
         int count = 0;
         for (Message msg : messages) {
-            if (transactionService.getUserTransactions(conn.getUserId()).stream()
-                    .anyMatch(t -> t.getGmailMessageId().equals(msg.getId()))) {
+            // One indexed existence check. This previously fetched the user's entire
+            // email_transactions table on every iteration and scanned it in memory, so a sync of
+            // 100 messages against 5,000 stored rows did half a million row comparisons.
+            if (transactionService.alreadyIngested(conn.getUserId(), msg.getId())) {
                 continue;
             }
 
+            // Fetching the full message costs an API call, so it happens only after the cheap
+            // duplicate check has ruled the message in.
             Message full = service.users().messages().get(USER, msg.getId()).setFormat("full").execute();
             String sender = getHeader(full, "From");
             String subject = getHeader(full, "Subject");
