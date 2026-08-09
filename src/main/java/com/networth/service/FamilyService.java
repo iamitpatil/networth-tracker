@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,7 +47,7 @@ public class FamilyService {
                 .role(FamilyRole.OWNER)
                 .status(MembershipStatus.APPROVED)
                 .invitedBy(createdBy)
-                .respondedAt(LocalDateTime.now())
+                .respondedAt(Instant.now())
                 .build();
         familyMemberRepository.save(owner);
 
@@ -109,7 +109,7 @@ public class FamilyService {
         }
 
         member.setStatus(accept ? MembershipStatus.APPROVED : MembershipStatus.REJECTED);
-        member.setRespondedAt(LocalDateTime.now());
+        member.setRespondedAt(Instant.now());
         member = familyMemberRepository.save(member);
 
         User user = userRepository.findById(userId).orElse(null);

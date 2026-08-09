@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -48,7 +48,7 @@ public class NewsService {
         }
 
         allNews.sort(Comparator.comparing(
-                n -> (LocalDateTime) n.getOrDefault("pubDate", LocalDateTime.MIN),
+                n -> (Instant) n.getOrDefault("pubDate", Instant.EPOCH),
                 Comparator.nullsLast(Comparator.reverseOrder())
         ));
 

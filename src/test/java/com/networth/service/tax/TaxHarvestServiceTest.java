@@ -17,8 +17,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,8 +59,8 @@ class TaxHarvestServiceTest {
         h.setAverageBuyPrice(new BigDecimal(avgBuy));
         h.setCurrentPrice(new BigDecimal(currentValue).divide(new BigDecimal(qty)));
         h.setCurrentValue(new BigDecimal(currentValue));
-        // Row written today. The service must NOT use this as the purchase date.
-        h.setCreatedAt(LocalDateTime.now());
+        // Row written now. The service must NOT use this as the purchase date.
+        h.setCreatedAt(Instant.now());
         return h;
     }
 

@@ -68,7 +68,7 @@ public class AuthService {
             }
         }
 
-        user.setLastLogin(java.time.LocalDateTime.now());
+        user.setLastLogin(java.time.Instant.now());
         userRepository.save(user);
 
         return buildAuthResponse(user);

@@ -4,6 +4,7 @@ import com.networth.model.enums.TransactionType;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Data
@@ -33,7 +34,12 @@ public class TransactionResponse {
 
     private String notes;
     private String broker;
-    private LocalDateTime createdAt;
+    /**
+     * When this row was recorded. An instant, so it serialises with an offset and the browser
+     * renders it in the viewer's own zone -- unlike {@link #transactionDate}, which is a calendar
+     * date and must never be shifted by a client's timezone.
+     */
+    private Instant createdAt;
 
     // Owner info (populated in family view for cross-member identification)
     private String ownerId;

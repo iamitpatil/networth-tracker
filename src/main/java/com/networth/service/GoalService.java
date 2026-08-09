@@ -16,8 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -73,7 +73,7 @@ public class GoalService {
     @Transactional
     public void deleteGoal(UUID userId, UUID goalId) {
         Goal goal = findOwnedGoal(userId, goalId);
-        goal.setDeletedAt(LocalDateTime.now());
+        goal.setDeletedAt(Instant.now());
         goalRepository.save(goal);
         log.info("Soft-deleted goal {} for user {}", goalId, userId);
     }

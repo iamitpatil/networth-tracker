@@ -3,6 +3,7 @@ import client from '../api/client'
 import { toast } from 'sonner'
 import { CheckCircle, Upload, FileText, Loader2, Receipt, Banknote, ArrowUpRight, ArrowDownRight, BarChart3 } from 'lucide-react'
 import { PieChart as RechartsPie, Pie, Cell, Sector, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { dateInputValue } from '../utils/format'
 
 const SPEND_CATEGORIES = {
   FOOD: { label: 'Food & Dining', color: '#F97316', icon: '🍔' },
@@ -146,7 +147,7 @@ export default function CreditCardSpend() {
     try {
       await client.post(`/liabilities/cc-spend/${report.id}/pay`, {
         paidAmount: report.totalAmountDue,
-        paidDate: new Date().toISOString().slice(0, 10),
+        paidDate: dateInputValue(),
         paymentMode: mode.toUpperCase() || 'ONLINE',
       })
       toast.success('Bill marked as paid', { description: `${report.cardIssuer} ****${report.cardLastFour} — ${fmt(report.totalAmountDue)} via ${mode.toUpperCase()}` })

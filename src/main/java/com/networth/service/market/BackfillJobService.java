@@ -5,8 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,7 +44,7 @@ public class BackfillJobService {
 
         status.clear();
         status.put("running", true);
-        status.put("startedAt", LocalDateTime.now().toString());
+        status.put("startedAt", Instant.now().toString());
         status.put("startedBy", userId.toString());
         status.put("currentStep", "symbols");
         status.put("steps", List.of("symbols", "equities", "mutual_funds", "nps"));
@@ -126,7 +126,7 @@ public class BackfillJobService {
                 stepError("nps", "NPS refresh failed: " + e.getMessage());
             }
 
-            status.put("completedAt", LocalDateTime.now().toString());
+            status.put("completedAt", Instant.now().toString());
             status.put("currentStep", "done");
             log.info("Full backfill job completed");
         } catch (Exception e) {
@@ -201,7 +201,7 @@ public class BackfillJobService {
         status.put("running", false);
         status.put("currentStep", "cancelled");
         status.put("currentStepMessage", "Job cancelled by user");
-        status.put("completedAt", LocalDateTime.now().toString());
+        status.put("completedAt", Instant.now().toString());
         log.info("Backfill job cancelled");
     }
 }

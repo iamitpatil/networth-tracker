@@ -6,17 +6,17 @@ import com.networth.model.dto.HoldingRequest;
 import com.networth.model.dto.HoldingResponse;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
-import com.networth.model.enums.AssetType;
 import com.networth.model.entity.Symbol;
+import com.networth.model.entity.Transaction;
+import com.networth.model.enums.AssetType;
+import com.networth.model.enums.TransactionType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
 import com.networth.repository.SymbolRepository;
-import com.networth.service.market.PriceService;
-import com.networth.model.entity.Transaction;
-import com.networth.model.enums.TransactionType;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.market.MarketCalendar;
+import com.networth.service.market.PriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -219,7 +219,7 @@ public class HoldingService {
     public void deleteHolding(String userId, String holdingId) {
         Holding holding = findOwnedHolding(userId, holdingId);
         // Soft delete: preserve for tax/audit history
-        holding.setDeletedAt(java.time.LocalDateTime.now());
+        holding.setDeletedAt(java.time.Instant.now());
         holdingRepository.save(holding);
         log.info("Soft-deleted holding {} for user {}", holdingId, userId);
     }

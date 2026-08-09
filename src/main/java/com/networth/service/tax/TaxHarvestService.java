@@ -5,9 +5,9 @@ import com.networth.model.entity.Transaction;
 import com.networth.model.enums.AssetType;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
+import com.networth.service.market.MarketCalendar;
 import com.networth.service.tax.rules.CapitalGainsRules;
 import com.networth.service.tax.rules.TaxRuleRegistry;
-import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -251,7 +251,7 @@ public class TaxHarvestService {
             }
             log.debug("Holding {} ({}) has no purchase transaction; using createdAt for holding period",
                     holding.getId(), holding.getSymbol());
-            from = holding.getCreatedAt().toLocalDate();
+            from = holding.getCreatedAt().atZone(MarketCalendar.ZONE).toLocalDate();
         }
         return Math.max(0, ChronoUnit.DAYS.between(from, today));
     }

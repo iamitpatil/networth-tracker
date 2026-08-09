@@ -12,6 +12,7 @@ import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.DematAccountService;
+import com.networth.service.market.MarketCalendar;
 import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,8 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -256,7 +259,7 @@ public class UpstoxBrokerService {
                 log.warn("Historical trades sync failed (non-fatal): {}", e.getMessage());
             }
 
-            conn.setLastSyncedAt(LocalDateTime.now());
+            conn.setLastSyncedAt(Instant.now());
             connectionRepository.save(conn);
 
             int totalTxns = txnCreated + historicalTxns;
@@ -349,7 +352,7 @@ public class UpstoxBrokerService {
                 .amount(qty.multiply(avgPrice))
                 .fees(BigDecimal.ZERO)
                 .taxes(BigDecimal.ZERO)
-                .transactionDate(LocalDateTime.now())
+                .transactionDate(LocalDate.now(MarketCalendar.ZONE).atStartOfDay())
                 .notes("Auto-imported from Upstox holdings sync")
                 .broker(BROKER_LABEL)
                 .build();
@@ -420,10 +423,10 @@ public class UpstoxBrokerService {
                             try {
                                 tradeDate = java.time.LocalDate.parse(tradeDateStr).atStartOfDay();
                             } catch (Exception e) {
-                                tradeDate = LocalDateTime.now();
+                                tradeDate = LocalDate.now(MarketCalendar.ZONE).atStartOfDay();
                             }
                         } else {
-                            tradeDate = LocalDateTime.now();
+                            tradeDate = LocalDate.now(MarketCalendar.ZONE).atStartOfDay();
                         }
 
                         TransactionType type = "SELL".equalsIgnoreCase(txnType) ? TransactionType.SELL : TransactionType.BUY;

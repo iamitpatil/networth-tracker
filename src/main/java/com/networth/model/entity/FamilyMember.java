@@ -6,7 +6,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -43,8 +43,8 @@ public class FamilyMember {
 
     @CreationTimestamp
     @Column(name = "invited_at", updatable = false)
-    private LocalDateTime invitedAt;
+    private Instant invitedAt;
 
     @Column(name = "responded_at")
-    private LocalDateTime respondedAt;
+    private Instant respondedAt;
 }

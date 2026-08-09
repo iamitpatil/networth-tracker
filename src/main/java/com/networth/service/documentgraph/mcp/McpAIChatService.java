@@ -14,8 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -424,7 +425,7 @@ All other tools: Call freely — they are read-only and safe.
                     pending.setArguments(arguments);
                     pending.setSummary(buildSummary(toolName, arguments));
                     pending.setStatus("pending");
-                    pending.setExpiresAt(LocalDateTime.now().plusDays(aiConfig.getPendingActionExpiryDays()));
+                    pending.setExpiresAt(Instant.now().plus(aiConfig.getPendingActionExpiryDays(), ChronoUnit.DAYS));
                     pending = pendingActionRepository.save(pending);
 
                     toolResult = new LinkedHashMap<>();
@@ -744,7 +745,7 @@ All other tools: Call freely — they are read-only and safe.
                         pending.setArguments(arguments);
                         pending.setSummary(buildSummary(toolName, arguments));
                         pending.setStatus("pending");
-                        pending.setExpiresAt(LocalDateTime.now().plusDays(aiConfig.getPendingActionExpiryDays()));
+                        pending.setExpiresAt(Instant.now().plus(aiConfig.getPendingActionExpiryDays(), ChronoUnit.DAYS));
                         pending = pendingActionRepository.save(pending);
 
                         toolResult = new LinkedHashMap<>();
@@ -860,7 +861,7 @@ All other tools: Call freely — they are read-only and safe.
         }
 
         // Check if the action has expired
-        if (pending.getExpiresAt() != null && LocalDateTime.now().isAfter(pending.getExpiresAt())) {
+        if (pending.getExpiresAt() != null && Instant.now().isAfter(pending.getExpiresAt())) {
             pending.setStatus("expired");
             pendingActionRepository.save(pending);
             throw new IllegalStateException("Action has expired and can no longer be executed");

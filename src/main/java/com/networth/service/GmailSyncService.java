@@ -11,13 +11,15 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.networth.model.entity.GmailConnection;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
@@ -56,7 +58,7 @@ public class GmailSyncService {
 
     private int syncForConnection(GmailConnection conn) throws Exception {
         String accessToken = oauthService.getDecryptedAccessToken(conn);
-        if (conn.getTokenExpiry() != null && conn.getTokenExpiry().isBefore(LocalDateTime.now())) {
+        if (conn.getTokenExpiry() != null && conn.getTokenExpiry().isBefore(Instant.now())) {
             conn = oauthService.refreshAccessToken(conn);
             accessToken = oauthService.getDecryptedAccessToken(conn);
         }
@@ -71,10 +73,9 @@ public class GmailSyncService {
         query.append(")");
 
         if (conn.getLastSyncAt() != null) {
+            LocalDate lastSync = conn.getLastSyncAt().atZone(MarketCalendar.ZONE).toLocalDate();
             String since = String.format("%d/%d/%d",
-                    conn.getLastSyncAt().getMonthValue(),
-                    conn.getLastSyncAt().getDayOfMonth(),
-                    conn.getLastSyncAt().getYear());
+                    lastSync.getMonthValue(), lastSync.getDayOfMonth(), lastSync.getYear());
             query.append(" after:").append(since);
         }
 
@@ -85,7 +86,7 @@ public class GmailSyncService {
 
         List<Message> messages = response.getMessages();
         if (messages == null || messages.isEmpty()) {
-            conn.setLastSyncAt(LocalDateTime.now());
+            conn.setLastSyncAt(Instant.now());
             connectionRepository.save(conn);
             return 0;
         }
@@ -113,7 +114,7 @@ public class GmailSyncService {
             }
         }
 
-        conn.setLastSyncAt(LocalDateTime.now());
+        conn.setLastSyncAt(Instant.now());
         connectionRepository.save(conn);
         log.info("Synced {} bank emails for user {}", count, conn.getUserId());
         return count;

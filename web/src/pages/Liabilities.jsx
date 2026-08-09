@@ -7,6 +7,7 @@ import CreditCardSpend from '../components/CreditCardSpend'
 import StyledSelect from '../components/ui/StyledSelect'
 import { ConfirmDialog } from '../components/ui/Modal'
 import { PageSkeleton } from '../components/ui'
+import { dateInputValue } from '../utils/format'
 
 const LIABILITY_CATEGORIES = [
   {
@@ -68,7 +69,7 @@ export default function Liabilities() {
     originalAmount: '',
     interestRate: '',
     tenureMonths: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: dateInputValue(),
   })
 
   useEffect(() => {
@@ -121,7 +122,7 @@ export default function Liabilities() {
       })
       setLocalLiabilities(prev => [...prev, data])
       setShowForm(false)
-      setForm({ liabilityType: 'home_loan', lender: '', originalAmount: '', interestRate: '', tenureMonths: '', startDate: new Date().toISOString().slice(0, 10) })
+      setForm({ liabilityType: 'home_loan', lender: '', originalAmount: '', interestRate: '', tenureMonths: '', startDate: dateInputValue() })
       toast.success('Liability added', { description: `${getTypeInfo(data.liabilityType).label} from ${data.lender}` })
       setSelectedLiability(data)
       fetchEmiSchedule(data.id)

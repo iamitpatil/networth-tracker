@@ -5,7 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -30,20 +30,20 @@ public class GmailConnection {
     private String refreshToken;
 
     @Column(name = "token_expiry")
-    private LocalDateTime tokenExpiry;
+    private Instant tokenExpiry;
 
     @Column(name = "sync_enabled")
     @Builder.Default
     private Boolean syncEnabled = true;
 
     @Column(name = "last_sync_at")
-    private LocalDateTime lastSyncAt;
+    private Instant lastSyncAt;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 }

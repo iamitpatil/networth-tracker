@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -24,7 +24,9 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = new HashMap<>();
         body.put("error", error);
         body.put("message", message);
-        body.put("timestamp", LocalDateTime.now().toString());
+        // An instant, not a local time: the client that reads this may be in any zone, and
+        // "when did this fail" has to mean the same thing to all of them.
+        body.put("timestamp", Instant.now().toString());
         return body;
     }
 

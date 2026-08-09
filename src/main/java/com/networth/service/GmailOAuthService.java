@@ -9,15 +9,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.Optional;
+import java.util.UUID;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.Base64;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -76,7 +76,7 @@ public class GmailOAuthService {
         conn.setGmailAddress(tokenResponse.email);
         conn.setAccessToken(encrypt(tokenResponse.accessToken));
         conn.setRefreshToken(encrypt(tokenResponse.refreshToken));
-        conn.setTokenExpiry(LocalDateTime.now().plusSeconds(tokenResponse.expiresIn));
+        conn.setTokenExpiry(Instant.now().plusSeconds(tokenResponse.expiresIn));
         conn.setSyncEnabled(true);
         return connectionRepository.save(conn);
     }
@@ -107,7 +107,7 @@ public class GmailOAuthService {
         String refreshToken = getDecryptedRefreshToken(conn);
         GoogleTokenResponse tokenResponse = refreshToken(refreshToken);
         conn.setAccessToken(encrypt(tokenResponse.accessToken));
-        conn.setTokenExpiry(LocalDateTime.now().plusSeconds(tokenResponse.expiresIn));
+        conn.setTokenExpiry(Instant.now().plusSeconds(tokenResponse.expiresIn));
         return connectionRepository.save(conn);
     }
 

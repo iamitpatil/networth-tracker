@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { PdfPasswordModal } from '../components/ui/Modal'
+import { dateInputValue } from '../utils/format'
 import {
   Send, Bot, User, FileText, Trash2,
   TrendingUp, PieChart, Shield, Loader2, Copy, RotateCcw,
@@ -305,9 +306,12 @@ function EditableSalaryCard({ data, documentId, onSaved }) {
       if (data.deductions && typeof data.deductions === 'object') components.deductions = data.deductions
     }
     // If components is flat (no nested objects), keep as-is
+
+    // A pay date is a calendar date. Reformatting it through toISOString() would convert to UTC
+    // first and hand back the previous day for anyone east of Greenwich.
     const payDate = data?.payDate || ''
     const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(payDate) ? payDate
-      : (() => { try { const p = new Date(payDate); return isNaN(p) ? '' : p.toISOString().slice(0, 10) } catch { return '' } })()
+      : (() => { try { const p = new Date(payDate); return isNaN(p) ? '' : dateInputValue(p) } catch { return '' } })()
 
     return {
       employerName: data?.employerName || '',

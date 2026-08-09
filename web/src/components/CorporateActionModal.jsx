@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Loader2, Gift, Split, GitBranch } from 'lucide-react'
 import client from '../api/client'
 import { Modal } from './ui'
+import { dateInputValue } from '../utils/format'
 
 const TYPES = [
   { value: 'BONUS', label: 'Bonus issue', icon: Gift,
@@ -45,7 +46,7 @@ const label = 'block text-xs text-[var(--text-secondary)] mb-1'
  */
 export default function CorporateActionModal({ open, onClose, holding, onApplied }) {
   const [type, setType] = useState('BONUS')
-  const [actionDate, setActionDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [actionDate, setActionDate] = useState(() => dateInputValue())
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState(null)
@@ -284,7 +285,7 @@ export default function CorporateActionModal({ open, onClose, holding, onApplied
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>Action date</label>
-              <input type="date" value={actionDate} max={new Date().toISOString().slice(0, 10)}
+              <input type="date" value={actionDate} max={dateInputValue()}
                 onChange={(e) => setActionDate(e.target.value)} className={input} />
             </div>
             <div>

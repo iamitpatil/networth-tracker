@@ -11,6 +11,7 @@ import com.networth.repository.BrokerConnectionRepository;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
+import com.networth.service.market.MarketCalendar;
 import com.networth.service.portfolio.HoldingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +27,8 @@ import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
@@ -271,7 +273,7 @@ public class ZerodhaIntegrationService {
                 }
             }
 
-            conn.setLastSyncedAt(LocalDateTime.now());
+            conn.setLastSyncedAt(Instant.now());
             connectionRepository.save(conn);
 
             log.info("Zerodha sync for user {}: {} created, {} updated, {} skipped, {} transactions",
@@ -402,7 +404,7 @@ public class ZerodhaIntegrationService {
                 .amount(qty.multiply(avgPrice))
                 .fees(BigDecimal.ZERO)
                 .taxes(BigDecimal.ZERO)
-                .transactionDate(LocalDateTime.now())
+                .transactionDate(LocalDate.now(MarketCalendar.ZONE).atStartOfDay())
                 .notes("Auto-imported from Zerodha holdings sync")
                 .broker(BROKER_LABEL)
                 .build();

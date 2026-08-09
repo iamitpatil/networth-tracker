@@ -4,7 +4,7 @@ import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Upload, FileText, Download
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
 import { PageSkeleton } from '../components/ui'
-import { formatINR } from '../utils/format'
+import { formatINR, dateInputValue } from '../utils/format'
 
 export default function Salaries() {
   const [salaries, setSalaries] = useState([])
@@ -43,7 +43,7 @@ export default function Salaries() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [])
 
-  const resetForm = () => setForm({ employerName: '', amount: '', bankAccountId: '', payDate: new Date().toISOString().slice(0, 10), notes: '', components: { earnings: {}, deductions: {} } })
+  const resetForm = () => setForm({ employerName: '', amount: '', bankAccountId: '', payDate: dateInputValue(), notes: '', components: { earnings: {}, deductions: {} } })
 
   const openCreate = () => { resetForm(); setEditing(null); setParsedData(null); setShowForm(true) }
   const openEdit = (s) => {

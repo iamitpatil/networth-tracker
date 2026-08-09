@@ -10,6 +10,7 @@ import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
+import { dateTimeInputValue } from '../utils/format'
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#14b8a6', '#f97316']
 
@@ -136,7 +137,7 @@ export default function Holdings() {
   const [form, setForm] = useState({
     symbol: '',
     dematAccountId: '',
-    transactionDate: new Date().toISOString().slice(0, 16),
+    transactionDate: dateTimeInputValue(),
     quantity: '',
     price: '',
     transactionType: 'BUY',
@@ -608,7 +609,7 @@ export default function Holdings() {
   const resetForm = () => {
     setForm({
       symbol: '', dematAccountId: '',
-      transactionDate: new Date().toISOString().slice(0, 16),
+      transactionDate: dateTimeInputValue(),
       quantity: '', price: '', transactionType: 'BUY', name: '',
       couponRate: '', maturityDate: '',
       npsAccountId: '',
@@ -684,7 +685,9 @@ export default function Holdings() {
         transactionType: txnType,
         quantity: qty,
         price,
-        transactionDate: new Date(form.transactionDate).toISOString(),
+        // A trade date is a calendar date, not an instant: 15 Jan is 15 Jan wherever it is read.
+        // Converting to UTC first shifted it back a day for anyone east of Greenwich.
+        transactionDate: form.transactionDate,
         broker: form.dematAccountId ? (dematMap[form.dematAccountId]?.brokerName || null) : null,
       })
 

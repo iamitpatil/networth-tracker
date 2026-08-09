@@ -10,8 +10,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -68,7 +67,8 @@ public class AuditLogService {
         try {
             String key = AUDIT_KEY_PREFIX + userId;
             Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            // An instant: an audit trail read from another zone must still order correctly.
+            entry.put("timestamp", Instant.now().toString());
             entry.put("action", action);
             entry.put("entityType", entityType);
             entry.put("entityId", entityId);
