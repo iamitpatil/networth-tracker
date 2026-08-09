@@ -9,6 +9,7 @@ import com.networth.repository.GoalRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.LiabilityRepository;
 import com.networth.repository.SalaryRepository;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -296,12 +297,13 @@ public class HealthScoreService {
             double completionPct = current.divide(g.getTargetAmount(), 4, RoundingMode.HALF_UP).doubleValue();
 
             if (g.getTargetDate() != null) {
-                long totalDays = ChronoUnit.DAYS.between(
-                        g.getCreatedAt() != null ? g.getCreatedAt().toLocalDate() : LocalDate.now().minusYears(1),
-                        g.getTargetDate());
-                long daysElapsed = ChronoUnit.DAYS.between(
-                        g.getCreatedAt() != null ? g.getCreatedAt().toLocalDate() : LocalDate.now().minusYears(1),
-                        LocalDate.now());
+                // An instant only becomes a date once a zone is named, and the zone that matters
+                // for "how far through this goal are we" is the user's market calendar.
+                LocalDate goalStart = g.getCreatedAt() != null
+                        ? g.getCreatedAt().atZone(MarketCalendar.ZONE).toLocalDate()
+                        : LocalDate.now(MarketCalendar.ZONE).minusYears(1);
+                long totalDays = ChronoUnit.DAYS.between(goalStart, g.getTargetDate());
+                long daysElapsed = ChronoUnit.DAYS.between(goalStart, LocalDate.now(MarketCalendar.ZONE));
 
                 if (totalDays > 0) {
                     double expectedPct = Math.min((double) daysElapsed / totalDays, 1.0);

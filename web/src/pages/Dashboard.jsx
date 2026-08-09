@@ -3,16 +3,15 @@ import client from '../api/client'
 import {
   TrendingUp, TrendingDown, Target, Activity, Lightbulb, Wallet,
   PieChart as PieChartIcon, ArrowUpRight, Coins, Landmark, Gem,
-  Building2, Bitcoin, Receipt, AlertCircle, Sparkles,
+  Building2, Bitcoin, Receipt, Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  PieChart, Pie, Cell, Sector, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { formatINR, formatPercent } from '../utils/format'
 import { CHART_PALETTE, ASSET_COLORS } from '../utils/colors'
-import { Card, StatCard, PageHeader, PageSkeleton, EmptyState, Badge, Tooltip as UITooltip } from '../components/ui'
+import { Card, PageHeader, PageSkeleton, EmptyState, Tooltip as UITooltip } from '../components/ui'
 
 const ASSET_ICONS = {
   EQUITY: Landmark,
@@ -38,10 +37,6 @@ export default function Dashboard() {
   const [insights, setInsights] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
   async function fetchData() {
     try {
       const [breakdownRes, healthRes, holdingsRes, xirrRes, goalsRes, insightsRes] =
@@ -59,12 +54,18 @@ export default function Dashboard() {
       setXirr(xirrRes.data)
       setGoals(goalsRes.data || [])
       setInsights(insightsRes.data || [])
-    } catch (e) {
+    } catch {
       // toast handled
     } finally {
       setLoading(false)
     }
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchData()
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (loading) return <PageSkeleton />
 
@@ -189,11 +190,13 @@ export default function Dashboard() {
                       cy="50%"
                       innerRadius={60}
                       outerRadius={100}
-                      paddingAngle={2}
+                      paddingAngle={1}
+                      strokeWidth={0}
                       dataKey="value"
+                      activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}
                     >
                       {allocation.map((entry, idx) => (
-                        <Cell key={idx} fill={ASSET_COLORS[entry.key] || CHART_PALETTE[idx % CHART_PALETTE.length]} />
+                        <Cell key={idx} fill={ASSET_COLORS[entry.key] || CHART_PALETTE[idx % CHART_PALETTE.length]} cursor="pointer" />
                       ))}
                     </Pie>
                     <Tooltip
@@ -202,6 +205,7 @@ export default function Dashboard() {
                         border: '1px solid var(--border)',
                         borderRadius: '8px',
                       }}
+                      itemStyle={{ color: 'var(--text)' }}
                       formatter={(v) => formatINR(v)}
                     />
                   </PieChart>
@@ -341,9 +345,9 @@ export default function Dashboard() {
                       <span className="text-sm font-medium truncate">{goal.name}</span>
                       <span className="text-xs text-[var(--text-muted)]">{progress.toFixed(0)}%</span>
                     </div>
-                    <div className="w-full bg-[var(--input-bg)] rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden shadow-inner">
                       <div
-                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        className="h-full bg-gradient-to-r from-blue-500 via-blue-400 to-blue-600 rounded-full transition-all duration-700 ease-out"
                         style={{ width: `${progress}%` }}
                       />
                     </div>

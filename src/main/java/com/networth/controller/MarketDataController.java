@@ -5,6 +5,7 @@ import com.networth.model.entity.Symbol;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.SymbolRepository;
 import com.networth.service.market.AmfiHistoricalService;
+import com.networth.service.market.BackfillJobService;
 import com.networth.service.market.UpstoxHistoricalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,8 +25,13 @@ public class MarketDataController {
 
     private final UpstoxHistoricalService historicalService;
     private final AmfiHistoricalService amfiHistoricalService;
+    private final BackfillJobService backfillJobService;
     private final HoldingRepository holdingRepository;
     private final SymbolRepository symbolRepository;
+    private final com.networth.service.FamilyService familyService;
+    private final com.networth.service.market.provider.ProviderRateLimiter rateLimiter;
+    private final com.networth.service.market.provider.ProviderRateLimits rateLimits;
+    private final com.networth.service.market.provider.MarketDataResolver resolver;
 
     @PostMapping("/backfill-prices")
     public ResponseEntity<?> backfillPrices(
@@ -49,13 +55,30 @@ public class MarketDataController {
         }
     }
 
+    /**
+     * Backfills price history for one holding's symbol, on demand when its chart is opened.
+     *
+     * <p>Requires the caller to own the holding, or to share an approved family with its owner --
+     * the chart is reachable from the family view. Previously any holding UUID was accepted, and
+     * because the method writes a resolved ISIN back to the row, that let one user modify
+     * another's holding rather than merely read it.
+     */
     @PostMapping("/backfill-holding/{holdingId}")
     public ResponseEntity<?> backfillHolding(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String holdingId,
             @RequestParam(defaultValue = "365") int days) {
         try {
             Holding holding = holdingRepository.findById(UUID.fromString(holdingId))
                     .orElseThrow(() -> new IllegalArgumentException("Holding not found"));
+
+            UUID viewerId = UUID.fromString(userDetails.getUsername());
+            if (!holding.getUserId().equals(viewerId)
+                    && !familyService.getApprovedMemberIds(viewerId).contains(holding.getUserId())) {
+                // Indistinguishable from a missing holding on purpose: a separate "forbidden"
+                // would still confirm the holding exists.
+                throw new IllegalArgumentException("Holding not found");
+            }
 
             // Resolve ISIN if missing
             String isin = holding.getIsin();
@@ -112,5 +135,66 @@ public class MarketDataController {
     @GetMapping("/backfill-mf-status")
     public ResponseEntity<Map<String, Object>> backfillMfStatus() {
         return ResponseEntity.ok(amfiHistoricalService.getBackfillStatus());
+    }
+
+    /**
+     * Every market data provider's rate limit and how much of it is currently used.
+     *
+     * <p>Reports the figure the provider publishes next to the budget this application enforces,
+     * which is intentionally lower. Without this the only way to find out why a price stopped
+     * refreshing was to read the logs — and the answer is often simply that a provider's daily
+     * quota is spent. Alpha Vantage's free tier is 25 requests <em>per day</em>, so that happens.
+     */
+    @GetMapping("/providers")
+    public ResponseEntity<Map<String, Object>> providerLimits() {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("enabled", rateLimits.isEnabled());
+        body.put("maxWaitMs", rateLimits.getMaxWait().toMillis());
+        body.put("chains", java.util.Arrays.stream(
+                        com.networth.service.market.provider.MarketDataType.values())
+                .collect(java.util.stream.Collectors.toMap(
+                        Enum::name,
+                        type -> resolver.getProviders(type).stream()
+                                .map(com.networth.service.market.provider.MarketDataProvider::getName)
+                                .toList(),
+                        (a, b) -> a,
+                        java.util.LinkedHashMap::new)));
+        body.put("providers", rateLimiter.snapshot());
+        return ResponseEntity.ok(body);
+    }
+
+    // ── Full Backfill Job (async, singleton) ──
+
+    @PostMapping("/backfill")
+    public ResponseEntity<Map<String, Object>> startBackfill(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(defaultValue = "365") int days) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        boolean started = backfillJobService.tryStart(userId, days);
+        if (!started) {
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("status", "already_running");
+            body.put("message", "A backfill job is already running. Check status or wait for it to complete.");
+            return ResponseEntity.status(409).body(body);
+        }
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("status", "started");
+        body.put("message", "Full backfill started (symbols + equity prices + MF NAVs + NPS)");
+        body.put("days", days);
+        return ResponseEntity.ok(body);
+    }
+
+    @GetMapping("/backfill/status")
+    public ResponseEntity<Map<String, Object>> backfillStatus() {
+        return ResponseEntity.ok(backfillJobService.getStatus());
+    }
+
+    @PostMapping("/backfill/cancel")
+    public ResponseEntity<Map<String, Object>> cancelBackfill() {
+        boolean cancelled = backfillJobService.cancel();
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("cancelled", cancelled);
+        body.put("message", cancelled ? "Backfill job cancellation requested" : "No backfill job is running");
+        return ResponseEntity.ok(body);
     }
 }

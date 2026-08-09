@@ -31,6 +31,7 @@ export function FamilyViewProvider({ children }) {
     } catch { setFamilies([]) }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchPending(); fetchFamilies() }, [fetchPending, fetchFamilies])
 
   return (
@@ -40,4 +41,5 @@ export function FamilyViewProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useFamilyView = () => useContext(FamilyViewContext)

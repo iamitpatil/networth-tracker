@@ -3,9 +3,25 @@ import client from '../api/client'
 import { toast } from 'sonner'
 import {
   Landmark, Building2, CreditCard, Shield, PiggyBank, Briefcase,
-  Plus, Trash2, Pencil, X, ChevronDown, ChevronUp, Eye, EyeOff,
+  Plus, Trash2, Pencil, X, ChevronDown,
   Upload, FileText, Download, Loader2, Paperclip
 } from 'lucide-react'
+import { ConfirmDialog } from './ui/Modal'
+import { useFeature } from '../context/FeatureFlagContext'
+
+const BROKER_DOMAINS = {
+  'Upstox': 'upstox.com', 'Zerodha': 'zerodha.com',
+}
+const getBrokerLogo = (name) => {
+  const domain = BROKER_DOMAINS[name]
+  return domain ? `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : null
+}
+
+const NPS_CRAS = [
+  { value: 'PROTEAN', label: 'Protean (NSDL)', logo: '/logos/cra/protean.jpg' },
+  { value: 'KFINTECH', label: 'KFintech (Karvy)', logo: '/logos/cra/kfintech.svg' },
+  { value: 'CAMS', label: 'CAMS', logo: '/logos/cra/cams.svg' },
+]
 
 const TABS = [
   { id: 'bank', label: 'Bank', icon: Landmark, color: 'blue' },
@@ -28,25 +44,184 @@ export default function AccountsHub() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({})
 
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
   const { options: bankRef } = useReferenceData('BANK')
   const { options: brokerRef } = useReferenceData('BROKER')
   const { options: cardIssuerRef } = useReferenceData('CARD_ISSUER')
+
+  // Broker import state
+  const upstoxEnabled = useFeature('upstox-import')
+  const zerodhaEnabled = useFeature('zerodha-import')
+  const hasBrokers = upstoxEnabled || zerodhaEnabled
+  const [importOpen, setImportOpen] = useState(false)
+  const [brokerStatus, setBrokerStatus] = useState({})
+  const [syncingBroker, setSyncingBroker] = useState(null)
+  const [refreshingNps, setRefreshingNps] = useState(false)
+  const importRef = useRef(null)
 
   const getLogo = (category, name) => {
     const refs = category === 'BANK' ? bankRef : category === 'BROKER' ? brokerRef : category === 'CARD_ISSUER' ? cardIssuerRef : []
     return refs.find(r => r.value === name)?.metadata?.logo || null
   }
 
-  useEffect(() => { loadAll() }, [])
-
   const loadAll = async () => {
     try {
       const { data: d } = await client.get('/accounts')
       setData(d)
-    } catch {} finally { setLoading(false) }
+    } catch { /* ignored */ } finally { setLoading(false) }
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { loadAll() }, [])
+
+  // Fetch broker statuses
+  useEffect(() => {
+    if (!hasBrokers) return
+    const fetches = []
+    if (upstoxEnabled) fetches.push(client.get('/brokers/upstox/status').then(r => ['upstox', r.data]).catch(() => ['upstox', { connected: false }]))
+    if (zerodhaEnabled) fetches.push(client.get('/brokers/zerodha/status').then(r => ['zerodha', r.data]).catch(() => ['zerodha', { connected: false }]))
+    Promise.all(fetches).then(results => {
+      const map = {}
+      results.forEach(([key, val]) => { map[key] = val })
+      setBrokerStatus(map)
+    })
+  }, [hasBrokers, upstoxEnabled, zerodhaEnabled])
+
+  // Handle broker OAuth callbacks
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (code && upstoxEnabled) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSyncingBroker('upstox')
+      client.post('/brokers/upstox/callback', { code })
+        .then(res => {
+          if (res.data?.success) {
+            toast.success('Upstox connected', { description: res.data.brokerUserName || '' })
+            setBrokerStatus(prev => ({ ...prev, upstox: { connected: true, status: 'ACTIVE', brokerUserName: res.data.brokerUserName } }))
+            loadAll()
+          } else toast.error('Upstox connection failed', { description: res.data?.message })
+        })
+        .catch(err => toast.error('Connection failed', { description: err.message }))
+        .finally(() => setSyncingBroker(null))
+      return
+    }
+    const requestToken = params.get('request_token')
+    if (requestToken && params.get('status') === 'success' && zerodhaEnabled) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setSyncingBroker('zerodha')
+      client.post('/brokers/zerodha/callback', { request_token: requestToken })
+        .then(res => {
+          if (res.data?.success) {
+            toast.success('Zerodha connected', { description: res.data.brokerUserName || '' })
+            setBrokerStatus(prev => ({ ...prev, zerodha: { connected: true, status: 'ACTIVE', brokerUserName: res.data.brokerUserName } }))
+            loadAll()
+          } else toast.error('Zerodha connection failed', { description: res.data?.message })
+        })
+        .catch(err => toast.error('Connection failed', { description: err.message }))
+        .finally(() => setSyncingBroker(null))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Close import dropdown on outside click
+  useEffect(() => {
+    if (!importOpen) return
+    const handleClick = (e) => { if (importRef.current && !importRef.current.contains(e.target)) setImportOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [importOpen])
+
   const resetForm = () => { setForm({}); setShowForm(false); setEditingId(null) }
+
+  const handleBrokerConnect = async (broker) => {
+    try {
+      const { data } = await client.get(`/brokers/${broker}/auth-url`)
+      window.location.href = data.url
+    } catch (err) { toast.error('Failed to get auth URL', { description: err.message }) }
+  }
+
+  const handleBrokerSync = async (broker) => {
+    setSyncingBroker(broker)
+    try {
+      const { data } = await client.post(`/brokers/${broker}/sync`)
+      if (data.success) {
+        toast.success(`${broker === 'upstox' ? 'Upstox' : 'Zerodha'} synced`, { description: data.message })
+        setBrokerStatus(prev => ({ ...prev, [broker]: { ...prev[broker], lastSyncedAt: new Date().toISOString() } }))
+        loadAll()
+      } else {
+        toast.error('Sync failed', { description: data.message })
+        if (data.message?.includes('expired') || data.message?.includes('reconnect'))
+          setBrokerStatus(prev => ({ ...prev, [broker]: { ...prev[broker], status: 'TOKEN_EXPIRED' } }))
+      }
+    } catch (err) { toast.error('Sync failed', { description: err.message }) }
+    finally { setSyncingBroker(null) }
+  }
+
+  const handleBrokerDisconnect = (broker) => {
+    const name = broker === 'upstox' ? 'Upstox' : 'Zerodha'
+    setConfirmDialog({
+      open: true, title: `Disconnect ${name}?`, description: 'Your imported holdings will remain.',
+      onConfirm: async () => {
+        try {
+          await client.post(`/brokers/${broker}/disconnect`)
+          setBrokerStatus(prev => ({ ...prev, [broker]: { connected: false } }))
+          toast.success(`${name} disconnected`)
+        } catch (err) { toast.error('Failed to disconnect', { description: err.message }) }
+      },
+    })
+  }
+
+  const renderBrokerRow = (brokerId, brokerName) => {
+    const s = brokerStatus[brokerId] || {}
+    const isConnected = s.connected && s.status === 'ACTIVE'
+    const isExpired = s.connected && s.status === 'TOKEN_EXPIRED'
+    const isSyncing = syncingBroker === brokerId
+    return (
+      <div key={brokerId} className="px-4 py-3 hover:bg-[var(--hover-bg)] transition">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <img src={getBrokerLogo(brokerName)} alt={brokerName} className="w-7 h-7 rounded-md object-contain bg-white p-0.5"
+                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+              <div className="w-7 h-7 rounded-md bg-[var(--hover-bg)] items-center justify-center text-[var(--text-muted)] hidden">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--bg-card)] ${isConnected ? 'bg-green-400' : isExpired ? 'bg-amber-400' : 'bg-[var(--text-secondary)]'}`} />
+            </div>
+            <div>
+              <p className="text-sm font-medium">{brokerName}</p>
+              <p className="text-xs text-[var(--text-muted)]">
+                {isConnected && s.brokerUserName ? s.brokerUserName : isExpired ? 'Session expired' : 'Not connected'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {isConnected && (
+              <>
+                <button onClick={() => { setImportOpen(false); handleBrokerSync(brokerId) }} disabled={isSyncing}
+                  className="px-2.5 py-1 rounded-md text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition disabled:opacity-50">
+                  {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Sync'}
+                </button>
+                <button onClick={() => { setImportOpen(false); handleBrokerDisconnect(brokerId) }}
+                  className="p-1 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+            {(isExpired || !s.connected) && (
+              <button onClick={() => { setImportOpen(false); handleBrokerConnect(brokerId) }}
+                className="px-2.5 py-1 rounded-md text-xs bg-blue-500 text-white hover:bg-blue-600 transition">
+                {isExpired ? 'Reconnect' : 'Connect'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleCreate = async (endpoint, body) => {
     try {
@@ -66,13 +241,19 @@ export default function AccountsHub() {
     } catch (err) { toast.error('Failed to update', { description: err.response?.data?.message || err.message }) }
   }
 
-  const handleDelete = async (endpoint, id, label) => {
-    if (!confirm(`Delete ${label}?`)) return
-    try {
-      await client.delete(`/accounts/${endpoint}/${id}`)
-      toast.success(`${label} deleted`)
-      loadAll()
-    } catch (err) { toast.error('Failed to delete', { description: err.response?.data?.message || err.message }) }
+  const handleDelete = (endpoint, id, label) => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${label}?`,
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/accounts/${endpoint}/${id}`)
+          toast.success(`${label} deleted`)
+          loadAll()
+        } catch (err) { toast.error('Failed to delete', { description: err.response?.data?.message || err.message }) }
+      },
+    })
   }
 
   // For bank/demat we use existing endpoints
@@ -84,10 +265,16 @@ export default function AccountsHub() {
     try { await client.put(`/bank-accounts/${id}`, body); toast.success('Updated'); resetForm(); loadAll() }
     catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
   }
-  const handleBankDelete = async (id) => {
-    if (!confirm('Delete bank account?')) return
-    try { await client.delete(`/bank-accounts/${id}`); toast.success('Deleted'); loadAll() }
-    catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+  const handleBankDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete bank account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try { await client.delete(`/bank-accounts/${id}`); toast.success('Deleted'); loadAll() }
+        catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+      },
+    })
   }
   const handleDematCreate = async (body) => {
     try { await client.post('/demat-accounts', body); toast.success('Demat account added'); resetForm(); loadAll() }
@@ -97,10 +284,16 @@ export default function AccountsHub() {
     try { await client.put(`/demat-accounts/${id}`, body); toast.success('Updated'); resetForm(); loadAll() }
     catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
   }
-  const handleDematDelete = async (id) => {
-    if (!confirm('Delete demat account?')) return
-    try { await client.delete(`/demat-accounts/${id}`); toast.success('Deleted'); loadAll() }
-    catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+  const handleDematDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete demat account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try { await client.delete(`/demat-accounts/${id}`); toast.success('Deleted'); loadAll() }
+        catch (err) { toast.error('Failed', { description: err.response?.data?.message || err.message }) }
+      },
+    })
   }
 
   if (loading) return <div className="flex justify-center py-12 text-[var(--text-muted)]">Loading accounts...</div>
@@ -133,11 +326,52 @@ export default function AccountsHub() {
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)]">
         <div className="p-4 flex items-center justify-between border-b border-[var(--border)]">
           <h3 className="font-semibold text-[var(--text)]">{TABS.find(t => t.id === activeTab)?.label} Accounts</h3>
-          <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({}) }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 ${
-              showForm ? 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
-            {showForm ? <><X className="w-3.5 h-3.5" /> Cancel</> : <><Plus className="w-3.5 h-3.5" /> Add</>}
-          </button>
+          <div className="flex items-center gap-2">
+            {activeTab === 'nps' && (
+              <button onClick={async () => {
+                  setRefreshingNps(true)
+                  try {
+                    const { data } = await client.post('/accounts/nps/refresh-nav')
+                    if (data.updated > 0) {
+                      toast.success(`NPS NAV updated`, { description: `${data.updated} account(s) refreshed` })
+                      loadAll()
+                    } else {
+                      toast.info('No NPS accounts with scheme codes to refresh')
+                    }
+                  } catch (err) { toast.error('NAV refresh failed', { description: err.message }) }
+                  finally { setRefreshingNps(false) }
+                }}
+                disabled={refreshingNps}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 bg-green-500/20 text-green-400 hover:bg-green-500/30 disabled:opacity-50">
+                {refreshingNps ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Refresh NAV
+              </button>
+            )}
+            {activeTab === 'demat' && hasBrokers && (
+              <div className="relative" ref={importRef}>
+                <button onClick={() => setImportOpen(!importOpen)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]">
+                  <Download className="w-3.5 h-3.5" /> Import
+                  <ChevronDown className={`w-3 h-3 transition-transform ${importOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {importOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-50 overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-[var(--border)]">
+                      <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Import from Broker</p>
+                    </div>
+                    {upstoxEnabled && renderBrokerRow('upstox', 'Upstox')}
+                    {upstoxEnabled && zerodhaEnabled && <div className="border-b border-[var(--border)]" />}
+                    {zerodhaEnabled && renderBrokerRow('zerodha', 'Zerodha')}
+                  </div>
+                )}
+              </div>
+            )}
+            <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({}) }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition inline-flex items-center gap-1.5 ${
+                showForm ? 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
+              {showForm ? <><X className="w-3.5 h-3.5" /> Cancel</> : <><Plus className="w-3.5 h-3.5" /> Add</>}
+            </button>
+          </div>
         </div>
 
         {/* Forms */}
@@ -167,7 +401,7 @@ export default function AccountsHub() {
             <AccountRow key={a.id} icon={Building2} color="indigo" title={a.brokerName} subtitle={a.accountType || 'Equity'}
               detail={a.isDefault ? 'Default' : ''} extra={a.accountNumber || ''}
               accountType="DEMAT" accountId={a.id} logoUrl={getLogo('BROKER', a.brokerName)}
-              onEdit={() => { setForm({ brokerName: a.brokerName, accountType: a.accountType, description: a.description, isDefault: a.isDefault }); setEditingId(a.id); setShowForm(true) }}
+              onEdit={() => { setForm({ brokerName: a.brokerName, accountNumber: a.accountNumber || '', accountType: a.accountType, description: a.description, isDefault: a.isDefault }); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDematDelete(a.id)} />
           ))}
           {activeTab === 'cc' && (data?.creditCards || []).map(a => (
@@ -176,18 +410,21 @@ export default function AccountsHub() {
               detail={a.creditLimit ? `Limit: ${fmt(a.creditLimit)}` : ''}
               extra={a.rewardType ? `${a.rewardType}` : ''}
               badge={a.isActive ? null : 'Inactive'}
-              accountType="CREDIT_CARD" accountId={a.id} logoUrl={getLogo('CARD_ISSUER', a.cardIssuer)}
+              accountType="CREDIT_CARD" accountId={a.id} logoUrl={getLogo('BANK', a.cardIssuer) || getLogo('CARD_ISSUER', a.cardIssuer)}
               onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
               onDelete={() => handleDelete('credit-cards', a.id, `${a.cardIssuer} card`)} />
           ))}
-          {activeTab === 'nps' && (data?.npsAccounts || []).map(a => (
-            <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
-              subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}`}
-              detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.assetClass ? `Class ${a.assetClass}` : ''}
-              accountType="NPS" accountId={a.id}
-              onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
-              onDelete={() => handleDelete('nps', a.id, `NPS ${a.pranNumber}`)} />
-          ))}
+          {activeTab === 'nps' && (data?.npsAccounts || []).map(a => {
+            const craLogo = NPS_CRAS.find(c => c.value === a.cra)?.logo
+            return (
+              <AccountRow key={a.id} icon={Shield} color="green" title={`PRAN: ${a.pranNumber}`}
+                subtitle={`${a.fundManager || 'Unknown'} • ${a.tier}${a.schemePreference ? ` • ${a.schemePreference}` : ''}${a.cra ? ` • ${a.cra}` : ''}`}
+                detail={a.currentValue ? fmt(a.currentValue) : ''} extra={a.employerName || ''}
+                accountType="NPS" accountId={a.id} logoUrl={craLogo}
+                onEdit={() => { setForm(a); setEditingId(a.id); setShowForm(true) }}
+                onDelete={() => handleDelete('nps', a.id, `NPS ${a.pranNumber}`)} />
+            )
+          })}
           {activeTab === 'ppf' && (data?.ppfAccounts || []).map(a => (
             <AccountRow key={a.id} icon={PiggyBank} color="amber" title={`PPF - ${a.bankOrPostOffice}`}
               subtitle={`A/C: ${a.accountNumber}${a.branch ? ` • ${a.branch}` : ''}`}
@@ -221,6 +458,14 @@ export default function AccountsHub() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }
@@ -230,6 +475,7 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
   const [docs, setDocs] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
   const fileRef = useRef(null)
 
   const loadDocs = async () => {
@@ -269,15 +515,21 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
     }
   }
 
-  const handleDeleteDoc = async (docId) => {
-    if (!confirm('Delete this document?')) return
-    try {
-      await client.delete(`/documents/${docId}`)
-      setDocs(prev => prev.filter(d => d.id !== docId))
-      toast.success('Document deleted')
-    } catch (err) {
-      toast.error('Delete failed', { description: err.response?.data?.message || err.message })
-    }
+  const handleDeleteDoc = (docId) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this document?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/documents/${docId}`)
+          setDocs(prev => prev.filter(d => d.id !== docId))
+          toast.success('Document deleted')
+        } catch (err) {
+          toast.error('Delete failed', { description: err.response?.data?.message || err.message })
+        }
+      },
+    })
   }
 
   return (
@@ -352,6 +604,14 @@ function AccountRow({ icon: Icon, color, title, subtitle, detail, extra, badge, 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }
@@ -381,20 +641,58 @@ function Input({ label, value, onChange, type = 'text', placeholder, required })
 }
 
 function Select({ label, value, onChange, options, required, showLogo }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
   const selected = options.find(o => (typeof o === 'string' ? o : o.value) === value)
-  const logoUrl = selected?.metadata?.logo
+  const selectedLabel = selected ? (typeof selected === 'string' ? selected : selected.label) : null
+  const selectedLogo = selected?.metadata?.logo
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
   return (
-    <div>
+    <div ref={ref}>
       <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
       <div className="relative">
-        {showLogo && logoUrl && (
-          <img src={logoUrl} alt="" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded object-contain" onError={(e) => e.target.style.display='none'} />
+        <button type="button" onClick={() => setOpen(!open)}
+          className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50 ${!value && required ? 'border-red-500/30' : ''}`}>
+          <span className="flex items-center gap-2 truncate">
+            {showLogo && selectedLogo && (
+              <img src={selectedLogo} alt="" className="w-4 h-4 rounded object-contain bg-white p-px flex-shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
+            )}
+            <span className={value ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}>{selectedLabel || 'Select...'}</span>
+          </span>
+          <ChevronDown className={`w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div className="absolute left-0 right-0 top-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 max-h-52 overflow-y-auto">
+            {!required && (
+              <button type="button" onClick={() => { onChange(''); setOpen(false) }}
+                className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-[var(--hover-bg)] transition text-left text-sm ${!value ? 'bg-blue-500/10 text-blue-400' : 'text-[var(--text-muted)]'}`}>
+                Select...
+              </button>
+            )}
+            {options.map(o => {
+              const val = typeof o === 'string' ? o : o.value
+              const lbl = typeof o === 'string' ? o : o.label
+              const logo = o?.metadata?.logo
+              const isSelected = val === value
+              return (
+                <button type="button" key={val} onClick={() => { onChange(val); setOpen(false) }}
+                  className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-[var(--hover-bg)] transition text-left text-sm ${isSelected ? 'bg-blue-500/10 text-blue-400' : ''}`}>
+                  {showLogo && logo && (
+                    <img src={logo} alt="" className="w-4 h-4 rounded object-contain bg-white p-px flex-shrink-0" onError={(e) => { e.target.style.display = 'none' }} />
+                  )}
+                  <span className="truncate">{lbl}</span>
+                </button>
+              )
+            })}
+          </div>
         )}
-        <select value={value || ''} onChange={(e) => onChange(e.target.value)} required={required}
-          className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg ${showLogo && logoUrl ? 'pl-9' : 'px-3'} pr-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50`}>
-          <option value="">Select...</option>
-          {options.map(o => <option key={typeof o === 'string' ? o : o.value} value={typeof o === 'string' ? o : o.value}>{typeof o === 'string' ? o : o.label}</option>)}
-        </select>
       </div>
     </div>
   )
@@ -426,19 +724,34 @@ function NpsForm({ form, setForm, editingId, onSubmit, onCancel }) {
   const s = (k, v) => setForm({ ...form, [k]: v })
   const { options: fundManagers } = useReferenceData('NPS_FUND_MANAGER')
   const { options: tiers } = useReferenceData('NPS_TIER')
-  const { options: assetClasses } = useReferenceData('NPS_ASSET_CLASS')
   const { options: schemes } = useReferenceData('NPS_SCHEME')
   return (
     <FormWrapper onSubmit={() => onSubmit(form)} onCancel={onCancel} editingId={editingId}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Input label="PRAN Number *" value={form.pranNumber} onChange={v => s('pranNumber', v.slice(0,12))} placeholder="12-digit PRAN" required />
+        <div>
+          <label className="block text-xs text-[var(--text-muted)] mb-1">CRA</label>
+          <div className="flex gap-2">
+            {NPS_CRAS.map(cra => (
+              <button key={cra.value} type="button"
+                onClick={() => s('cra', cra.value)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition border ${
+                  form.cra === cra.value
+                    ? 'bg-blue-500/15 text-blue-400 border-blue-500/40'
+                    : 'bg-[var(--input-bg)] text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--text-secondary)]'
+                }`}>
+                <img src={cra.logo} alt="" className="w-4 h-4 rounded object-contain bg-white p-px"
+                  onError={(e) => { e.target.style.display = 'none' }} />
+                {cra.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <Select label="Fund Manager" value={form.fundManager} onChange={v => s('fundManager', v)} options={fundManagers} />
         <Select label="Tier *" value={form.tier} onChange={v => s('tier', v)} options={tiers} required />
-        <Select label="Scheme" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={schemes} />
-        <Select label="Asset Class" value={form.assetClass} onChange={v => s('assetClass', v)} options={assetClasses} />
+        <Select label="Scheme Preference" value={form.schemePreference} onChange={v => s('schemePreference', v)} options={schemes} />
         <Input label="Opening Date" value={form.openingDate} onChange={v => s('openingDate', v)} type="date" />
         <Input label="Employer" value={form.employerName} onChange={v => s('employerName', v)} placeholder="Company name" />
-        <Input label="Current Value" value={form.currentValue} onChange={v => s('currentValue', v)} type="number" placeholder="280000" />
       </div>
     </FormWrapper>
   )

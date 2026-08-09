@@ -2,6 +2,7 @@ package com.networth.controller;
 
 import com.networth.model.entity.*;
 import com.networth.service.AccountsHubService;
+import com.networth.service.market.NpsNavService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/accounts")
 @RequiredArgsConstructor
 public class AccountsHubController {
+
+    private final NpsNavService npsNavService;
 
     private final AccountsHubService accountsHubService;
 
@@ -81,6 +84,25 @@ public class AccountsHubController {
         UUID userId = UUID.fromString(userDetails.getUsername());
         accountsHubService.deleteNpsAccount(userId, UUID.fromString(id));
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(value = "/nps/schemes", produces = "application/json")
+    public ResponseEntity<List<Map<String, String>>> getNpsSchemes() {
+        return ResponseEntity.ok(npsNavService.getSchemes());
+    }
+
+    @PostMapping("/nps/refresh-nav")
+    public ResponseEntity<Map<String, Object>> refreshNpsNav(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        return ResponseEntity.ok(npsNavService.refreshUserNpsValues(userId));
+    }
+
+    @GetMapping(value = "/nps/scheme/{schemeCode}", produces = "application/json")
+    public ResponseEntity<Map<String, Object>> getNpsSchemeDetail(@PathVariable String schemeCode) {
+        Map<String, Object> detail = npsNavService.getDetailedScheme(schemeCode);
+        if (detail == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(detail);
     }
 
     // ── PPF Accounts ──

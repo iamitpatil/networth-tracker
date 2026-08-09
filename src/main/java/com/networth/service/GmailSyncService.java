@@ -11,13 +11,15 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.networth.model.entity.GmailConnection;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
@@ -56,7 +58,7 @@ public class GmailSyncService {
 
     private int syncForConnection(GmailConnection conn) throws Exception {
         String accessToken = oauthService.getDecryptedAccessToken(conn);
-        if (conn.getTokenExpiry() != null && conn.getTokenExpiry().isBefore(LocalDateTime.now())) {
+        if (conn.getTokenExpiry() != null && conn.getTokenExpiry().isBefore(Instant.now())) {
             conn = oauthService.refreshAccessToken(conn);
             accessToken = oauthService.getDecryptedAccessToken(conn);
         }
@@ -71,10 +73,9 @@ public class GmailSyncService {
         query.append(")");
 
         if (conn.getLastSyncAt() != null) {
+            LocalDate lastSync = conn.getLastSyncAt().atZone(MarketCalendar.ZONE).toLocalDate();
             String since = String.format("%d/%d/%d",
-                    conn.getLastSyncAt().getMonthValue(),
-                    conn.getLastSyncAt().getDayOfMonth(),
-                    conn.getLastSyncAt().getYear());
+                    lastSync.getMonthValue(), lastSync.getDayOfMonth(), lastSync.getYear());
             query.append(" after:").append(since);
         }
 
@@ -85,18 +86,22 @@ public class GmailSyncService {
 
         List<Message> messages = response.getMessages();
         if (messages == null || messages.isEmpty()) {
-            conn.setLastSyncAt(LocalDateTime.now());
+            conn.setLastSyncAt(Instant.now());
             connectionRepository.save(conn);
             return 0;
         }
 
         int count = 0;
         for (Message msg : messages) {
-            if (transactionService.getUserTransactions(conn.getUserId()).stream()
-                    .anyMatch(t -> t.getGmailMessageId().equals(msg.getId()))) {
+            // One indexed existence check. This previously fetched the user's entire
+            // email_transactions table on every iteration and scanned it in memory, so a sync of
+            // 100 messages against 5,000 stored rows did half a million row comparisons.
+            if (transactionService.alreadyIngested(conn.getUserId(), msg.getId())) {
                 continue;
             }
 
+            // Fetching the full message costs an API call, so it happens only after the cheap
+            // duplicate check has ruled the message in.
             Message full = service.users().messages().get(USER, msg.getId()).setFormat("full").execute();
             String sender = getHeader(full, "From");
             String subject = getHeader(full, "Subject");
@@ -109,7 +114,7 @@ public class GmailSyncService {
             }
         }
 
-        conn.setLastSyncAt(LocalDateTime.now());
+        conn.setLastSyncAt(Instant.now());
         connectionRepository.save(conn);
         log.info("Synced {} bank emails for user {}", count, conn.getUserId());
         return count;

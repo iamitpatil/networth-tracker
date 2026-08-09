@@ -7,6 +7,7 @@ export default function NewsPanel({ holding, onClose }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!holding) return
     setLoading(true)
@@ -17,6 +18,7 @@ export default function NewsPanel({ holding, onClose }) {
       .catch(err => setError(err.message || 'Failed to load news'))
       .finally(() => setLoading(false))
   }, [holding])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const timeAgo = (dateStr) => {
     const now = new Date()

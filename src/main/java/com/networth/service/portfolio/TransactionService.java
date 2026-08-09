@@ -133,6 +133,8 @@ public class TransactionService {
                 .fees(transaction.getFees())
                 .taxes(transaction.getTaxes())
                 .transactionDate(transaction.getTransactionDate())
+                .acquisitionDate(transaction.getAcquisitionDate())
+                .adjustmentFactor(transaction.getAdjustmentFactor())
                 .notes(transaction.getNotes())
                 .broker(transaction.getBroker())
                 .createdAt(transaction.getCreatedAt())

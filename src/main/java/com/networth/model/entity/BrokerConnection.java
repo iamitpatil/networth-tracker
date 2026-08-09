@@ -5,7 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -34,7 +34,7 @@ public class BrokerConnection {
     private String refreshToken;
 
     @Column(name = "token_expiry")
-    private LocalDateTime tokenExpiry;
+    private Instant tokenExpiry;
 
     @Column(nullable = false)
     @Builder.Default
@@ -50,13 +50,13 @@ public class BrokerConnection {
     private UUID dematAccountId;
 
     @Column(name = "last_synced_at")
-    private LocalDateTime lastSyncedAt;
+    private Instant lastSyncedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 }

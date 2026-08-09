@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import client from '../api/client'
 import { toast } from 'sonner'
 import { CheckCircle, Upload, FileText, Loader2, Receipt, Banknote, ArrowUpRight, ArrowDownRight, BarChart3 } from 'lucide-react'
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { PieChart as RechartsPie, Pie, Cell, Sector, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { dateInputValue } from '../utils/format'
 
 const SPEND_CATEGORIES = {
   FOOD: { label: 'Food & Dining', color: '#F97316', icon: '🍔' },
@@ -37,14 +38,14 @@ export default function CreditCardSpend() {
   const [monthAnalysis, setMonthAnalysis] = useState(null)
   const [loadingMonth, setLoadingMonth] = useState(false)
 
-  useEffect(() => {
-    loadSpendHistory()
-  }, [])
-
   const loadSpendHistory = () => {
     client.get('/liabilities/cc-spend/reports').then(r => setSpendReports(r.data || [])).catch(() => {})
     client.get('/liabilities/cc-spend/trend').then(r => setSpendTrend(r.data || [])).catch(() => {})
   }
+
+  useEffect(() => {
+    loadSpendHistory()
+  }, [])
 
   const loadMonthDetail = async (month) => {
     setSelectedMonth(month)
@@ -146,7 +147,7 @@ export default function CreditCardSpend() {
     try {
       await client.post(`/liabilities/cc-spend/${report.id}/pay`, {
         paidAmount: report.totalAmountDue,
-        paidDate: new Date().toISOString().slice(0, 10),
+        paidDate: dateInputValue(),
         paymentMode: mode.toUpperCase() || 'ONLINE',
       })
       toast.success('Bill marked as paid', { description: `${report.cardIssuer} ****${report.cardLastFour} — ${fmt(report.totalAmountDue)} via ${mode.toUpperCase()}` })
@@ -251,10 +252,12 @@ export default function CreditCardSpend() {
                     <ResponsiveContainer width="100%" height="100%">
                       <RechartsPie>
                         <Pie data={ccSpendData} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                          innerRadius={50} outerRadius={85} paddingAngle={2}>
-                          {ccSpendData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                          innerRadius={50} outerRadius={85} paddingAngle={1} strokeWidth={0}
+                          activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}>
+                          {ccSpendData.map((d, i) => <Cell key={i} fill={d.color} cursor="pointer" />)}
                         </Pie>
-                        <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} />
+                        <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+                          itemStyle={{ color: 'var(--text)' }} />
                       </RechartsPie>
                     </ResponsiveContainer>
                   </div>
@@ -350,7 +353,7 @@ export default function CreditCardSpend() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={[...spendTrend].reverse()}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={m => { const [y,mo] = (m||'').split('-'); return ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo] || m }} />
+                    <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={m => { const [,mo] = (m||'').split('-'); return ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo] || m }} />
                     <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} tickFormatter={v => v >= 100000 ? `${(v/100000).toFixed(1)}L` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} width={45} />
                     <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} labelFormatter={m => { const [y,mo] = (m||'').split('-'); return `${['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo]} ${y}` }} />
                     <Bar dataKey="total" fill="#6366F1" radius={[4,4,0,0]} />

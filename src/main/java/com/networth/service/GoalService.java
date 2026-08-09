@@ -16,9 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -72,7 +73,7 @@ public class GoalService {
     @Transactional
     public void deleteGoal(UUID userId, UUID goalId) {
         Goal goal = findOwnedGoal(userId, goalId);
-        goal.setDeletedAt(LocalDateTime.now());
+        goal.setDeletedAt(Instant.now());
         goalRepository.save(goal);
         log.info("Soft-deleted goal {} for user {}", goalId, userId);
     }
@@ -131,92 +132,119 @@ public class GoalService {
     public List<Map<String, Object>> getLinkedHoldings(UUID userId, UUID goalId) {
         findOwnedGoal(userId, goalId);
         List<GoalHolding> links = goalHoldingRepository.findByGoalId(goalId);
-        List<Map<String, Object>> result = new ArrayList<>();
+        // One query for every linked holding, rather than one per link.
+        Map<UUID, Holding> holdings = holdingsById(links);
 
+        List<Map<String, Object>> result = new ArrayList<>();
         for (GoalHolding link : links) {
-            holdingRepository.findById(link.getHoldingId()).ifPresent(h -> {
-                BigDecimal value = h.getCurrentValue() != null ? h.getCurrentValue() : BigDecimal.ZERO;
-                BigDecimal allocated = value.multiply(link.getAllocationPct())
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                Map<String, Object> map = new LinkedHashMap<>();
-                map.put("id", link.getId());
-                map.put("holdingId", h.getId());
-                map.put("symbol", h.getSymbol());
-                map.put("name", h.getName());
-                map.put("assetType", h.getAssetType());
-                map.put("holdingValue", value);
-                map.put("allocationPct", link.getAllocationPct());
-                map.put("allocatedValue", allocated);
-                result.add(map);
-            });
+            Holding h = holdings.get(link.getHoldingId());
+            if (h == null) {
+                continue;   // holding deleted; the stale link contributes nothing
+            }
+            BigDecimal value = h.getCurrentValue() != null ? h.getCurrentValue() : BigDecimal.ZERO;
+            BigDecimal pct = link.getAllocationPct() != null
+                    ? link.getAllocationPct() : BigDecimal.valueOf(100);
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", link.getId());
+            map.put("holdingId", h.getId());
+            map.put("symbol", h.getSymbol());
+            map.put("name", h.getName());
+            map.put("assetType", h.getAssetType());
+            map.put("holdingValue", value);
+            map.put("allocationPct", pct);
+            map.put("allocatedValue", value.multiply(pct)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+            result.add(map);
         }
         return result;
     }
 
     // --- Progress ---
 
+    /**
+     * Recomputes one goal's progress from the holdings linked to it.
+     *
+     * <p>A goal's {@code currentAmount} is the sum of each linked holding's current value times
+     * its allocation percentage, so a holding split across two goals is not counted twice in full.
+     */
     @Transactional
     public void refreshGoalProgress(UUID goalId) {
         Goal goal = goalRepository.findById(goalId).orElse(null);
         if (goal == null || goal.getDeletedAt() != null) return;
 
         List<GoalHolding> links = goalHoldingRepository.findByGoalId(goalId);
-
-        // If no holdings linked, reset progress to zero
-        if (links.isEmpty()) {
-            goal.setCurrentAmount(BigDecimal.ZERO);
-            goalRepository.save(goal);
-            return;
-        }
-
-        // Recompute from linked holdings
-        BigDecimal total = BigDecimal.ZERO;
-        for (GoalHolding link : links) {
-            Optional<Holding> hOpt = holdingRepository.findById(link.getHoldingId());
-            if (hOpt.isPresent()) {
-                BigDecimal value = hOpt.get().getCurrentValue() != null
-                        ? hOpt.get().getCurrentValue() : BigDecimal.ZERO;
-                BigDecimal allocated = value.multiply(link.getAllocationPct())
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                total = total.add(allocated);
-            }
-        }
-
-        goal.setCurrentAmount(total);
+        goal.setCurrentAmount(sumAllocations(links, holdingsById(links)));
         goalRepository.save(goal);
     }
 
-    /** Refresh all goals for all users. Called daily by scheduler. */
+    /**
+     * Refreshes every goal for every user. Runs nightly.
+     *
+     * <p>Three queries in total, regardless of how many goals and holdings exist: the goals, their
+     * links, and the holdings those links point at. It previously issued one query per linked
+     * holding per goal, so the cost grew with the whole user base every night.
+     *
+     * <p>Goals with no links are reset to zero rather than skipped. Skipping them left a stale
+     * figure on screen forever once a linked holding was deleted -- the link row goes with it, so
+     * the goal silently kept the progress those holdings used to provide.
+     */
     @Transactional
     public int refreshAllGoalProgress() {
-        List<Goal> allGoals = goalRepository.findAll();
-        int refreshed = 0;
-        for (Goal goal : allGoals) {
-            if (goal.getDeletedAt() != null) continue;
-            List<GoalHolding> links = goalHoldingRepository.findByGoalId(goal.getId());
-            if (links.isEmpty()) continue;
-
-            BigDecimal total = BigDecimal.ZERO;
-            for (GoalHolding link : links) {
-                Optional<Holding> hOpt = holdingRepository.findById(link.getHoldingId());
-                if (hOpt.isPresent()) {
-                    BigDecimal value = hOpt.get().getCurrentValue() != null
-                            ? hOpt.get().getCurrentValue() : BigDecimal.ZERO;
-                    BigDecimal allocated = value.multiply(link.getAllocationPct())
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                    total = total.add(allocated);
-                }
-            }
-
-            goal.setCurrentAmount(total);
-            goalRepository.save(goal);
-            refreshed++;
+        List<Goal> active = goalRepository.findAll().stream()
+                .filter(g -> g.getDeletedAt() == null)
+                .toList();
+        if (active.isEmpty()) {
+            return 0;
         }
-        return refreshed;
+
+        List<GoalHolding> allLinks = goalHoldingRepository.findByGoalIdIn(
+                active.stream().map(Goal::getId).toList());
+        Map<UUID, Holding> holdings = holdingsById(allLinks);
+        Map<UUID, List<GoalHolding>> linksByGoal = allLinks.stream()
+                .collect(Collectors.groupingBy(GoalHolding::getGoalId));
+
+        for (Goal goal : active) {
+            goal.setCurrentAmount(sumAllocations(
+                    linksByGoal.getOrDefault(goal.getId(), List.of()), holdings));
+        }
+        goalRepository.saveAll(active);
+        return active.size();
+    }
+
+    /** Every holding referenced by these links, in one query. */
+    private Map<UUID, Holding> holdingsById(List<GoalHolding> links) {
+        if (links.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> ids = links.stream().map(GoalHolding::getHoldingId).distinct().toList();
+        return holdingRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Holding::getId, h -> h));
+    }
+
+    /**
+     * The allocated value of these links.
+     *
+     * <p>A link whose holding no longer exists contributes nothing rather than failing the whole
+     * refresh -- one deleted holding must not stop every other goal being updated.
+     */
+    private BigDecimal sumAllocations(List<GoalHolding> links, Map<UUID, Holding> holdings) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (GoalHolding link : links) {
+            Holding holding = holdings.get(link.getHoldingId());
+            if (holding == null) {
+                continue;
+            }
+            BigDecimal value = holding.getCurrentValue() != null
+                    ? holding.getCurrentValue() : BigDecimal.ZERO;
+            BigDecimal pct = link.getAllocationPct() != null
+                    ? link.getAllocationPct() : BigDecimal.valueOf(100);
+            total = total.add(value.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+        }
+        return total;
     }
 
     /** Daily refresh at 2 AM */
-    @Scheduled(cron = "0 0 2 * * ?")
+    @Scheduled(cron = "0 0 2 * * ?", zone = "Asia/Kolkata")
     public void scheduledGoalRefresh() {
         log.info("Running daily goal progress refresh...");
         int count = refreshAllGoalProgress();

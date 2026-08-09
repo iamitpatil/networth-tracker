@@ -42,10 +42,6 @@ export default function Goals() {
     riskProfile: 'moderate',
   })
 
-  useEffect(() => {
-    fetchGoals()
-  }, [])
-
   async function fetchGoals() {
     setLoading(true)
     try {
@@ -59,6 +55,13 @@ export default function Goals() {
       setLoading(false)
     }
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchGoals()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function fetchProgressForGoals(goalsList) {
     const progress = {}
@@ -244,9 +247,9 @@ export default function Goals() {
                     <span className="text-sm text-[var(--text-muted)]">Progress</span>
                     <span className="text-sm font-medium">{progressPct.toFixed(1)}%</span>
                   </div>
-                  <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden">
+                  <div className="w-full bg-[var(--input-bg)] rounded-full h-2 overflow-hidden shadow-inner">
                     <div
-                      className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                      className={`h-full ${barColor} bg-gradient-to-r from-blue-500 via-blue-400 to-blue-600 rounded-full transition-all duration-700 ease-out`}
                       style={{ width: `${Math.min(progressPct, 100)}%` }}
                     />
                   </div>

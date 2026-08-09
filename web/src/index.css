@@ -97,6 +97,33 @@ body {
 .input-border { border-color: var(--input-border); }
 .hover-bg:hover { background-color: var(--hover-bg); }
 
+/* Typography hierarchy */
+h1, .heading-1 { font-size: 1.875rem; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; }
+h2, .heading-2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
+h3, .heading-3 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3; }
+h4, .heading-4 { font-size: 1.125rem; font-weight: 500; letter-spacing: -0.01em; line-height: 1.35; }
+
+.text-body { font-size: 0.875rem; line-height: 1.6; }
+.text-caption { font-size: 0.75rem; line-height: 1.5; letter-spacing: 0.01em; }
+.text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; }
+
+/* Financial number displays */
+.value-hero { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.value-large { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.value-medium { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+
+/* Text gradient for hero numbers */
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, #60a5fa 50%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Subtle text shadows for depth */
+.text-shadow-sm { text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+.text-shadow-glow { text-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -110,6 +137,21 @@ body {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  50% { box-shadow: 0 0 12px 2px rgba(59, 130, 246, 0.25); }
+}
+@keyframes progress-fill {
+  from { width: 0; }
+}
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .animate-in { animation-fill-mode: both; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
 .fade-in { animation-name: fadeIn; }
 .zoom-in-95 { animation-name: zoomIn95; }
@@ -117,6 +159,26 @@ body {
 .duration-150 { animation-duration: 150ms; }
 .duration-200 { animation-duration: 200ms; }
 .duration-300 { animation-duration: 300ms; }
+
+/* Enhanced progress bars */
+.progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: shimmer 2s infinite;
+}
+.progress-bar-animated {
+  animation: progress-fill 0.8s ease-out forwards;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .animate-in { animation-duration: 0.01ms !important; }
@@ -185,4 +247,38 @@ body {
 .hover\:bg-slate-700:hover { background-color: var(--hover-bg) !important; }
 .hover\:bg-slate-600:hover { background-color: var(--hover-bg) !important; }
 .hover\:bg-slate-500:hover { background-color: var(--hover-bg) !important; }
+
+/* Mobile scroll wrappers for tables */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-secondary) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--text-secondary);
+  border-radius: 3px;
+}
+
+/* Touch target sizing */
+.touch-target { min-height: 44px; min-width: 44px; }
+
+/* Focus visible states */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Card elevation on hover */
+.card-elevate { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.card-elevate:hover { transform: translateY(-2px); box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
+
+/* Gradient text utility */
+.bg-clip-text { background-clip: text; -webkit-background-clip: text; }
+.text-transparent { color: transparent; }
 .hover\:text-slate-200:hover { color: var(--text) !important; }

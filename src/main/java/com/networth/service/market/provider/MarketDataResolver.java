@@ -42,9 +42,16 @@ public class MarketDataResolver {
 
     private final Map<MarketDataType, List<MarketDataProvider>> chains = new EnumMap<>(MarketDataType.class);
 
-    public MarketDataResolver(List<MarketDataProvider> providers) {
+    private final ProviderRateLimiter rateLimiter;
+    private final ProviderRateLimits rateLimits;
+
+    public MarketDataResolver(List<MarketDataProvider> providers,
+                             ProviderRateLimiter rateLimiter,
+                             ProviderRateLimits rateLimits) {
         this.providerMap = providers.stream()
                 .collect(Collectors.toMap(MarketDataProvider::getName, p -> p));
+        this.rateLimiter = rateLimiter;
+        this.rateLimits = rateLimits;
     }
 
     @PostConstruct
@@ -59,6 +66,14 @@ public class MarketDataResolver {
                 log.info("  {} -> [{}]", type,
                         providers.stream().map(MarketDataProvider::getName).collect(Collectors.joining(" -> ")))
         );
+        // Printed at boot so the limits in force are discoverable from the log rather than only
+        // from the source or the status endpoint.
+        log.info("Provider rate limits enforced:");
+        rateLimits.getProviders().forEach((name, limit) ->
+                log.info("  {} -> {} (documented: {})", name,
+                        limit.windows().stream().map(ProviderRateLimits.Window::label)
+                                .collect(Collectors.joining(", ")),
+                        limit.getDocumented()));
     }
 
     private List<MarketDataProvider> buildChain(String configValue, MarketDataType type) {
@@ -87,79 +102,63 @@ public class MarketDataResolver {
 
     // --- Convenience methods that walk the chain ---
 
-    public BigDecimal getPrice(String symbol, AssetType assetType) {
-        for (MarketDataProvider provider : getProviders(MarketDataType.PRICE)) {
+    /**
+     * Walks a chain and returns the first usable result.
+     *
+     * <p>All five public methods below funnel through here, so the rate limit, the fallback and the
+     * error handling are stated once. Previously each repeated the same loop, which is how a policy
+     * like rate limiting ends up applied to some data types and not others.
+     *
+     * <p>A provider at its rate limit is <b>skipped</b>, not waited for. That composes with the
+     * fallback chain: when Upstox is exhausted the request goes to Yahoo instead of stalling, which
+     * is the whole reason the chain exists.
+     */
+    private <T> T firstResult(MarketDataType type, String what,
+                              java.util.function.Function<MarketDataProvider, T> call,
+                              java.util.function.Predicate<T> usable) {
+        for (MarketDataProvider provider : getProviders(type)) {
+            if (!rateLimiter.tryAcquire(provider.getName())) {
+                log.debug("Skipping {} for {} {}: at its rate limit", provider.getName(), type, what);
+                continue;
+            }
             try {
-                BigDecimal price = provider.fetchPrice(symbol, assetType);
-                if (price != null) {
-                    log.debug("Price for {} from {}: {}", symbol, provider.getName(), price);
-                    return price;
+                T result = call.apply(provider);
+                if (usable.test(result)) {
+                    log.debug("{} {} resolved by {}", type, what, provider.getName());
+                    return result;
                 }
             } catch (Exception e) {
-                log.warn("Provider {} failed for price {}: {}", provider.getName(), symbol, e.getMessage());
+                log.warn("Provider {} failed for {} {}: {}", provider.getName(), type, what, e.getMessage());
             }
         }
         return null;
+    }
+
+    public BigDecimal getPrice(String symbol, AssetType assetType) {
+        return firstResult(MarketDataType.PRICE, symbol,
+                p -> p.fetchPrice(symbol, assetType), Objects::nonNull);
     }
 
     public PriceData getPriceData(String symbol, AssetType assetType) {
-        for (MarketDataProvider provider : getProviders(MarketDataType.PRICE)) {
-            try {
-                PriceData data = provider.fetchPriceData(symbol, assetType);
-                if (data != null) {
-                    log.debug("PriceData for {} from {}", symbol, provider.getName());
-                    return data;
-                }
-            } catch (Exception e) {
-                log.warn("Provider {} failed for priceData {}: {}", provider.getName(), symbol, e.getMessage());
-            }
-        }
-        return null;
+        return firstResult(MarketDataType.PRICE, symbol,
+                p -> p.fetchPriceData(symbol, assetType), Objects::nonNull);
     }
 
     public BigDecimal getMfNav(String isin) {
-        for (MarketDataProvider provider : getProviders(MarketDataType.MF_NAV)) {
-            try {
-                BigDecimal nav = provider.fetchMfNav(isin);
-                if (nav != null) {
-                    log.debug("MF NAV for {} from {}: {}", isin, provider.getName(), nav);
-                    return nav;
-                }
-            } catch (Exception e) {
-                log.warn("Provider {} failed for MF NAV {}: {}", provider.getName(), isin, e.getMessage());
-            }
-        }
-        return null;
+        return firstResult(MarketDataType.MF_NAV, isin,
+                p -> p.fetchMfNav(isin), Objects::nonNull);
     }
 
     public List<DividendEvent> getDividends(String symbol) {
-        for (MarketDataProvider provider : getProviders(MarketDataType.DIVIDEND)) {
-            try {
-                List<DividendEvent> events = provider.fetchDividends(symbol);
-                if (events != null && !events.isEmpty()) {
-                    log.debug("{} dividend events for {} from {}", events.size(), symbol, provider.getName());
-                    return events;
-                }
-            } catch (Exception e) {
-                log.warn("Provider {} failed for dividends {}: {}", provider.getName(), symbol, e.getMessage());
-            }
-        }
-        return List.of();
+        List<DividendEvent> events = firstResult(MarketDataType.DIVIDEND, symbol,
+                p -> p.fetchDividends(symbol), list -> list != null && !list.isEmpty());
+        return events != null ? events : List.of();
     }
 
     public List<NewsItem> getNews(String query, int limit) {
-        for (MarketDataProvider provider : getProviders(MarketDataType.NEWS)) {
-            try {
-                List<NewsItem> items = provider.fetchNews(query, limit);
-                if (items != null && !items.isEmpty()) {
-                    log.debug("{} news items for '{}' from {}", items.size(), query, provider.getName());
-                    return items;
-                }
-            } catch (Exception e) {
-                log.warn("Provider {} failed for news '{}': {}", provider.getName(), query, e.getMessage());
-            }
-        }
-        return List.of();
+        List<NewsItem> items = firstResult(MarketDataType.NEWS, query,
+                p -> p.fetchNews(query, limit), list -> list != null && !list.isEmpty());
+        return items != null ? items : List.of();
     }
 
     /** Get the name of the first available provider for a given data type */

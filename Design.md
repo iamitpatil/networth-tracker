@@ -110,10 +110,10 @@ market.providers.news=google
 | **Backend** | Java 21 + Spring Boot 3.2.4 | REST API |
 | | Spring Security + JWT | Authentication (access + refresh + TOTP 2FA) |
 | | Spring Data JPA + Hibernate | ORM |
-| | Flyway | Schema migrations (23 versions) |
+| | Flyway | Schema migrations (35 versions, latest V35) |
 | **Database** | PostgreSQL 16 | Primary database |
 | **Cache** | Redis 7 | Sessions, price cache, net worth history |
-| **AI** | llama.cpp (Llama 3.2 3B Instruct) | Local inference for chat, insights, salary parsing |
+| **AI** | llama.cpp, OpenAI-compatible API on :8082 | Local inference for chat, insights, document extraction. `docs/ai-orchestrator.md` specifies Gemma 4 E4B (128K context, native function calling); the model actually served is set by `LLAMA_MODEL_REPO` in docker-compose |
 | **PDF** | Apache PDFBox 3.0.1 | Salary slip text extraction |
 | **Email** | Google Gmail API (OAuth2) | Bank transaction alert parsing |
 | **Deployment** | Docker + Docker Compose | Containerization |
@@ -177,7 +177,7 @@ salaries (N) ── (1) bank_accounts
 | `import_jobs` | CSV/PDF import tracking | source, status, records_imported |
 | `audit_logs` | Action audit trail | user_id, action, entity, timestamp |
 
-### 3.3 Flyway Migrations (V1–V23)
+### 3.3 Flyway Migrations (V1–V35)
 
 | Version | Description |
 |---------|-------------|
@@ -381,7 +381,17 @@ src/main/java/com/networth/
 │   ├── SalaryService          # Salary CRUD + AI slip parsing
 │   ├── FeatureFlagService     # Config-driven feature flags
 │   ├── GmailSyncService       # Gmail OAuth + bank alert parsing
-│   ├── AiChatService          # llama.cpp integration for portfolio Q&A
+│   ├── AIChatService          # legacy llama.cpp integration, still serves POST /ai/chat
+│   ├── documentgraph/         # AI orchestrator — see docs/ai-orchestrator.md
+│   │   ├── AiClient           # HTTP client to the LLM (streaming + non-streaming)
+│   │   ├── mcp/
+│   │   │   ├── McpAIChatService   # main orchestrator: tool loop, HITL, sessions, SSE
+│   │   │   ├── AgentExecutor      # sub-orchestrator for expert agents
+│   │   │   ├── AgentContext       # ThreadLocal SSE bridge for agent events
+│   │   │   ├── McpToolClient      # tool registry and execution
+│   │   │   └── tools/             # 46 tools across 6 classes
+│   │   └── nodes/             # document processing graph (classify, route, extract, execute)
+│   ├── tax/rules/             # TaxRuleRegistry + tax-rules.json (FY 2000-01 to 2026-27)
 │   ├── NewsService            # Per-holding news via provider framework
 │   └── ImportService          # CSV/PDF import (Zerodha, Groww, CAS, Bank)
 ├── repository/                # Spring Data JPA repositories

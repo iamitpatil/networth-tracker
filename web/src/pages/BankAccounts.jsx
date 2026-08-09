@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import client from '../api/client'
-import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Download, Search } from 'lucide-react'
+import { Plus, X, Building2, Pencil, Trash2, Loader2, Mail, RefreshCw, CheckCircle, AlertCircle, Search } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
+import { ConfirmDialog } from '../components/ui/Modal'
+import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
 
 export default function BankAccounts() {
   const { options: bankNames } = useReferenceData('BANK')
@@ -18,6 +22,7 @@ export default function BankAccounts() {
   const [gmailLoading, setGmailLoading] = useState(false)
   const [gmailTxns, setGmailTxns] = useState([])
   const [txnFilter, setTxnFilter] = useState('pending')
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const load = async () => {
     try {
@@ -27,6 +32,12 @@ export default function BankAccounts() {
     finally { setLoading(false) }
   }
 
+  const loadTransactions = () => {
+    client.get(`/gmail/transactions?status=${txnFilter}`)
+      .then(r => setGmailTxns(r.data || [])).catch(() => {})
+  }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { load() }, [])
 
   useEffect(() => {
@@ -34,12 +45,9 @@ export default function BankAccounts() {
       client.get('/gmail/status').then(r => setGmailStatus(r.data)).catch(() => {})
       loadTransactions()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
-
-  const loadTransactions = () => {
-    client.get(`/gmail/transactions?status=${txnFilter}`)
-      .then(r => setGmailTxns(r.data || [])).catch(() => {})
-  }
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const resetForm = () => setForm({ accountName: '', bankName: '', accountNumber: '', accountType: 'SAVINGS', ifscCode: '', branch: '', balance: '' })
 
@@ -63,12 +71,18 @@ export default function BankAccounts() {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this bank account?')) return
-    try {
-      await client.delete(`/bank-accounts/${id}`)
-      setAccounts((p) => p.filter((a) => a.id !== id))
-    } catch (e) { console.error(e) }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this bank account?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/bank-accounts/${id}`)
+          setAccounts((p) => p.filter((a) => a.id !== id))
+        } catch (e) { console.error(e) }
+      },
+    })
   }
 
   const handleGmailAuth = () => {
@@ -87,17 +101,31 @@ export default function BankAccounts() {
     finally { setGmailLoading(false) }
   }
 
+  // Confirming is what moves the account balance, so accounts are reloaded too. The server
+  // rejects a second confirm rather than applying it twice, and explains why it refused, so the
+  // message is surfaced instead of failing as a silent unhandled rejection.
   const handleConfirm = async (id) => {
-    await client.post(`/gmail/transactions/${id}/confirm`)
-    loadTransactions(); load()
+    try {
+      await client.post(`/gmail/transactions/${id}/confirm`)
+      loadTransactions(); load()
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error
+        || 'Could not confirm this transaction')
+    }
   }
 
+  // Ignoring changes no balance, so there is nothing for the accounts list to pick up.
   const handleIgnore = async (id) => {
-    await client.post(`/gmail/transactions/${id}/ignore`)
-    loadTransactions()
+    try {
+      await client.post(`/gmail/transactions/${id}/ignore`)
+      loadTransactions()
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error
+        || 'Could not ignore this transaction')
+    }
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">
@@ -144,37 +172,20 @@ export default function BankAccounts() {
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Bank Name</label>
-                  <div className="relative">
-                    {form.bankName && bankNames.find(b => b.value === form.bankName)?.metadata?.logo && (
-                      <img src={bankNames.find(b => b.value === form.bankName).metadata.logo} alt=""
-                        className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded object-contain" onError={(e) => e.target.style.display='none'} />
-                    )}
-                    <select value={form.bankName || ''} onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-                      className={`w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg ${form.bankName && bankNames.find(b => b.value === form.bankName)?.metadata?.logo ? 'pl-9' : 'px-3'} pr-3 py-2.5`} required>
-                      <option value="">Select bank...</option>
-                      {bankNames.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-                    </select>
-                  </div>
+                  <StyledSelect value={form.bankName || ''} onChange={(v) => setForm({ ...form, bankName: v })}
+                    label="Bank Name *" placeholder="Select bank..." options={bankNames} required showLogo />
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">Account Number</label>
                   <input type="text" value={form.accountNumber || ''} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" />
                 </div>
                 <div>
-                  <label className="block text-sm text-[var(--text-muted)] mb-1">Account Type</label>
-                  <select value={form.accountType || 'SAVINGS'} onChange={(e) => setForm({ ...form, accountType: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                    {accountTypes.length > 0 ? accountTypes.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    )) : (
-                      <>
-                        <option value="SAVINGS">Savings</option>
-                        <option value="CURRENT">Current</option>
-                        <option value="FD">Fixed Deposit</option>
-                        <option value="NRE">NRE</option>
-                        <option value="NRO">NRO</option>
-                      </>
-                    )}
-                  </select>
+                  <StyledSelect value={form.accountType || 'SAVINGS'} onChange={(v) => setForm({ ...form, accountType: v })}
+                    label="Account Type"
+                    options={accountTypes.length > 0 ? accountTypes : [
+                      { value: 'SAVINGS', label: 'Savings' }, { value: 'CURRENT', label: 'Current' },
+                      { value: 'FD', label: 'Fixed Deposit' }, { value: 'NRE', label: 'NRE' }, { value: 'NRO', label: 'NRO' },
+                    ]} />
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text-muted)] mb-1">IFSC Code</label>
@@ -309,7 +320,8 @@ export default function BankAccounts() {
                 </div>
               ) : (
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
-                  <table className="w-full">
+                  <div className="overflow-x-auto scrollbar-thin">
+                  <table className="w-full min-w-[600px]">
                     <thead className="bg-[var(--bg)]/50 text-left">
                       <tr>
                         <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Amount</th>
@@ -364,12 +376,21 @@ export default function BankAccounts() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </>
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

@@ -32,6 +32,7 @@ import java.util.Optional;
 public class UpstoxHistoricalService {
 
     private final RestTemplate restTemplate;
+    private final com.networth.service.market.provider.ProviderRateLimiter rateLimiter;
     private final HoldingRepository holdingRepository;
     private final StockPriceHistoryRepository historyRepository;
     private final SymbolRepository symbolRepository;
@@ -42,19 +43,131 @@ public class UpstoxHistoricalService {
     @Value("${market.data.upstox.base-url:https://api.upstox.com/v3}")
     private String baseUrl;
 
+    /**
+     * Backfill price history for ALL equity symbols in the symbols table.
+     */
     @Transactional
     public int backfillAll(LocalDate fromDate, LocalDate toDate) {
-        List<Holding> holdings = holdingRepository.findAll();
+        return backfillAll(fromDate, toDate, () -> true);
+    }
+
+    @FunctionalInterface
+    public interface ProgressCallback {
+        void onProgress(int processed, int total, int records, int skipped);
+    }
+
+    @Transactional
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck) {
+        return backfillAll(fromDate, toDate, cancelCheck, null);
+    }
+
+    /**
+     * Backfill with cancellation + progress reporting.
+     */
+    @Transactional
+    public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck, ProgressCallback progress) {
+        if (accessToken == null || accessToken.isBlank()) {
+            log.warn("No Upstox analytics token configured, skipping equity backfill");
+            return 0;
+        }
+
+        // Bulk pre-check: get earliest + latest date per symbol in one query
+        Map<String, LocalDate> earliestDates = new java.util.HashMap<>();
+        Map<String, LocalDate> latestDates = new java.util.HashMap<>();
+        for (Object[] row : historyRepository.findDateRangePerSymbol()) {
+            String sym = (String) row[0];
+            earliestDates.put(sym, (LocalDate) row[1]);
+            latestDates.put(sym, (LocalDate) row[2]);
+        }
+        log.info("Equity pre-check: {} symbols already have price history in DB", latestDates.size());
+
+        List<Symbol> equitySymbols = symbolRepository.findByCategory("EQUITY");
         int total = 0;
+        int processed = 0;
+        int skippedNoIsin = 0;
+        int skippedFullyCovered = 0;
+
+        for (Symbol sym : equitySymbols) {
+            if (!cancelCheck.get()) {
+                log.info("Equity backfill cancelled at {}/{} symbols, {} records", processed, equitySymbols.size(), total);
+                return total;
+            }
+            String isin = sym.getIsin();
+            if (isin == null || isin.isBlank()) {
+                skippedNoIsin++;
+                continue;
+            }
+
+            String symbol = sym.getSymbol();
+            LocalDate earliest = earliestDates.get(symbol);
+            LocalDate latest = latestDates.get(symbol);
+
+            if (earliest == null) {
+                // No data at all — fetch full range
+                total += backfillSymbol(symbol, isin, fromDate, toDate);
+                processed++;
+            } else {
+                boolean fetched = false;
+
+                // Pre-gap: requested start is before our earliest record
+                if (fromDate.isBefore(earliest)) {
+                    LocalDate preGapEnd = earliest.minusDays(1);
+                    if (!fromDate.isAfter(preGapEnd)) {
+                        total += backfillSymbol(symbol, isin, fromDate, preGapEnd);
+                        fetched = true;
+                    }
+                }
+
+                // Post-gap: requested end is after our latest record
+                if (toDate.isAfter(latest)) {
+                    LocalDate postGapStart = latest.plusDays(1);
+                    if (!postGapStart.isAfter(toDate)) {
+                        total += backfillSymbol(symbol, isin, postGapStart, toDate);
+                        fetched = true;
+                    }
+                }
+
+                if (!fetched) {
+                    skippedFullyCovered++;
+                }
+                processed++;
+            }
+
+            if (progress != null) {
+                progress.onProgress(processed, equitySymbols.size(), total, skippedFullyCovered);
+            }
+            if (processed % 100 == 0) {
+                log.info("Equity backfill progress: {}/{} processed ({} skipped), {} records",
+                        processed, equitySymbols.size(), skippedFullyCovered, total);
+            }
+        }
+
+        // Also backfill holdings not in the symbols table
+        List<Holding> holdings = holdingRepository.findAll();
         for (Holding h : holdings) {
+            if (!cancelCheck.get()) return total;
             if (h.getAssetType() == AssetType.EQUITY || h.getAssetType() == AssetType.ETF) {
                 String isin = resolveAndPersistIsin(h);
                 if (isin != null && !isin.isBlank()) {
-                    total += backfillSymbol(h.getSymbol(), isin, fromDate, toDate);
+                    String symbol = h.getSymbol();
+                    LocalDate earliest = earliestDates.get(symbol);
+                    LocalDate latest = latestDates.get(symbol);
+                    if (earliest == null) {
+                        total += backfillSymbol(symbol, isin, fromDate, toDate);
+                    } else {
+                        if (fromDate.isBefore(earliest)) {
+                            total += backfillSymbol(symbol, isin, fromDate, earliest.minusDays(1));
+                        }
+                        if (toDate.isAfter(latest)) {
+                            total += backfillSymbol(symbol, isin, latest.plusDays(1), toDate);
+                        }
+                    }
                 }
             }
         }
-        log.info("Backfilled {} stock price history records", total);
+
+        log.info("Backfilled {} equity price records ({} processed, {} fully covered, {} no ISIN)",
+                total, processed, skippedFullyCovered, skippedNoIsin);
         return total;
     }
 
@@ -99,6 +212,16 @@ public class UpstoxHistoricalService {
             HttpHeaders headers = new HttpHeaders();
             headers.set("Accept", "application/json");
             headers.set("Authorization", "Bearer " + accessToken);
+
+            // Waits for a slot rather than skipping: this is a background backfill with no
+            // alternative provider, so pausing briefly is better than leaving a gap in the symbol's
+            // history that nothing will come back for. A separate bucket from the quote API,
+            // because Upstox counts its limits per API and this is where a backfill spends them.
+            if (!rateLimiter.acquire("upstox-historical")) {
+                log.info("{}: skipped, the Upstox historical-candle budget is exhausted; the next "
+                        + "scheduled backfill will pick up the gap", symbol);
+                return 0;
+            }
 
             HttpEntity<?> entity = new HttpEntity<>(headers);
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
@@ -168,12 +291,12 @@ public class UpstoxHistoricalService {
     /**
      * Daily backfill at 3 AM. Only fetches the gap since the last record per symbol.
      */
-    @Scheduled(cron = "0 0 3 * * ?")
+    @Scheduled(cron = "0 0 3 * * ?", zone = "Asia/Kolkata")
     public void scheduledDailyBackfill() {
         if (accessToken == null || accessToken.isBlank()) return;
         log.info("Running daily price history backfill...");
         try {
-            LocalDate to = LocalDate.now();
+            LocalDate to = LocalDate.now(MarketCalendar.ZONE);
             LocalDate from = to.minusDays(7);
             int count = backfillAll(from, to);
             log.info("Daily backfill complete: {} records added", count);
@@ -184,7 +307,7 @@ public class UpstoxHistoricalService {
 
     @Transactional
     public int backfillFromDate(LocalDate fromDate) {
-        return backfillAll(fromDate, LocalDate.now());
+        return backfillAll(fromDate, LocalDate.now(MarketCalendar.ZONE));
     }
 
     /**

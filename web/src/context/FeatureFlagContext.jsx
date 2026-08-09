@@ -20,10 +20,12 @@ export function FeatureFlagProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFeatureFlags() {
   return useContext(FeatureFlagContext)
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFeature(name) {
   const { flags } = useContext(FeatureFlagContext)
   return flags[name] === true

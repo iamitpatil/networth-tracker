@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
-import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Banknote, Upload, ChevronDown, ChevronRight, FileText, Download } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Loader2, Briefcase, Upload, FileText, Download } from 'lucide-react'
+import { ConfirmDialog } from '../components/ui/Modal'
+import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
+import { formatINR, dateInputValue } from '../utils/format'
 
 export default function Salaries() {
   const [salaries, setSalaries] = useState([])
@@ -12,8 +16,9 @@ export default function Salaries() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [parsedData, setParsedData] = useState(null)
-  const [expandedRow, setExpandedRow] = useState(null)
+  const [expandedRow] = useState(null)
   const [salaryDocs, setSalaryDocs] = useState({})
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const load = async () => {
     try {
@@ -28,29 +33,40 @@ export default function Salaries() {
         try {
           const res = await client.get(`/salaries/${sal.id}/document`)
           docs[sal.id] = res.data
-        } catch {}
+        } catch { /* ignored */ }
       }
       setSalaryDocs(docs)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [])
 
-  const resetForm = () => setForm({ employerName: '', amount: '', bankAccountId: '', payDate: new Date().toISOString().slice(0, 10), notes: '' })
+  const resetForm = () => setForm({ employerName: '', amount: '', bankAccountId: '', payDate: dateInputValue(), notes: '', components: { earnings: {}, deductions: {} } })
 
   const openCreate = () => { resetForm(); setEditing(null); setParsedData(null); setShowForm(true) }
-  const openEdit = (s) => { setForm({ ...s, amount: s.amount }); setParsedData(null); setEditing(s.id); setShowForm(true) }
+  const openEdit = (s) => {
+    setForm({ ...s, amount: s.amount, components: s.components || { earnings: {}, deductions: {} } })
+    setParsedData(null); setEditing(s.id); setShowForm(true)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSaving(true)
     try {
+      const components = form.components || null
+      // Clean empty components
+      const cleanedComponents = components && (
+        Object.values(components).some(v => typeof v === 'object' ? Object.keys(v).length > 0 : v != null)
+      ) ? components : null
       const payload = {
-        ...form,
+        employerName: form.employerName,
         amount: parseFloat(form.amount) || 0,
         bankAccountId: form.bankAccountId || null,
-        components: parsedData?.components || null,
+        payDate: form.payDate || null,
+        notes: form.notes || null,
+        components: cleanedComponents,
         documentId: parsedData?.documentId || null,
       }
       if (editing) {
@@ -63,7 +79,7 @@ export default function Salaries() {
           try {
             const res = await client.get(`/salaries/${data.id}/document`)
             setSalaryDocs((d) => ({ ...d, [data.id]: res.data }))
-          } catch {}
+          } catch { /* ignored */ }
         }
       }
       setShowForm(false); setParsedData(null)
@@ -71,12 +87,18 @@ export default function Salaries() {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this salary record?')) return
-    try {
-      await client.delete(`/salaries/${id}`)
-      setSalaries((p) => p.filter((s) => s.id !== id))
-    } catch (e) { console.error(e) }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this salary record?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/salaries/${id}`)
+          setSalaries((p) => p.filter((s) => s.id !== id))
+        } catch (e) { console.error(e) }
+      },
+    })
   }
 
   const handleUpload = async (e) => {
@@ -91,9 +113,37 @@ export default function Salaries() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setParsedData(data)
-      if (data.employerName) setForm((f) => ({ ...f, employerName: data.employerName }))
-      if (data.netPay) setForm((f) => ({ ...f, amount: String(data.netPay) }))
-      if (data.payDate) setForm((f) => ({ ...f, payDate: String(data.payDate).slice(0, 10) }))
+      // Build components from parsed data
+      let components = data.components || {}
+      if (data.earnings || data.deductions) {
+        components = {}
+        if (data.earnings && typeof data.earnings === 'object') components.earnings = { ...data.earnings }
+        if (data.deductions && typeof data.deductions === 'object') components.deductions = { ...data.deductions }
+      }
+      // Ensure earnings/deductions structure
+      if (!components.earnings && !components.deductions) {
+        // Flat components — separate into earnings/deductions by guessing
+        const flat = { ...components }
+        const earnings = {}
+        const deductions = {}
+        for (const [k, v] of Object.entries(flat)) {
+          if (typeof v === 'object') continue
+          const lk = k.toLowerCase()
+          if (lk.includes('tax') || lk.includes('deduction') || lk.includes('pf') || lk.includes('esi') || lk.includes('pt') || lk.includes('nps') || Number(v) < 0) {
+            deductions[k] = Math.abs(Number(v) || 0)
+          } else {
+            earnings[k] = Number(v) || 0
+          }
+        }
+        components = { earnings, deductions }
+      }
+      setForm((f) => ({
+        ...f,
+        employerName: data.employerName || f.employerName,
+        amount: data.netPay ? String(data.netPay) : f.amount,
+        payDate: data.payDate ? String(data.payDate).slice(0, 10) : f.payDate,
+        components,
+      }))
       setShowForm(true); setEditing(null)
     } catch (err) { console.error(err) }
     finally { setUploading(false) }
@@ -109,7 +159,7 @@ export default function Salaries() {
       a.href = url; a.download = doc.originalFilename
       document.body.appendChild(a); a.click()
       a.remove(); window.URL.revokeObjectURL(url)
-    } catch {}
+    } catch { /* ignored */ }
   }
 
   const totalMonthly = useMemo(() =>
@@ -120,10 +170,10 @@ export default function Salaries() {
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     }).reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0), [salaries])
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Salary Records</h1>
@@ -149,26 +199,27 @@ export default function Salaries() {
         <form onSubmit={handleSubmit} className="bg-[var(--bg-card)] rounded-xl p-6 border border-[var(--border)] space-y-4">
           <h3 className="text-lg font-semibold">{editing ? 'Edit' : parsedData ? 'Salary from Slip' : 'Add'} Salary Record</h3>
 
-          {parsedData && parsedData.components && (
-            <div className="bg-[var(--bg)]/50 rounded-lg p-4 space-y-1.5">
-              <p className="text-sm font-medium text-emerald-400 mb-2">Parsed Components</p>
-              {Object.entries(parsedData.components).map(([k, v]) => (
-                <div key={k} className="flex justify-between text-sm">
-                  <span className="text-[var(--text-muted)]">{k}</span>
-                  <span className="font-medium">{v != null ? `Rs. ${Number(v).toLocaleString('en-IN')}` : '-'}</span>
+          {/* Upload PDF area */}
+          {!editing && (
+            <div className={`border-2 border-dashed rounded-lg p-4 transition ${parsedData ? 'border-green-500/30 bg-green-500/5' : 'border-[var(--border)] hover:border-blue-500/30'}`}>
+              {parsedData ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-green-400">
+                    <FileText className="w-4 h-4" />
+                    <span>Salary slip parsed — fields pre-filled below</span>
+                  </div>
+                  <button type="button" onClick={() => setParsedData(null)} className="text-xs text-[var(--text-muted)] hover:text-red-400 transition">Clear</button>
                 </div>
-              ))}
-              {parsedData.grossPay != null && (
-                <div className="flex justify-between text-sm pt-2 border-t border-[var(--border)] mt-2">
-                  <span className="font-medium">Gross Pay</span>
-                  <span className="font-medium">Rs. {Number(parsedData.grossPay).toLocaleString('en-IN')}</span>
-                </div>
-              )}
-              {parsedData.netPay != null && (
-                <div className="flex justify-between text-sm font-bold text-green-400">
-                  <span>Net Pay</span>
-                  <span>Rs. {Number(parsedData.netPay).toLocaleString('en-IN')}</span>
-                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 cursor-pointer">
+                  <Upload className="w-6 h-6 text-[var(--text-muted)]" />
+                  <span className="text-sm text-[var(--text-muted)]">
+                    {uploading ? 'Parsing salary slip...' : 'Drop salary slip PDF here or click to upload'}
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">PDF, PNG, JPG supported — will auto-fill fields</span>
+                  <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleUpload} className="hidden" disabled={uploading} />
+                  {uploading && <Loader2 className="w-4 h-4 animate-spin text-blue-400" />}
+                </label>
               )}
             </div>
           )}
@@ -183,13 +234,9 @@ export default function Salaries() {
               <input type="number" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" required />
             </div>
             <div>
-              <label className="block text-sm text-[var(--text-muted)] mb-1">Bank Account (optional)</label>
-              <select value={form.bankAccountId || ''} onChange={(e) => setForm({ ...form, bankAccountId: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                <option value="">None</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.accountName} ({a.bankName})</option>
-                ))}
-              </select>
+              <StyledSelect label="Bank Account (optional)" value={form.bankAccountId || ''} onChange={(v) => setForm({ ...form, bankAccountId: v })}
+                placeholder="None"
+                options={accounts.map(a => ({ value: a.id, label: `${a.accountName} (${a.bankName})` }))} />
             </div>
             <div>
               <label className="block text-sm text-[var(--text-muted)] mb-1">Pay Date</label>
@@ -200,6 +247,10 @@ export default function Salaries() {
               <textarea value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5" rows={2} />
             </div>
           </div>
+
+          {/* Editable salary components */}
+          <EditableSalaryComponentsForm components={form.components} onChange={(c) => setForm({ ...form, components: c })} />
+
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setShowForm(false); resetForm(); setParsedData(null) }} className="px-4 py-2 bg-[var(--input-bg)] rounded-lg hover:bg-[var(--input-bg)] transition">Cancel</button>
             <button type="submit" disabled={saving || !form.employerName || !form.amount}
@@ -219,87 +270,245 @@ export default function Salaries() {
             <p className="text-sm mt-1">Add your salary or upload a slip to track income</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-[var(--bg)]/50 text-left">
-              <tr>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Employer</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Bank Account</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Date</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Components</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Slip</th>
-                <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {salaries.map((s) => (
-                <tr key={s.id} className="hover:bg-[var(--hover-bg)]">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Briefcase className="w-4 h-4 text-blue-400" />
-                      <div>
-                        <p className="font-medium">{s.employerName}</p>
-                        {s.notes && <p className="text-xs text-[var(--text-muted)]">{s.notes}</p>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">
-                    <div className="flex items-center justify-end gap-1">
-                      <Banknote className="w-4 h-4 text-green-400" />
-                      Rs. {(parseFloat(s.amount) || 0).toLocaleString('en-IN')}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                    {s.bankAccountId ? accounts.find(a => a.id === s.bankAccountId)?.accountName || '-' : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                    {s.payDate ? new Date(s.payDate).toLocaleDateString('en-IN') : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {s.components && typeof s.components === 'object' && Object.keys(s.components).length > 0 ? (
-                      <button onClick={() => setExpandedRow(expandedRow === s.id ? null : s.id)}
-                        className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition">
-                        {expandedRow === s.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        {Object.keys(s.components).length} items
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)]">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {salaryDocs[s.id] ? (
-                      <button onClick={() => handleDownload(s.id)}
-                        className="flex items-center gap-1 text-sm text-emerald-400 hover:text-emerald-300 transition">
-                        <Download className="w-4 h-4" /> Slip
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)]">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1">
-                      <button onClick={() => openEdit(s)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleDelete(s.id)} aria-label="Delete salary" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </td>
+<div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full min-w-[700px]">
+              <thead className="bg-[var(--bg)]/50 text-left">
+                <tr>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Employer</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Bank Account</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Date</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Components</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Pay Slip</th>
+                  <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {salaries.map((s) => (
+                  <tr key={s.id} className="hover:bg-[var(--hover-bg)]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Briefcase className="w-4 h-4 text-blue-400" />
+                        <div>
+                          <p className="font-medium">{s.employerName}</p>
+                          {s.notes && <p className="text-xs text-[var(--text-muted)]">{s.notes}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">
+                      <p className="text-green-400">{formatINR(s.amount)}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{s.frequency}</p>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {accounts.find(a => a.id === s.bankAccountId)?.accountName || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {s.payDate ? new Date(s.payDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {s.components && Object.entries(s.components).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(s.components).slice(0, 3).map(([key, val]) => (
+                            <span key={key} className="px-1.5 py-0.5 bg-[var(--input-bg)] rounded text-xs">
+                              {key}: {formatINR(val)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.paySlipUrl ? (
+                        <button onClick={() => handleDownload(s.id)}
+                          className="flex items-center gap-1 text-sm text-emerald-400 hover:text-emerald-300 transition">
+                          <Download className="w-4 h-4" /> Slip
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => openEdit(s)} className="p-1.5 text-[var(--text-secondary)] hover:text-blue-400 transition"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(s.id)} aria-label="Delete salary" className="p-1.5 text-[var(--text-secondary)] hover:text-red-400 transition"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
+
       {expandedRow && salaries.find(s => s.id === expandedRow)?.components && (
-        <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 space-y-1.5">
-          <p className="text-sm font-medium text-emerald-400 mb-2">Salary Breakdown</p>
-          {Object.entries(salaries.find(s => s.id === expandedRow).components).map(([k, v]) => (
-            <div key={k} className="flex justify-between text-sm">
-              <span className="text-[var(--text-muted)]">{k}</span>
-              <span className="font-medium">{v != null ? `Rs. ${Number(v).toLocaleString('en-IN')}` : '-'}</span>
-            </div>
-          ))}
+        <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 space-y-3">
+          <p className="text-sm font-medium text-emerald-400">Salary Breakdown</p>
+          <SalaryComponents components={salaries.find(s => s.id === expandedRow).components} />
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Editable salary components form for both manual entry and PDF upload.
+ * Supports earnings/deductions sections with add/remove rows.
+ */
+function EditableSalaryComponentsForm({ components, onChange }) {
+  const comps = components || { earnings: {}, deductions: {} }
+  const hasStructure = comps.earnings || comps.deductions
+  const earnings = hasStructure ? (comps.earnings || {}) : {}
+  const deductions = hasStructure ? (comps.deductions || {}) : {}
+
+  const [newEarningKey, setNewEarningKey] = useState('')
+  const [newDeductionKey, setNewDeductionKey] = useState('')
+
+  const updateComponent = (section, key, value) => {
+    const updated = { ...comps, [section]: { ...comps[section], [key]: Number(value) || 0 } }
+    onChange(updated)
+  }
+
+  const addComponent = (section, key) => {
+    if (!key.trim()) return
+    const updated = { ...comps, [section]: { ...comps[section], [key.trim()]: 0 } }
+    onChange(updated)
+    if (section === 'earnings') setNewEarningKey('')
+    else setNewDeductionKey('')
+  }
+
+  const removeComponent = (section, key) => {
+    const sectionData = { ...comps[section] }
+    delete sectionData[key]
+    onChange({ ...comps, [section]: sectionData })
+  }
+
+  const renderSection = (title, section, items, isDeduction) => {
+    const total = Object.values(items).reduce((s, v) => s + (Number(v) || 0), 0)
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className={`text-sm font-semibold ${isDeduction ? 'text-red-400' : 'text-green-400'}`}>{title}</p>
+          <span className={`text-xs font-medium ${isDeduction ? 'text-red-400' : 'text-green-400'}`}>
+            Total: Rs. {total.toLocaleString('en-IN')}
+          </span>
+        </div>
+        <div className="space-y-1.5 pl-3 border-l-2 border-[var(--border)]">
+          {Object.entries(items).map(([k, v]) => (
+            <div key={k} className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] flex-1 truncate">{k}</span>
+              <input type="number" value={v}
+                onChange={(e) => updateComponent(section, k, e.target.value)}
+                className={`w-28 bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-right ${isDeduction ? 'text-red-400' : 'text-[var(--text)]'}`} />
+              <button type="button" onClick={() => removeComponent(section, k)}
+                className="text-[var(--text-secondary)] hover:text-red-400 transition p-0.5">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {/* Add new row */}
+          <div className="flex items-center gap-2 pt-1">
+            <input type="text" value={isDeduction ? newDeductionKey : newEarningKey}
+              onChange={(e) => isDeduction ? setNewDeductionKey(e.target.value) : setNewEarningKey(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addComponent(section, isDeduction ? newDeductionKey : newEarningKey) } }}
+              placeholder={`Add ${isDeduction ? 'deduction' : 'earning'}...`}
+              className="flex-1 bg-[var(--input-bg)] border border-dashed border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] placeholder-[var(--text-secondary)]" />
+            <button type="button"
+              onClick={() => addComponent(section, isDeduction ? newDeductionKey : newEarningKey)}
+              className="text-xs text-blue-400 hover:text-blue-300 transition px-2 py-1">+ Add</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[var(--bg)]/50 rounded-lg p-4 space-y-4">
+      <p className="text-sm font-medium text-[var(--text)]">Salary Components</p>
+      {renderSection('Earnings', 'earnings', earnings, false)}
+      {renderSection('Deductions', 'deductions', deductions, true)}
+    </div>
+  )
+}
+
+/**
+ * Renders salary components — handles both flat and nested (earnings/deductions) formats.
+ * Flat:   { "basic": 74000, "hra": 37000, "income_tax": -11920 }
+ * Nested: { "earnings": { "Basic": 110000, "HRA": 44000 }, "deductions": { "PF": 1800, "Tax": 78380 } }
+ */
+function SalaryComponents({ components }) {
+  if (!components || typeof components !== 'object') return null
+  const entries = Object.entries(components)
+
+  // Check if nested (values are objects)
+  const isNested = entries.some(([, v]) => v && typeof v === 'object')
+
+  if (isNested) {
+    return (
+      <div className="space-y-3">
+        {entries.map(([section, items]) => {
+          if (!items || typeof items !== 'object') {
+            return (
+              <div key={section} className="flex justify-between text-sm">
+                <span className="text-[var(--text-muted)]">{section.replace(/_/g, ' ')}</span>
+                <span className="font-medium">Rs. {Number(items).toLocaleString('en-IN')}</span>
+              </div>
+            )
+          }
+          const isDeduction = section.toLowerCase().includes('deduction')
+          const sectionTotal = Object.values(items).reduce((s, v) => s + (Number(v) || 0), 0)
+          return (
+            <div key={section}>
+              <p className={`text-xs font-semibold mb-1.5 ${isDeduction ? 'text-red-400' : 'text-green-400'}`}>
+                {section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              </p>
+              <div className="space-y-1 pl-2 border-l-2 border-[var(--border)]">
+                {Object.entries(items).map(([k, v]) => (
+                  <div key={k} className="flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">{k}</span>
+                    <span className={`font-medium ${isDeduction ? 'text-red-400' : ''}`}>
+                      {isDeduction ? '- ' : ''}Rs. {Math.abs(Number(v) || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm pt-1 border-t border-[var(--border)]/50 font-semibold">
+                  <span className="text-[var(--text-muted)]">Total {section.replace(/_/g, ' ')}</span>
+                  <span className={isDeduction ? 'text-red-400' : 'text-green-400'}>
+                    {isDeduction ? '- ' : ''}Rs. {Math.abs(sectionTotal).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Flat format
+  return (
+    <div className="space-y-1">
+      {entries.map(([k, v]) => {
+        const num = Number(v) || 0
+        const isDeduction = num < 0 || k.toLowerCase().includes('tax') || k.toLowerCase().includes('deduction') || k.toLowerCase().includes('pf')
+        return (
+          <div key={k} className="flex justify-between text-sm">
+            <span className="text-[var(--text-muted)]">{k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+            <span className={`font-medium ${isDeduction ? 'text-red-400' : ''}`}>
+              {isDeduction && num > 0 ? '- ' : ''}Rs. {Math.abs(num).toLocaleString('en-IN')}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -25,4 +25,18 @@ public interface StockPriceHistoryRepository extends JpaRepository<StockPriceHis
 
     @Query("SELECT h FROM StockPriceHistory h WHERE h.symbol = :symbol ORDER BY h.priceDate DESC LIMIT 1")
     Optional<StockPriceHistory> findLatest(@Param("symbol") String symbol);
+
+    /**
+     * Bulk query: get the latest price_date per symbol in one shot.
+     * Returns rows of [symbol, max(price_date)].
+     */
+    @Query("SELECT h.symbol, MAX(h.priceDate) FROM StockPriceHistory h GROUP BY h.symbol")
+    List<Object[]> findLatestDatePerSymbol();
+
+    /**
+     * Bulk query: get earliest and latest price_date per symbol.
+     * Returns rows of [symbol, min(price_date), max(price_date)].
+     */
+    @Query("SELECT h.symbol, MIN(h.priceDate), MAX(h.priceDate) FROM StockPriceHistory h GROUP BY h.symbol")
+    List<Object[]> findDateRangePerSymbol();
 }

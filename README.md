@@ -176,7 +176,9 @@ export UPSTOX_ANALYTICS_TOKEN=your_upstox_analytics_token
 export ALPHA_VANTAGE_API_KEY=your_key
 
 # AI chat (optional)
-# Start llama.cpp server separately (see below)
+# Either `docker compose up -d llm` (fetches the model automatically),
+# or run llama.cpp natively on port 8082 — see below.
+# Override the Docker model with LLAMA_MODEL_REPO=<hf-user>/<repo>:<quant>
 ```
 
 > **Important:** The `UPSTOX_ANALYTICS_TOKEN` must be explicitly exported before `mvn spring-boot:run`. The forked JVM does not inherit shell environment variables automatically. Run `source ~/.zshrc && export UPSTOX_ANALYTICS_TOKEN` if you set it in your profile.
@@ -184,10 +186,17 @@ export ALPHA_VANTAGE_API_KEY=your_key
 ### 4. Start Services
 
 ```bash
-# Option A: Start everything at once
-bash start.sh
+# Option A: Everything in Docker (Postgres, Redis, LLM, backend, web)
+docker compose up -d
+# -> http://localhost:3000
 
-# Option B: Start individually
+# Option B: Backing services in Docker, backend + frontend native (fast reloads)
+bash start.sh          # Postgres + Redis + backend + frontend
+bash start.sh --ai     # ...and the local LLM on 8082 for AI Chat
+bash start.sh status   # what is running
+bash start.sh stop     # stop the native servers (Docker services stay up)
+
+# Option C: Start individually
 
 # Backend (port 8080)
 mvn spring-boot:run
@@ -196,8 +205,11 @@ mvn spring-boot:run
 cd web && npm run dev
 
 # AI server (optional, port 8082)
-bash llama.sh start
+docker compose up -d llm   # downloads the model into ./models on first run
+bash llama.sh start          # or run it natively if you have llama-server installed
 ```
+
+All three options are idempotent: anything already running is reused rather than restarted.
 
 ### 5. Open the App
 
@@ -598,9 +610,28 @@ java -jar target/networth-tracker-*.jar
 ### Docker
 
 ```bash
-docker-compose up -d          # Development
-docker-compose -f docker-compose.prod.yml up -d  # Production
+docker compose up -d                 # Development: full stack, see table below
+docker compose up -d postgres redis  # ...or just the backing services
+docker compose ps                    # what is running
+docker compose logs -f llm         # watch the model load
+docker compose down                  # stop everything (volumes are kept)
+
+docker compose -f docker-compose.prod.yml up -d  # Production
 ```
+
+| Service | Container | Port | Notes |
+|---|---|---|---|
+| `web` | networth-web | 3000 | nginx serving the built Vite bundle, proxies `/api` to `app` |
+| `app` | networth-app | 8080 | Spring Boot; Flyway migrates on boot |
+| `llm` | networth-llm | 8082 | llama.cpp server; model auto-downloaded into `./models` |
+| `postgres` | networth-postgres | 5432 | data in the `postgres_data` volume |
+| `redis` | networth-redis | 6379 | data in the `redis_data` volume |
+
+`docker compose up -d` is idempotent — it starts whatever is missing and leaves running
+services alone. Credentials and tokens are read from the root `.env`, which Compose loads
+automatically. The `llm` service downloads roughly 2 GB on first start; because Docker on
+macOS has no GPU passthrough, that container does CPU-only inference — use `bash llama.sh start`
+instead if you want Metal acceleration.
 
 ### Flutter Mobile App
 

@@ -1,3 +1,5 @@
+import { useId } from 'react'
+
 /**
  * Form input with label and error display.
  */
@@ -11,7 +13,8 @@ export default function Input({
   id,
   ...props
 }) {
-  const inputId = id || `input-${Math.random().toString(36).slice(2, 9)}`
+  const generatedId = useId()
+  const inputId = id || generatedId
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -27,11 +30,11 @@ export default function Input({
         aria-invalid={error ? 'true' : undefined}
         aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
         className={`
-          w-full px-3 py-2 rounded-lg
+          w-full px-3 py-2.5 rounded-lg
           bg-[var(--input-bg)] border border-[var(--border)]
           text-[var(--text)] placeholder:text-[var(--text-muted)]
           focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500
-          transition-colors
+          transition-all duration-200
           ${error ? 'border-red-500 focus:ring-red-500/40 focus:border-red-500' : ''}
           ${props.disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
@@ -47,7 +50,8 @@ export default function Input({
 }
 
 export function Select({ label, error, hint, required, children, className = '', id, ...props }) {
-  const selectId = id || `select-${Math.random().toString(36).slice(2, 9)}`
+  const generatedSelectId = useId()
+  const selectId = id || generatedSelectId
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -81,7 +85,8 @@ export function Select({ label, error, hint, required, children, className = '',
 }
 
 export function Textarea({ label, error, hint, required, className = '', id, ...props }) {
-  const textareaId = id || `textarea-${Math.random().toString(36).slice(2, 9)}`
+  const generatedTextareaId = useId()
+  const textareaId = id || generatedTextareaId
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>

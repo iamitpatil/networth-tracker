@@ -80,6 +80,26 @@ export function formatRelativeDate(dateStr) {
 }
 
 /**
+ * A date-time as an `<input type="datetime-local">` value, in the browser's own zone.
+ * Defaults to now.
+ *
+ * `new Date().toISOString().slice(0, 16)` looks like it does this but gives UTC, so a user in IST
+ * saw the clock running 5.5 hours behind — and before 05:30 local, yesterday's date.
+ */
+export function dateTimeInputValue(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    + `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
+ * A date as an `<input type="date">` value, in the browser's own zone. Defaults to today.
+ */
+export function dateInputValue(date = new Date()) {
+  return dateTimeInputValue(date).slice(0, 10)
+}
+
+/**
  * Format file size in bytes.
  */
 export function formatBytes(bytes) {

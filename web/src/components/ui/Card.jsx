@@ -3,12 +3,19 @@ import { formatINR, formatPercent } from '../../utils/format'
 /**
  * Basic Card primitive - the foundation of all card UIs.
  */
-export default function Card({ children, className = '', hover = false, ...props }) {
+export default function Card({ children, className = '', hover = false, variant = 'default', ...props }) {
+  const variants = {
+    default: 'shadow-sm',
+    elevated: 'shadow-lg shadow-black/5 dark:shadow-black/20',
+    subtle: 'shadow-none bg-[var(--bg)]/50',
+  }
+
   return (
     <div
       className={`
         bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6
-        ${hover ? 'transition-colors hover:border-blue-500/30' : ''}
+        ${variants[variant]}
+        ${hover ? 'transition-all duration-200 hover:border-blue-500/40 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5' : 'transition-all duration-200'}
         ${className}
       `}
       {...props}
@@ -40,8 +47,8 @@ export function StatCard({
                        value
 
   const cardClass = onClick
-    ? 'bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5 transition-all hover:border-blue-500/30 cursor-pointer'
-    : 'bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5'
+    ? 'bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5 transition-all duration-200 hover:border-blue-500/40 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 cursor-pointer'
+    : 'bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5 transition-all duration-200'
 
   if (loading) {
     return (

@@ -2,13 +2,19 @@ package com.networth.controller;
 
 import com.networth.model.dto.*;
 import com.networth.service.FamilyDataService;
+import com.networth.service.FamilyService;
 import com.networth.service.InvestmentOverTimeService;
+import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.PortfolioSummaryService;
+import com.networth.service.importservice.TransactionImportService;
 import com.networth.service.portfolio.TransactionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -32,8 +38,11 @@ public class PortfolioController {
 
     private final HoldingService holdingService;
     private final TransactionService transactionService;
+    private final CorporateActionService corporateActionService;
+    private final TransactionImportService transactionImportService;
     private final PortfolioSummaryService portfolioSummaryService;
     private final FamilyDataService familyDataService;
+    private final FamilyService familyService;
     private final InvestmentOverTimeService investmentOverTimeService;
     private final HoldingRepository holdingRepository;
     private final StockPriceHistoryRepository stockPriceHistoryRepository;
@@ -103,12 +112,56 @@ public class PortfolioController {
         return ResponseEntity.ok(transactionService.getHoldingTransactions(userDetails.getUsername(), id));
     }
 
+    /**
+     * Bulk transaction import from a CSV.
+     *
+     * <p>Rows are independent: valid ones are imported and failures come back with their row
+     * number and reason, rather than one bad date costing the whole file.
+     */
+    @PostMapping("/transactions/import")
+    public ResponseEntity<Map<String, Object>> importTransactions(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Choose a CSV file to import"));
+        }
+        return ResponseEntity.ok(transactionImportService
+                .importTransactions(UUID.fromString(userDetails.getUsername()), file)
+                .toMap());
+    }
+
+    /** The CSV template, so the expected columns are never guesswork. */
+    @GetMapping("/transactions/import/sample")
+    public ResponseEntity<String> sampleTransactionCsv() {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transactions-sample.csv\"")
+                .body(transactionImportService.sampleCsv());
+    }
+
     @PostMapping("/transactions")
     public ResponseEntity<TransactionResponse> addTransaction(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody TransactionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(transactionService.addTransaction(userDetails.getUsername(), request));
+    }
+
+    /**
+     * Applies a bonus issue, split or demerger to a holding.
+     *
+     * <p>Separate from {@code POST /transactions} because these are not trades: a bonus share
+     * has no price, a split has no quantity of its own, and a demerger writes to two holdings
+     * at once. The response reports the position before and after plus a plain-language summary,
+     * so the user can check the maths did what they expected.
+     */
+    @PostMapping("/holdings/{id}/corporate-actions")
+    public ResponseEntity<Map<String, Object>> applyCorporateAction(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id,
+            @Valid @RequestBody CorporateActionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(corporateActionService.apply(userDetails.getUsername(), id, request));
     }
 
     @GetMapping("/summary")
@@ -119,30 +172,34 @@ public class PortfolioController {
         return ResponseEntity.ok(familyDataService.getSummary(uid, isFam(params)));
     }
 
+    /**
+     * Daily price history for a holding's symbol.
+     *
+     * <p>The series itself is public market data, but the holding is not: without a check this
+     * answered for any holding UUID, so it confirmed whether a given holding existed and what
+     * asset class it was. Access is allowed to the owner and to approved family members, which is
+     * what the family view needs — it renders other members' holdings.
+     */
     @GetMapping("/holdings/{id}/price-history")
     public ResponseEntity<List<Map<String, Object>>> getPriceHistory(
+            @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id,
             @RequestParam(defaultValue = "90") int days) {
-        // Price history is public market data — no ownership check needed (supports family view)
         com.networth.model.entity.Holding holding = holdingRepository.findById(UUID.fromString(id))
                 .orElseThrow(() -> new com.networth.exception.ResourceNotFoundException("Holding", id));
-        String symbol = holding.getSymbol();
-        if (holding.getAssetType() == com.networth.model.enums.AssetType.MUTUAL_FUND) {
-            String isin = holding.getIsin();
-            if (isin != null && !isin.isBlank()) {
-                symbol = isin;
-            } else if (holding.getSymbol() != null && holding.getSymbol().length() == 12) {
-                symbol = holding.getSymbol();
-            } else {
-                var found = symbolRepository.findById(holding.getSymbol());
-                if (found.isPresent()) {
-                    symbol = found.get().getSymbol();
-                }
-            }
-        } else if (holding.getAssetType() != com.networth.model.enums.AssetType.EQUITY
-                && holding.getAssetType() != com.networth.model.enums.AssetType.ETF) {
+
+        UUID viewerId = UUID.fromString(userDetails.getUsername());
+        if (!holding.getUserId().equals(viewerId)
+                && !familyService.getApprovedMemberIds(viewerId).contains(holding.getUserId())) {
+            // Same exception as a missing holding, deliberately: a distinct "forbidden" would
+            // still confirm the holding exists, which is the leak being closed.
+            throw new com.networth.exception.ResourceNotFoundException("Holding", id);
+        }
+        if (holding.getAssetType() != AssetType.EQUITY && holding.getAssetType() != AssetType.ETF
+                && holding.getAssetType() != AssetType.MUTUAL_FUND) {
             return ResponseEntity.ok(List.of());
         }
+        String symbol = holdingService.getEffectiveSymbolForPricing(holding);
         LocalDate to = LocalDate.now();
         LocalDate from = to.minusDays(days);
         List<Map<String, Object>> result = stockPriceHistoryRepository

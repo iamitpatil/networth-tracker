@@ -5,6 +5,7 @@ import com.networth.model.entity.Transaction;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +29,7 @@ public class SIPCalendarService {
         List<Holding> holdings = holdingRepository.findByUserId(userId);
         List<SIPInfo> sipInfos = new ArrayList<>();
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MarketCalendar.ZONE);
         LocalDate nextMonth = today.plusMonths(1);
 
         for (Holding holding : holdings) {

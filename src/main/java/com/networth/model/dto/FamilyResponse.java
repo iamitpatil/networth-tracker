@@ -2,7 +2,7 @@ package com.networth.model.dto;
 
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Data
@@ -16,5 +16,5 @@ public class FamilyResponse {
     private String createdByName;
     private int memberCount;
     private int approvedCount;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

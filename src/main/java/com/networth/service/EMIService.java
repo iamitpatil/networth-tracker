@@ -114,7 +114,7 @@ public class EMIService {
     public void deleteLiability(UUID userId, UUID liabilityId) {
         Liability liability = findOwnedLiability(userId, liabilityId);
         // Soft delete: preserve for audit
-        liability.setDeletedAt(java.time.LocalDateTime.now());
+        liability.setDeletedAt(java.time.Instant.now());
         liabilityRepository.save(liability);
         log.info("Soft-deleted liability {} for user {}", liabilityId, userId);
     }

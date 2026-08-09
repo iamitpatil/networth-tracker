@@ -4,7 +4,7 @@ import com.networth.model.enums.AssetType;
 import lombok.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @NoArgsConstructor
@@ -31,8 +31,8 @@ public class HoldingResponse {
     private String dematAccountId;
     private String dematAccountBroker;
     private String dematAccountNumber;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 
     // Owner info (populated in family view for cross-member identification)
     private String ownerId;

@@ -117,7 +117,7 @@ public class RebalancingService {
         return Map.of(
                 "currentAllocation", drift,
                 "totalValue", totalValue,
-                "timestamp", java.time.LocalDateTime.now()
+                "timestamp", java.time.Instant.now()
         );
     }
 }

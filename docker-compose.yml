@@ -1,17 +1,32 @@
-version: '3.8'
-
+# Development stack. Idempotent: `docker compose up -d` starts what is missing and
+# leaves already-running services alone.
+#
+#   docker compose up -d                    # everything: db, cache, LLM, backend, web
+#   docker compose up -d postgres redis      # just the backing services (native dev via start.sh)
+#   docker compose ps                        # what is running
+#   docker compose logs -f llm               # watch the model load
+#
+# `app` and `web` are built from the root multi-stage Dockerfile (targets `backend` and
+# `frontend`), the same images docker-compose.prod.yml uses. Values interpolate from the
+# root .env, which Compose loads automatically.
 services:
   postgres:
     image: postgres:16-alpine
     container_name: networth-postgres
     environment:
-      POSTGRES_DB: networth
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-networth}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-networth}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -20,7 +35,98 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # Local LLM for AI Chat. Serves an OpenAI-compatible API on 8082, which is what
+  # ai.server-url points at.
+  #
+  # Unlike docker-compose.prod.yml (which mounts a .gguf you supply), this pulls the
+  # model from Hugging Face on first start and caches it in ./models (gitignored), so a
+  # fresh clone needs no manual download. Override with LLAMA_MODEL_REPO, or set
+  # LLAMA_ARG_MODEL=/models/<file>.gguf to use a local file instead.
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: networth-llm
+    ports:
+      - "8082:8082"
+    environment:
+      LLAMA_ARG_HF_REPO: ${LLAMA_MODEL_REPO:-unsloth/Llama-3.2-3B-Instruct-GGUF:Q4_K_M}
+      LLAMA_ARG_HOST: 0.0.0.0
+      LLAMA_ARG_PORT: "8082"
+      LLAMA_ARG_CTX_SIZE: ${AI_CTX_SIZE:-32768}
+      # One slot: the backend issues sequential requests, and a single slot gets the
+      # whole 32k context instead of splitting compute buffers four ways.
+      LLAMA_ARG_N_PARALLEL: "1"
+      LLAMA_CACHE: /models
+    volumes:
+      - ./models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: ${LLM_MEMORY_LIMIT:-10g}
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    container_name: networth-app
+    environment:
+      # No TZ on purpose: container logs stay UTC, which is what you want when correlating them.
+      # The market/tax zone is a business setting, not the process's, and lives in MarketCalendar.
+      APP_MARKET_TIMEZONE: ${APP_MARKET_TIMEZONE:-Asia/Kolkata}
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-networth}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+      AI_SERVER_URL: http://llm:8082/v1/chat/completions
+      UPLOAD_DIR: /app/uploads
+      UPSTOX_ANALYTICS_TOKEN: ${UPSTOX_ANALYTICS_TOKEN:-}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      # The web container serves the UI on APP_PORT, so that origin has to be allowed as well as
+      # the localhost defaults a developer running Vite directly would use.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${APP_PORT:-3000},http://127.0.0.1:${APP_PORT:-3000},http://localhost:5173,http://127.0.0.1:5173}
+      # Dev convenience: makes /actuator/health name the failing component instead of a bare "DOWN".
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - app_uploads:/app/uploads
+      - app_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    container_name: networth-web
+    ports:
+      - "${APP_PORT:-3000}:80"
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
+  app_uploads:
+  app_logs:

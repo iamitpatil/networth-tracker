@@ -30,6 +30,9 @@ public interface HoldingRepository extends JpaRepository<Holding, UUID> {
     @Query("SELECT DISTINCT h.isin FROM Holding h WHERE h.symbol = :symbol AND h.isin IS NOT NULL AND h.deletedAt IS NULL")
     Optional<String> findIsinBySymbol(@Param("symbol") String symbol);
 
+    @Query("SELECT h FROM Holding h WHERE h.userId = :userId AND h.dematAccountId = :dematAccountId AND h.deletedAt IS NULL")
+    List<Holding> findByUserIdAndDematAccountId(@Param("userId") UUID userId, @Param("dematAccountId") UUID dematAccountId);
+
     // For finding ALL holdings (including deleted) - use only when needed for audit/reports
     @Query("SELECT h FROM Holding h WHERE h.userId = :userId")
     List<Holding> findAllByUserIdIncludingDeleted(@Param("userId") UUID userId);

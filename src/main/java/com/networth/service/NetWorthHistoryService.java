@@ -2,6 +2,7 @@ package com.networth.service;
 
 import com.networth.model.dto.NetWorthResponse;
 import com.networth.service.networth.NetWorthService;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class NetWorthHistoryService {
     public void snapshotNetWorth(UUID userId) {
         NetWorthResponse snapshot = netWorthService.calculateNetWorth(userId);
         String key = HISTORY_KEY_PREFIX + userId;
-        String date = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
+        String date = LocalDate.now(MarketCalendar.ZONE).format(DateTimeFormatter.ISO_DATE);
 
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("date", date);
@@ -63,7 +64,7 @@ public class NetWorthHistoryService {
         Map<Object, Object> history = redisTemplate.opsForHash().entries(key);
 
         List<Map<String, Object>> sortedHistory = new ArrayList<>();
-        LocalDate cutoff = LocalDate.now().minusDays(days);
+        LocalDate cutoff = LocalDate.now(MarketCalendar.ZONE).minusDays(days);
 
         for (Map.Entry<Object, Object> entry : history.entrySet()) {
             String date = entry.getKey().toString();

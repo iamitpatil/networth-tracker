@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -62,11 +62,15 @@ public class Document {
 
     @Column(nullable = false)
     @Builder.Default
+    private boolean encrypted = false;
+
+    @Column(nullable = false)
+    @Builder.Default
     private String category = "OTHER";
 
     private String description;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

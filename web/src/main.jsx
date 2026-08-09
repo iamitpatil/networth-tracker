@@ -28,6 +28,7 @@ import Salaries from './pages/Salaries'
 import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
+// eslint-disable-next-line react-refresh/only-export-components
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="flex justify-center items-center min-h-screen">Loading...</div>

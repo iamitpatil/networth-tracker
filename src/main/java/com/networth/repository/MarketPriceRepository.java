@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +33,14 @@ public interface MarketPriceRepository extends JpaRepository<MarketPrice, Market
             @Param("assetType") AssetType assetType);
 
     List<MarketPrice> findBySymbolAndAssetTypeOrderByPriceDateDesc(String symbol, AssetType assetType);
+
+    /**
+     * Price history for many symbols in one query, newest first.
+     *
+     * <p>Lets callers that iterate holdings avoid a query per symbol. The row count is the
+     * same as the per-symbol calls it replaces; only the round trips collapse.
+     */
+    List<MarketPrice> findBySymbolInOrderByPriceDateDesc(Collection<String> symbols);
 
     List<MarketPrice> findBySymbolAndAssetTypeAndPriceDateBetweenOrderByPriceDate(
             String symbol, AssetType assetType, LocalDate startDate, LocalDate endDate);

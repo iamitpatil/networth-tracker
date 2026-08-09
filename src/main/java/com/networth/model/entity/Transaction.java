@@ -6,6 +6,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -54,11 +55,26 @@ public class Transaction {
     @Column(name = "settlement_date")
     private LocalDateTime settlementDate;
 
+    /**
+     * Holding-period start for the lot this row creates, when it differs from
+     * {@code transactionDate}. Demerged shares inherit the original acquisition date under
+     * s.2(42A), so they can be long-term the moment they are received.
+     */
+    @Column(name = "acquisition_date")
+    private LocalDateTime acquisitionDate;
+
+    /**
+     * Scales the per-share cost of lots acquired before this row: 0.5 for a 1:2 split, 0.85
+     * where a demerger apportions 15% of the cost away. Only used by SPLIT and DEMERGER_OUT.
+     */
+    @Column(name = "adjustment_factor")
+    private BigDecimal adjustmentFactor;
+
     private String notes;
 
     private String broker;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

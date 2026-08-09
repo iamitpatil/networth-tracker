@@ -3,6 +3,7 @@ package com.networth.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.networth.config.AiConfig;
 import com.networth.model.dto.HoldingResponse;
 import com.networth.model.dto.TransactionRequest;
 import com.networth.model.entity.Holding;
@@ -42,18 +43,16 @@ public class AIChatService {
     private final PriceService priceService;
     private final NewsService newsService;
     private final ObjectMapper objectMapper;
-
-    private static final String LLAMA_URL = "http://localhost:8082/v1/chat/completions";
-    private static final String MODEL = "llama";
-    private static final double TEMPERATURE = 0.3;
+    /** Shared AI settings (server URL, model, temperature) — see AiConfig. */
+    private final AiConfig aiConfig;
 
     public String chat(String userId, String message, String mode, List<ChatMessage> history) {
         String systemPrompt = buildSystemPrompt(mode, userId);
 
         try {
             ObjectNode body = objectMapper.createObjectNode();
-            body.put("model", MODEL);
-            body.put("temperature", TEMPERATURE);
+            body.put("model", aiConfig.getModel());
+            body.put("temperature", aiConfig.getTemperature());
             body.put("stream", false);
 
             ArrayNode messages = body.putArray("messages");
@@ -67,7 +66,7 @@ public class AIChatService {
             }
             messages.addObject().put("role", "user").put("content", message);
 
-            URI uri = URI.create(LLAMA_URL);
+            URI uri = URI.create(aiConfig.getServerUrl());
             HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
@@ -101,7 +100,8 @@ public class AIChatService {
                 return "Sorry, I couldn't process that. Please try again.";
             }
         } catch (java.net.ConnectException e) {
-            return "AI model is not running. Start it with: `llama-server -m models/your-model.gguf --host 127.0.0.1 --port 8081`";
+            return "AI model is not running at " + aiConfig.getServerUrl()
+                    + ". Start it with: `docker compose up -d llm` (or `bash llama.sh start` to run it natively).";
         } catch (Exception e) {
             return "Error: " + e.getMessage();
         }

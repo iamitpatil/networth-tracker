@@ -58,7 +58,7 @@ public class PriceCache {
         MarketPrice marketPrice = MarketPrice.builder()
                 .symbol(symbol)
                 .assetType(assetType)
-                .priceDate(LocalDate.now())
+                .priceDate(LocalDate.now(MarketCalendar.ZONE))
                 .price(price)
                 .source(source)
                 .build();
@@ -66,7 +66,7 @@ public class PriceCache {
         try {
             marketPriceRepository.save(marketPrice);
         } catch (Exception e) {
-            log.warn("Duplicate price entry for {} on {}: {}", symbol, LocalDate.now(), e.getMessage());
+            log.warn("Duplicate price entry for {} on {}: {}", symbol, LocalDate.now(MarketCalendar.ZONE), e.getMessage());
         }
 
         cachePrice(symbol, assetType, price);

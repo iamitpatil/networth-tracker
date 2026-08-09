@@ -4,7 +4,7 @@ import com.networth.model.enums.FamilyRole;
 import com.networth.model.enums.MembershipStatus;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Data
@@ -19,6 +19,6 @@ public class FamilyMemberResponse {
     private String userEmail;
     private FamilyRole role;
     private MembershipStatus status;
-    private LocalDateTime invitedAt;
-    private LocalDateTime respondedAt;
+    private Instant invitedAt;
+    private Instant respondedAt;
 }

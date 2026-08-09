@@ -6,12 +6,16 @@ import com.networth.model.dto.HoldingRequest;
 import com.networth.model.dto.HoldingResponse;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
-import com.networth.model.enums.AssetType;
 import com.networth.model.entity.Symbol;
+import com.networth.model.entity.Transaction;
+import com.networth.model.enums.AssetType;
+import com.networth.model.enums.TransactionType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
 import com.networth.repository.SymbolRepository;
+import com.networth.repository.TransactionRepository;
+import com.networth.service.market.MarketCalendar;
 import com.networth.service.market.PriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +39,7 @@ public class HoldingService {
     private final PriceService priceService;
     private final DematAccountRepository dematAccountRepository;
     private final SymbolRepository symbolRepository;
+    private final TransactionRepository transactionRepository;
 
     @Transactional(readOnly = true)
     public List<HoldingResponse> getUserHoldings(String userId) {
@@ -155,11 +160,45 @@ public class HoldingService {
                 .build();
 
         holding = holdingRepository.save(holding);
+        recordOpeningLot(holding, request.getPurchaseDate());
 
-        priceService.refreshPrice(holding.getSymbol(), holding.getAssetType());
+        String pricingSymbol = getEffectiveSymbolForPricing(holding);
+        priceService.refreshPrice(pricingSymbol, holding.getAssetType());
         updateHoldingPrice(holding);
 
         return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
+    }
+
+    /**
+     * Records the position a holding is created with as an opening BUY transaction.
+     *
+     * <p>Without this a holding created through the UI has no transactions at all, so anything
+     * that reasons from transaction history — FIFO cost basis, capital gains, holding period,
+     * XIRR — either sees nothing or falls back to the row's creation date. Tax harvesting was
+     * classifying long-held imported positions as short-term for exactly this reason.
+     *
+     * <p>Inserted directly rather than through {@code CostBasisService.updateBuy}, because the
+     * holding's quantity and average price already reflect this lot; running it through the
+     * cost-basis path would double the position.
+     */
+    private void recordOpeningLot(Holding holding, java.time.LocalDate purchaseDate) {
+        if (holding.getQuantity() == null || holding.getQuantity().compareTo(BigDecimal.ZERO) <= 0
+                || holding.getAverageBuyPrice() == null) {
+            return;
+        }
+        java.time.LocalDateTime when = (purchaseDate != null ? purchaseDate : java.time.LocalDate.now(MarketCalendar.ZONE))
+                .atStartOfDay();
+
+        transactionRepository.save(Transaction.builder()
+                .userId(holding.getUserId())
+                .holdingId(holding.getId())
+                .transactionType(TransactionType.BUY)
+                .quantity(holding.getQuantity())
+                .price(holding.getAverageBuyPrice())
+                .amount(holding.getQuantity().multiply(holding.getAverageBuyPrice()))
+                .transactionDate(when)
+                .notes("Opening balance recorded when the holding was created")
+                .build());
     }
 
     @Transactional
@@ -180,7 +219,7 @@ public class HoldingService {
     public void deleteHolding(String userId, String holdingId) {
         Holding holding = findOwnedHolding(userId, holdingId);
         // Soft delete: preserve for tax/audit history
-        holding.setDeletedAt(java.time.LocalDateTime.now());
+        holding.setDeletedAt(java.time.Instant.now());
         holdingRepository.save(holding);
         log.info("Soft-deleted holding {} for user {}", holdingId, userId);
     }
@@ -190,13 +229,15 @@ public class HoldingService {
         UUID uid = UUID.fromString(userId);
         List<Holding> holdings = holdingRepository.findByUserId(uid);
         for (Holding holding : holdings) {
-            priceService.refreshPrice(holding.getSymbol(), holding.getAssetType());
+            String pricingSymbol = getEffectiveSymbolForPricing(holding);
+            priceService.refreshPrice(pricingSymbol, holding.getAssetType());
             updateHoldingPrice(holding);
         }
     }
 
     private void updateHoldingPrice(Holding holding) {
-        BigDecimal currentPrice = priceService.getCurrentPrice(holding.getSymbol(), holding.getAssetType());
+        String pricingSymbol = getEffectiveSymbolForPricing(holding);
+        BigDecimal currentPrice = priceService.getCurrentPrice(pricingSymbol, holding.getAssetType());
 
         // Use fetched price if available, otherwise keep stored price (don't reset to 0)
         BigDecimal priceToUse = currentPrice != null ? currentPrice : holding.getCurrentPrice();
@@ -212,7 +253,7 @@ public class HoldingService {
 
             // Only update day change if we successfully fetched a new price
             if (currentPrice != null) {
-                BigDecimal prevClose = priceService.getPreviousClose(holding.getSymbol(), holding.getAssetType());
+                BigDecimal prevClose = priceService.getPreviousClose(pricingSymbol, holding.getAssetType());
                 if (prevClose != null && prevClose.compareTo(BigDecimal.ZERO) > 0) {
                     BigDecimal change = currentPrice.subtract(prevClose);
                     holding.setDayChange(change);
@@ -298,19 +339,91 @@ public class HoldingService {
     }
 
     private String resolveIsin(String symbol) {
-        // Direct lookup first (e.g. "TCS.NS" or ISIN for MFs)
-        String isin = symbolRepository.findById(symbol)
-                .map(Symbol::getIsin)
-                .filter(i -> i != null && !i.isBlank())
-                .orElse(null);
-        // Fallback: try with .NS suffix (holdings store "TCS", symbols store "TCS.NS")
-        if (isin == null && !symbol.endsWith(".NS")) {
-            isin = symbolRepository.findById(symbol + ".NS")
-                    .map(Symbol::getIsin)
-                    .filter(i -> i != null && !i.isBlank())
-                    .orElse(null);
+        return resolveIsin(symbol, null, null);
+    }
+
+    private String resolveIsin(String symbol, AssetType assetType) {
+        return resolveIsin(symbol, assetType, null);
+    }
+
+    /**
+     * Resolve ISIN for a holding symbol.
+     * For equities: direct PK lookup (TCS.NS → ISIN from isin column).
+     * For MFs: the symbols table stores ISIN as PK and scheme name as name,
+     * so we need a fuzzy name search to find the ISIN.
+     * @param holdingName optional — used as fallback for fuzzy search when symbol doesn't match
+     */
+    private String resolveIsin(String symbol, AssetType assetType, String holdingName) {
+        // 1. Direct lookup by PK (works for equities; also works if symbol IS already an ISIN)
+        var found = symbolRepository.findById(symbol);
+        if (found.isPresent()) {
+            Symbol sym = found.get();
+            // For MF symbols, the PK itself is the ISIN
+            if ("MUTUAL_FUND".equals(sym.getCategory())) {
+                return sym.getSymbol(); // PK = ISIN for MFs
+            }
+            if (sym.getIsin() != null && !sym.getIsin().isBlank()) {
+                return sym.getIsin();
+            }
         }
-        return isin;
+
+        // 2. Try with .NS suffix (equities: "TCS" → "TCS.NS")
+        if (!symbol.endsWith(".NS")) {
+            var nsFound = symbolRepository.findById(symbol + ".NS");
+            if (nsFound.isPresent() && nsFound.get().getIsin() != null && !nsFound.get().getIsin().isBlank()) {
+                return nsFound.get().getIsin();
+            }
+        }
+
+        // 3. For MFs: fuzzy name search (symbol is a scheme name like "Axis Bluechip Fund Direct Growth")
+        if (assetType == AssetType.MUTUAL_FUND || (symbol.length() > 15 && !symbol.contains("."))) {
+            // Try searching by symbol first, then by holdingName as fallback
+            String[] searchTerms = holdingName != null && !holdingName.equals(symbol)
+                    ? new String[]{symbol, holdingName}
+                    : new String[]{symbol};
+
+            for (String term : searchTerms) {
+                String keyword = term.split("\\s*[-–]\\s*(Direct|Regular|Growth|IDCW|Plan|Dividend)")[0].trim();
+                if (keyword.length() > 5) {
+                    var matches = symbolRepository.searchByCategoryAndName("MUTUAL_FUND", keyword);
+                    // Prefer Direct Growth variant
+                    var match = matches.stream()
+                            .filter(s -> s.getName().toLowerCase().contains("direct") &&
+                                    s.getName().toLowerCase().contains("growth"))
+                            .findFirst()
+                            .or(() -> matches.stream().filter(s -> s.getName().toLowerCase().contains("direct")).findFirst())
+                            .or(() -> matches.stream().findFirst());
+                    if (match.isPresent()) {
+                        return match.get().getSymbol(); // PK = ISIN for MFs
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the effective symbol to use for price/NAV lookups.
+     * For equities: returns the symbol (e.g. "TCS.NS")
+     * For MFs: returns the ISIN (e.g. "INF846K01EW2") which is what AMFI/Upstox use.
+     */
+    public String getEffectiveSymbolForPricing(Holding holding) {
+        if (holding.getAssetType() == AssetType.MUTUAL_FUND) {
+            // Use ISIN for MF price lookups
+            if (holding.getIsin() != null && !holding.getIsin().isBlank()) {
+                return holding.getIsin();
+            }
+            // Try to resolve it — pass both symbol and name for better fuzzy matching
+            String isin = resolveIsin(holding.getSymbol(), AssetType.MUTUAL_FUND, holding.getName());
+            if (isin != null) {
+                // Persist for future lookups
+                holding.setIsin(isin);
+                holdingRepository.save(holding);
+                return isin;
+            }
+        }
+        return holding.getSymbol();
     }
 
     /**
@@ -323,7 +436,7 @@ public class HoldingService {
         int fixed = 0;
         for (Holding h : holdings) {
             if ((h.getIsin() == null || h.getIsin().isBlank()) && h.getSymbol() != null) {
-                String isin = resolveIsin(h.getSymbol());
+                String isin = resolveIsin(h.getSymbol(), h.getAssetType(), h.getName());
                 if (isin != null) {
                     h.setIsin(isin);
                     holdingRepository.save(h);

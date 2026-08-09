@@ -3,25 +3,38 @@
 set -e
 
 MODEL_DIR="$(cd "$(dirname "$0")" && pwd)/models"
-LLAMA_PORT=8081
+LLAMA_PORT=8082   # must match ai.server-url in application.properties
 LLAMA_HOST="127.0.0.1"
 
 find_model() {
-  ls "$MODEL_DIR"/*.gguf 2>/dev/null | head -1
+  # Prefer a .gguf dropped straight into models/, then fall back to the Hugging Face
+  # cache layout that `docker compose up llama` downloads into models/ (models--*/snapshots/*).
+  # Snapshot entries are symlinks into blobs/, so match links as well as regular files.
+  local model
+  model="$(ls "$MODEL_DIR"/*.gguf 2>/dev/null | head -1)"
+  if [ -n "$model" ]; then
+    echo "$model"
+    return 0
+  fi
+  find "$MODEL_DIR" -name '*.gguf' \( -type f -o -type l \) 2>/dev/null | head -1
 }
 
 start_llama_server() {
-  MODEL_FILE=$(find_model)
-  if [ -z "$MODEL_FILE" ]; then
-    echo "ERROR: No GGUF model found in $MODEL_DIR/"
-    echo "Download one first:"
-    echo "  curl -L -o $MODEL_DIR/model.gguf <model-url>"
-    exit 1
-  fi
-
+  # Idempotent: if something already serves this port (including the Docker
+  # `llama` container), leave it alone.
   if lsof -i :$LLAMA_PORT &>/dev/null; then
     echo "llama-server already running on port $LLAMA_PORT"
     return
+  fi
+
+  MODEL_FILE=$(find_model)
+  if [ -z "$MODEL_FILE" ]; then
+    echo "ERROR: No GGUF model found under $MODEL_DIR/"
+    echo "Either let Docker fetch one (it caches into models/):"
+    echo "  docker compose up -d llm"
+    echo "or download a .gguf yourself:"
+    echo "  curl -L -o $MODEL_DIR/model.gguf <model-url>"
+    exit 1
   fi
 
   echo "Starting llama-server with model: $(basename "$MODEL_FILE")"

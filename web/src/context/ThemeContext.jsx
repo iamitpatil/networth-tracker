@@ -85,6 +85,7 @@ export function ThemeProvider({ children }) {
     }
   }, [currentThemeId, fallbackKey])
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!user) {
       setThemes([])
@@ -100,6 +101,7 @@ export function ThemeProvider({ children }) {
       }
     }).catch(() => {})
   }, [user])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const currentTheme = currentThemeId
     ? themes.find((t) => t.id === currentThemeId)
@@ -117,4 +119,5 @@ export function ThemeProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useTheme = () => useContext(ThemeContext)

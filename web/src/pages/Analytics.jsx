@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, Calendar, AlertCircle, CheckCircle, XCircle, Clock, BarChart3, PieChart as PieIcon, CalendarDays, Info } from 'lucide-react'
+import { PieChart, Pie, Cell, Sector, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { TrendingUp, Calendar, AlertCircle, CheckCircle, XCircle, Clock, BarChart3, PieChart as PieIcon, CalendarDays, Info } from 'lucide-react'
 import client from '../api/client'
-import { formatINR, formatPercent, formatDate } from '../utils/format'
+import { formatINR, formatDate } from '../utils/format'
 import { CHART_PALETTE } from '../utils/colors'
 import { Card, PageHeader, PageSkeleton, EmptyState, Badge, Tooltip as UITooltip } from '../components/ui'
 
@@ -15,10 +15,6 @@ export default function Analytics() {
   const [assetAllocation, setAssetAllocation] = useState([])
   const [sectorAllocation, setSectorAllocation] = useState([])
   const [sipCalendar, setSipCalendar] = useState(null)
-
-  useEffect(() => {
-    fetchAllData()
-  }, [])
 
   async function fetchAllData() {
     setLoading(true)
@@ -41,6 +37,12 @@ export default function Analytics() {
       setLoading(false)
     }
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchAllData()
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Backend returns XIRR/CAGR as decimal (0.12 = 12%); we display as percent
   const formatRate = (val) => {
@@ -196,12 +198,14 @@ export default function Analytics() {
                       cy="50%"
                       innerRadius={50}
                       outerRadius={90}
-                      paddingAngle={2}
+                      paddingAngle={1}
+                      strokeWidth={0}
                       dataKey="value"
                       nameKey="assetType"
+                      activeShape={(props) => <Sector {...props} outerRadius={props.outerRadius + 6} />}
                     >
                       {assetAllocation.map((_, idx) => (
-                        <Cell key={idx} fill={CHART_PALETTE[idx % CHART_PALETTE.length]} />
+                        <Cell key={idx} fill={CHART_PALETTE[idx % CHART_PALETTE.length]} cursor="pointer" />
                       ))}
                     </Pie>
                     <Tooltip
@@ -211,6 +215,7 @@ export default function Analytics() {
                         borderRadius: '8px',
                         color: 'var(--text)',
                       }}
+                      itemStyle={{ color: 'var(--text)' }}
                       formatter={(v) => formatINR(v)}
                     />
                     <Legend verticalAlign="bottom" height={36} />

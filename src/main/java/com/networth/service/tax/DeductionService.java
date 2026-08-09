@@ -6,6 +6,8 @@ import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
+import com.networth.service.tax.rules.DeductionLimits;
+import com.networth.service.tax.rules.TaxRuleRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,17 +24,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DeductionService {
 
-    private static final BigDecimal LIMIT_80C = new BigDecimal("150000");
-    private static final BigDecimal LIMIT_NPS_80CCD1B = new BigDecimal("50000");
-
     private final HoldingRepository holdingRepository;
     private final TransactionRepository transactionRepository;
+    /** Deduction ceilings per financial year. */
+    private final TaxRuleRegistry ruleRegistry;
 
     @Transactional(readOnly = true)
     public Map<String, Object> get80CUtilization(UUID userId, String financialYear) {
         List<Holding> holdings = holdingRepository.findByUserId(userId);
-        LocalDate fyStart = LocalDate.of(Integer.parseInt(financialYear.split("-")[0]), 4, 1);
-        LocalDate fyEnd = LocalDate.of(Integer.parseInt(financialYear.split("-")[1]), 3, 31);
+        // Derived via the registry: parsing the second component directly turned "2024-25"
+        // into the year 25 AD, silently excluding every transaction from the window.
+        DeductionLimits limits = ruleRegistry.forFinancialYear(financialYear).deductions();
+        LocalDate fyStart = ruleRegistry.startOf(financialYear);
+        LocalDate fyEnd = ruleRegistry.endOf(financialYear);
 
         BigDecimal epfContribution = BigDecimal.ZERO;
         BigDecimal ppfContribution = BigDecimal.ZERO;
@@ -76,15 +80,15 @@ public class DeductionService {
         }
 
         BigDecimal total80C = epfContribution.add(ppfContribution).add(elssInvestment).add(otherContribution);
-        BigDecimal utilized = total80C.min(LIMIT_80C);
-        BigDecimal remaining = LIMIT_80C.subtract(utilized).max(BigDecimal.ZERO);
+        BigDecimal utilized = total80C.min(limits.limit80C());
+        BigDecimal remaining = limits.limit80C().subtract(utilized).max(BigDecimal.ZERO);
 
         return Map.of(
                 "financialYear", financialYear,
-                "limit", LIMIT_80C,
+                "limit", limits.limit80C(),
                 "utilized", utilized,
                 "remaining", remaining.max(BigDecimal.ZERO),
-                "utilizationPercentage", utilized.divide(LIMIT_80C, 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)),
+                "utilizationPercentage", utilized.divide(limits.limit80C(), 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)),
                 "breakdown", Map.of(
                         "EPF", epfContribution,
                         "PPF", ppfContribution,
@@ -94,8 +98,8 @@ public class DeductionService {
                 ),
                 "nps80CCD1B", Map.of(
                         "contribution", npsContribution,
-                        "limit", LIMIT_NPS_80CCD1B,
-                        "additional", npsContribution.min(LIMIT_NPS_80CCD1B)
+                        "limit", limits.limit80CCD1B(),
+                        "additional", npsContribution.min(limits.limit80CCD1B())
                 )
         );
     }

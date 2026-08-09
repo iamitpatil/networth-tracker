@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { FileText, Plus, Trash2, Download, Upload, X, Loader2, FolderOpen, Building2 } from 'lucide-react'
+import { FileText, Trash2, Download, Upload, Loader2, FolderOpen, Building2 } from 'lucide-react'
 import client from '../api/client'
+import { ConfirmDialog } from '../components/ui/Modal'
+import StyledSelect from '../components/ui/StyledSelect'
+import { PageSkeleton } from '../components/ui'
 
 const CATEGORIES = ['INVOICE', 'ID_PROOF', 'STATEMENT', 'REPORT', 'OTHER']
 
@@ -35,6 +38,7 @@ export default function Documents() {
   const [dematAccountId, setDematAccountId] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
   const fileInputRef = useRef(null)
 
   const loadDocuments = () => {
@@ -83,14 +87,20 @@ export default function Documents() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this document?')) return
-    try {
-      await client.delete(`/documents/${id}`)
-      setDocuments(documents.filter(d => d.id !== id))
-    } catch (err) {
-      console.error('Delete failed', err)
-    }
+  function handleDelete(id) {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this document?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/documents/${id}`)
+          setDocuments(documents.filter(d => d.id !== id))
+        } catch (err) {
+          console.error('Delete failed', err)
+        }
+      },
+    })
   }
 
   async function handleView(doc) {
@@ -109,7 +119,7 @@ export default function Documents() {
 
   async function handleDownload(doc) {
     try {
-      const { data, headers } = await client.get(`/documents/${doc.id}/download`, {
+      const { data } = await client.get(`/documents/${doc.id}/download`, {
         responseType: 'blob',
       })
       const url = window.URL.createObjectURL(new Blob([data]))
@@ -132,7 +142,7 @@ export default function Documents() {
     if (file) setSelectedFile(file)
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">
@@ -223,21 +233,13 @@ export default function Documents() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Category</label>
-                <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c.replace('_', ' ')}</option>
-                  ))}
-                </select>
+                <StyledSelect label="Category" value={category} onChange={setCategory}
+                  options={CATEGORIES.map(c => ({ value: c, label: c.replace('_', ' ') }))} />
               </div>
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Demat Account <span className="text-[var(--text-secondary)]">(optional)</span></label>
-                <select value={dematAccountId} onChange={(e) => setDematAccountId(e.target.value)} className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5">
-                  <option value="">None (general document)</option>
-                  {dematAccounts.map((d) => (
-                    <option key={d.id} value={d.id}>{d.brokerName}{d.accountNumber ? ` (${d.accountNumber})` : ''}</option>
-                  ))}
-                </select>
+                <StyledSelect label="Demat Account (optional)" value={dematAccountId} onChange={setDematAccountId}
+                  placeholder="None (general document)"
+                  options={dematAccounts.map(d => ({ value: d.id, label: `${d.brokerName}${d.accountNumber ? ` (${d.accountNumber})` : ''}` }))} />
               </div>
               <div>
                 <label className="block text-sm text-[var(--text-muted)] mb-1">Description <span className="text-[var(--text-secondary)]">(optional)</span></label>
@@ -370,6 +372,14 @@ export default function Documents() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

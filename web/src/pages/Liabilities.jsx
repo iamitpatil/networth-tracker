@@ -1,9 +1,13 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
 import { toast } from 'sonner'
-import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3, Loader2 } from 'lucide-react'
+import { Plus, Trash2, CheckCircle, XCircle, X, Home, Car, GraduationCap, CreditCard, Wallet, Calendar, Percent, Clock, IndianRupee, TrendingDown, BarChart3 } from 'lucide-react'
 import { useReferenceData } from '../hooks/useReferenceData'
 import CreditCardSpend from '../components/CreditCardSpend'
+import StyledSelect from '../components/ui/StyledSelect'
+import { ConfirmDialog } from '../components/ui/Modal'
+import { PageSkeleton } from '../components/ui'
+import { dateInputValue } from '../utils/format'
 
 const LIABILITY_CATEGORIES = [
   {
@@ -36,10 +40,6 @@ function getTypeInfo(typeValue) {
   return TYPE_MAP[typeValue] || { label: typeValue, icon: Wallet, color: 'gray', description: '' }
 }
 
-function getCategoryForType(typeValue) {
-  return LIABILITY_CATEGORIES.find(c => c.types.some(t => t.value === typeValue)) || LIABILITY_CATEGORIES[0]
-}
-
 const colorMap = {
   blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', ring: 'ring-blue-500/30' },
   indigo: { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/20', ring: 'ring-indigo-500/30' },
@@ -55,13 +55,13 @@ const fmt = (v) => v != null ? `₹${Number(v).toLocaleString('en-IN')}` : '—'
 export default function Liabilities() {
   const [activeTab, setActiveTab] = useState('loans')
   const { options: lenders } = useReferenceData('LOAN_LENDER')
-  const [totalLiabilities, setTotalLiabilities] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [localLiabilities, setLocalLiabilities] = useState([])
   const [selectedLiability, setSelectedLiability] = useState(null)
   const [emiSchedule, setEmiSchedule] = useState([])
   const [activeFilter, setActiveFilter] = useState('all')
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null })
 
   const [form, setForm] = useState({
     liabilityType: 'home_loan',
@@ -69,13 +69,10 @@ export default function Liabilities() {
     originalAmount: '',
     interestRate: '',
     tenureMonths: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: dateInputValue(),
   })
 
   useEffect(() => {
-    client.get('/net-worth/breakdown')
-      .then((res) => setTotalLiabilities(res.data.totalLiabilities || 0))
-      .catch(() => {})
     client.get('/liabilities')
       .then((res) => setLocalLiabilities(res.data || []))
       .catch(() => {})
@@ -125,7 +122,7 @@ export default function Liabilities() {
       })
       setLocalLiabilities(prev => [...prev, data])
       setShowForm(false)
-      setForm({ liabilityType: 'home_loan', lender: '', originalAmount: '', interestRate: '', tenureMonths: '', startDate: new Date().toISOString().slice(0, 10) })
+      setForm({ liabilityType: 'home_loan', lender: '', originalAmount: '', interestRate: '', tenureMonths: '', startDate: dateInputValue() })
       toast.success('Liability added', { description: `${getTypeInfo(data.liabilityType).label} from ${data.lender}` })
       setSelectedLiability(data)
       fetchEmiSchedule(data.id)
@@ -154,22 +151,28 @@ export default function Liabilities() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this liability?')) return
-    try {
-      await client.delete(`/liabilities/${id}`)
-      setLocalLiabilities(prev => prev.filter(l => l.id !== id))
-      if (selectedLiability?.id === id) { setSelectedLiability(null); setEmiSchedule([]) }
-      toast.success('Liability deleted')
-    } catch (err) {
-      toast.error('Failed to delete', { description: err.response?.data?.message || err.message })
-    }
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Delete this liability?',
+      description: 'This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await client.delete(`/liabilities/${id}`)
+          setLocalLiabilities(prev => prev.filter(l => l.id !== id))
+          if (selectedLiability?.id === id) { setSelectedLiability(null); setEmiSchedule([]) }
+          toast.success('Liability deleted')
+        } catch (err) {
+          toast.error('Failed to delete', { description: err.response?.data?.message || err.message })
+        }
+      },
+    })
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-[var(--text-muted)]">Loading...</div>
+  if (loading) return <PageSkeleton />
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -336,12 +339,8 @@ export default function Liabilities() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Lender</label>
-                <select value={form.lender} onChange={(e) => setForm({ ...form, lender: e.target.value })}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50" required>
-                  <option value="">Select lender...</option>
-                  {lenders.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                </select>
+                <StyledSelect label="Lender" value={form.lender} onChange={(v) => setForm({ ...form, lender: v })}
+                  placeholder="Select lender..." options={lenders} required showLogo />
               </div>
               <div>
                 <label className="block text-sm text-[var(--text-muted)] mb-1">Original Amount</label>
@@ -547,6 +546,14 @@ export default function Liabilities() {
       )}
 
       </>}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+      />
     </div>
   )
 }

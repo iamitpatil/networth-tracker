@@ -10,8 +10,6 @@
  * a rounded gradient container so it looks distinct from a generic Lucide icon.
  */
 export default function AppLogo({ variant = 'compact', className = '', dark = false }) {
-  const textBase = dark ? 'text-white' : 'text-[var(--text)]'
-
   const icon = (size = 'md') => {
     const dim = size === 'lg' ? 'w-12 h-12' : size === 'md' ? 'w-9 h-9' : 'w-7 h-7'
     const inner = size === 'lg' ? 'w-7 h-7' : size === 'md' ? 'w-5 h-5' : 'w-4 h-4'
