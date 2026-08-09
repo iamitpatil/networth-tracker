@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { TrendingUp, TrendingDown, Repeat, DollarSign, Filter, Calendar, Search, Users } from 'lucide-react'
-import StyledSelect from '../components/ui/StyledSelect'
+import { TrendingUp, TrendingDown, Repeat, DollarSign, Users } from 'lucide-react'
 import { PageSkeleton } from '../components/ui'
 
 export default function Transactions() {
@@ -16,6 +15,7 @@ export default function Transactions() {
   const [dateTo, setDateTo] = useState('')
   const [assetFilter, setAssetFilter] = useState('ALL')
   const [symbolSearch, setSymbolSearch] = useState('')
+  const [brokerFilter, setBrokerFilter] = useState('ALL')
 
   useEffect(() => {
     Promise.all([client.get('/portfolio/transactions'), client.get('/portfolio/holdings')])
@@ -41,6 +41,12 @@ export default function Transactions() {
     return { buys, sells, sips, totalVolume }
   }, [transactions])
 
+  const brokers = useMemo(() => {
+    const found = new Set()
+    transactions.forEach((t) => { if (t.broker) found.add(t.broker) })
+    return Array.from(found).sort()
+  }, [transactions])
+
   const assetTypes = useMemo(() => {
     const types = new Set()
     holdings.forEach((h) => { if (h.assetType) types.add(h.assetType) })
@@ -60,11 +66,14 @@ export default function Transactions() {
       const holdingIds = new Set(holdings.filter((h) => h.symbol?.toLowerCase().includes(search) || h.name?.toLowerCase().includes(search)).map((h) => h.id))
       items = items.filter((t) => holdingIds.has(t.holdingId))
     }
+    if (brokerFilter !== 'ALL') {
+      items = items.filter((t) => (t.broker || '') === (brokerFilter === 'NONE' ? '' : brokerFilter))
+    }
     if (dateFrom) items = items.filter((t) => new Date(t.transactionDate) >= new Date(dateFrom))
     if (dateTo) items = items.filter((t) => new Date(t.transactionDate) <= new Date(dateTo + 'T23:59:59'))
 
     return [...items].sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate))
-  }, [transactions, activeFilter, assetFilter, symbolSearch, dateFrom, dateTo, holdings])
+  }, [transactions, activeFilter, assetFilter, symbolSearch, brokerFilter, dateFrom, dateTo, holdings])
 
   const fmt = (v) => Number(v).toLocaleString('en-IN')
 
@@ -75,13 +84,33 @@ export default function Transactions() {
     LUMPSUM: 'text-amber-400 bg-amber-400/10',
   }
 
+  const anyFilterActive = dateFrom || dateTo || symbolSearch || assetFilter !== 'ALL'
+    || activeFilter !== 'ALL' || brokerFilter !== 'ALL'
+
+  const clearFilters = () => {
+    setDateFrom(''); setDateTo(''); setSymbolSearch('')
+    setAssetFilter('ALL'); setActiveFilter('ALL'); setBrokerFilter('ALL')
+  }
+
+  // Native inputs rather than the app's StyledSelect for these: StyledSelect positions its
+  // menu absolutely, and inside the table's horizontally scrolling container that menu gets
+  // clipped instead of overlaying the rows.
+  const cellInput = 'w-full bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] placeholder-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-blue-500/50'
+
   if (loading) return <PageSkeleton />
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div>
         <h1 className="text-2xl font-bold">Transactions</h1>
-        <p className="text-[var(--text-muted)] text-sm mt-1">{transactions.length} total · {filtered.length} shown</p>
+        <p className="text-[var(--text-muted)] text-sm mt-1">
+          {transactions.length} total · {filtered.length} shown
+          {anyFilterActive && (
+            <button onClick={clearFilters} className="ml-3 text-xs text-red-400 hover:text-red-300">
+              Clear filters
+            </button>
+          )}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -111,56 +140,64 @@ export default function Transactions() {
         </div>
       </div>
 
-      <div className="bg-[var(--bg-card)] rounded-xl p-4 border border-[var(--border)]">
-        <div className="flex items-center gap-3">
-          <Filter className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
-
-          <div className="flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-              className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-28" />
-            <span className="text-[var(--text-secondary)] text-xs">-</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-              className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-28" />
-          </div>
-
-          <div className="flex items-center gap-1">
-            <Search className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-            <input type="text" placeholder="Symbol..." value={symbolSearch} onChange={(e) => setSymbolSearch(e.target.value)}
-              className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text)] w-24 placeholder-[var(--text-secondary)]" />
-          </div>
-
-          <StyledSelect value={assetFilter} onChange={setAssetFilter}
-            options={assetTypes.map(a => ({ value: a, label: a === 'ALL' ? 'All Types' : a.replace('_', ' ') }))} />
-
-          <div className="flex items-center gap-1">
-            {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (
-              <button key={f} onClick={() => setActiveFilter(f)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  activeFilter === f ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-[var(--input-bg)] text-[var(--text-muted)] hover:bg-[var(--hover-bg)] border border-[var(--border)]'
-                }`}>{f}</button>
-            ))}
-          </div>
-
-          {(dateFrom || dateTo || symbolSearch || assetFilter !== 'ALL' || activeFilter !== 'ALL') && (
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setSymbolSearch(''); setAssetFilter('ALL'); setActiveFilter('ALL') }}
-              className="text-xs text-red-400 hover:text-red-300 shrink-0">Clear</button>
-          )}
-        </div>
-      </div>
-
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[600px]">
+          <table className="w-full min-w-[880px]">
           <thead className="bg-[var(--input-bg)] text-left">
             <tr>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Date</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Holding</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Type</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Qty</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Price</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
-              <th className="px-4 py-3 text-sm font-medium text-[var(--text-muted)]">Broker</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Date</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Holding</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Type</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)] text-right">Qty</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)] text-right">Price</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)] text-right">Amount</th>
+              <th className="px-4 pt-3 pb-2 text-sm font-medium text-[var(--text-muted)]">Broker</th>
+            </tr>
+            {/* Filters sit under the column they act on, so it is obvious what each one
+                narrows. Columns with nothing to filter are left empty to keep the grid
+                aligned rather than borrowing a neighbour's space. */}
+            <tr className="border-t border-[var(--border)]">
+              <th className="px-4 pb-3 align-top">
+                <div className="flex flex-col gap-1">
+                  <input type="date" aria-label="From date" value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)} className={cellInput} />
+                  <input type="date" aria-label="To date" value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)} className={cellInput} />
+                </div>
+              </th>
+              <th className="px-4 pb-3 align-top">
+                <div className="flex flex-col gap-1">
+                  <input type="text" aria-label="Search symbol or name" placeholder="Search symbol..."
+                    value={symbolSearch} onChange={(e) => setSymbolSearch(e.target.value)} className={cellInput} />
+                  <select aria-label="Asset type" value={assetFilter}
+                    onChange={(e) => setAssetFilter(e.target.value)} className={cellInput}>
+                    {assetTypes.map((a) => (
+                      <option key={a} value={a}>{a === 'ALL' ? 'All asset types' : a.replace('_', ' ')}</option>
+                    ))}
+                  </select>
+                </div>
+              </th>
+              <th className="px-4 pb-3 align-top">
+                {/* Five buttons do not fit a column this narrow, so the type filter becomes a
+                    select. The counts above already show the BUY/SELL/SIP split. */}
+                <select aria-label="Transaction type" value={activeFilter}
+                  onChange={(e) => setActiveFilter(e.target.value)} className={cellInput}>
+                  {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (
+                    <option key={f} value={f}>{f === 'ALL' ? 'All types' : f}</option>
+                  ))}
+                </select>
+              </th>
+              <th className="px-4 pb-3" />
+              <th className="px-4 pb-3" />
+              <th className="px-4 pb-3" />
+              <th className="px-4 pb-3 align-top">
+                <select aria-label="Broker" value={brokerFilter}
+                  onChange={(e) => setBrokerFilter(e.target.value)} className={cellInput}>
+                  <option value="ALL">All brokers</option>
+                  {brokers.map((b) => <option key={b} value={b}>{b}</option>)}
+                  <option value="NONE">(none)</option>
+                </select>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
