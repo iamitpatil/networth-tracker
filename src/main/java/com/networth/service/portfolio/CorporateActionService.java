@@ -10,6 +10,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.SymbolRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.market.PriceService;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -80,7 +81,7 @@ public class CorporateActionService {
             throw new IllegalArgumentException("You hold no " + holding.getSymbol()
                     + " shares, so there is nothing for this action to apply to.");
         }
-        if (request.getActionDate().isAfter(LocalDate.now())) {
+        if (request.getActionDate().isAfter(LocalDate.now(MarketCalendar.ZONE))) {
             throw new IllegalArgumentException("Action date cannot be in the future.");
         }
 

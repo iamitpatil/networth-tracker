@@ -7,6 +7,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.tax.rules.CapitalGainsRules;
 import com.networth.service.tax.rules.TaxRuleRegistry;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -68,7 +69,7 @@ public class TaxHarvestService {
                 .max(BigDecimal.ZERO);
 
         List<Map<String, Object>> opportunities = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MarketCalendar.ZONE);
 
         for (Holding holding : holdings) {
             if (holding.getAssetType() != AssetType.EQUITY && holding.getAssetType() != AssetType.ETF) {

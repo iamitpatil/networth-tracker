@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TaxRegime;
+import com.networth.service.market.MarketCalendar;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -196,7 +197,7 @@ public class TaxRuleRegistry {
 
     /** The financial year in progress today. */
     public String currentFinancialYear() {
-        return financialYearOf(LocalDate.now());
+        return financialYearOf(LocalDate.now(MarketCalendar.ZONE));
     }
 
     public LocalDate startOf(String financialYear) {

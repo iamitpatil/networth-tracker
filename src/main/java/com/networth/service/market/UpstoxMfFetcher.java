@@ -69,7 +69,7 @@ public class UpstoxMfFetcher {
     private synchronized void refreshMfData() {
         if (accessToken == null || accessToken.isBlank()) return;
 
-        if (lastRefreshDate != null && lastRefreshDate.equals(LocalDate.now()) && !navCache.isEmpty()) {
+        if (lastRefreshDate != null && lastRefreshDate.equals(LocalDate.now(MarketCalendar.ZONE)) && !navCache.isEmpty()) {
             return;
         }
 
@@ -109,7 +109,7 @@ public class UpstoxMfFetcher {
 
             navCache.clear();
             navCache.putAll(newCache);
-            lastRefreshDate = LocalDate.now();
+            lastRefreshDate = LocalDate.now(MarketCalendar.ZONE);
 
             long duration = System.currentTimeMillis() - startTime;
             log.info("Upstox MF data refreshed: {} funds loaded in {} ms", navCache.size(), duration);
@@ -119,7 +119,7 @@ public class UpstoxMfFetcher {
     }
 
     private boolean isStale() {
-        return lastRefreshDate == null || !lastRefreshDate.equals(LocalDate.now());
+        return lastRefreshDate == null || !lastRefreshDate.equals(LocalDate.now(MarketCalendar.ZONE));
     }
 
     public int getCachedFundCount() {

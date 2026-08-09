@@ -271,7 +271,7 @@ public class AmfiHistoricalService {
     public void scheduledDailyBackfill() {
         log.info("Running daily AMFI NAV history backfill...");
         try {
-            LocalDate to = LocalDate.now();
+            LocalDate to = LocalDate.now(MarketCalendar.ZONE);
             LocalDate from = to.minusDays(5);
             int count = backfillAll(from, to);
             log.info("Daily AMFI backfill complete: {} records added", count);

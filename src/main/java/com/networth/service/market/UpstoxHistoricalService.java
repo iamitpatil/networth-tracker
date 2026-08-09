@@ -32,6 +32,7 @@ import java.util.Optional;
 public class UpstoxHistoricalService {
 
     private final RestTemplate restTemplate;
+    private final com.networth.service.market.provider.ProviderRateLimiter rateLimiter;
     private final HoldingRepository holdingRepository;
     private final StockPriceHistoryRepository historyRepository;
     private final SymbolRepository symbolRepository;
@@ -212,6 +213,16 @@ public class UpstoxHistoricalService {
             headers.set("Accept", "application/json");
             headers.set("Authorization", "Bearer " + accessToken);
 
+            // Waits for a slot rather than skipping: this is a background backfill with no
+            // alternative provider, so pausing briefly is better than leaving a gap in the symbol's
+            // history that nothing will come back for. A separate bucket from the quote API,
+            // because Upstox counts its limits per API and this is where a backfill spends them.
+            if (!rateLimiter.acquire("upstox-historical")) {
+                log.info("{}: skipped, the Upstox historical-candle budget is exhausted; the next "
+                        + "scheduled backfill will pick up the gap", symbol);
+                return 0;
+            }
+
             HttpEntity<?> entity = new HttpEntity<>(headers);
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
 
@@ -285,7 +296,7 @@ public class UpstoxHistoricalService {
         if (accessToken == null || accessToken.isBlank()) return;
         log.info("Running daily price history backfill...");
         try {
-            LocalDate to = LocalDate.now();
+            LocalDate to = LocalDate.now(MarketCalendar.ZONE);
             LocalDate from = to.minusDays(7);
             int count = backfillAll(from, to);
             log.info("Daily backfill complete: {} records added", count);
@@ -296,7 +307,7 @@ public class UpstoxHistoricalService {
 
     @Transactional
     public int backfillFromDate(LocalDate fromDate) {
-        return backfillAll(fromDate, LocalDate.now());
+        return backfillAll(fromDate, LocalDate.now(MarketCalendar.ZONE));
     }
 
     /**

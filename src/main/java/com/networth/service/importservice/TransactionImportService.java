@@ -13,6 +13,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
+import com.networth.service.market.MarketCalendar;
 import com.opencsv.CSVReader;
 import lombok.Builder;
 import lombok.Getter;
@@ -122,7 +123,7 @@ public class TransactionImportService {
      * {@code price} at 0, matching how a demat statement reports them.
      */
     public String sampleCsv() {
-        String today = LocalDate.now().toString();
+        String today = LocalDate.now(MarketCalendar.ZONE).toString();
         return String.join(",", COLUMNS) + "\n"
                 + "RELIANCE,EQUITY,BUY,10,2850.50," + today + ",,Zerodha,Optional note\n"
                 + "RELIANCE,EQUITY,SELL,4,2990.00," + today + ",,Zerodha,\n"

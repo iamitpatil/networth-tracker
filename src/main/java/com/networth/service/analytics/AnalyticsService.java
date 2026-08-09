@@ -11,6 +11,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.portfolio.HoldingService;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,7 +80,7 @@ public class AnalyticsService {
 
             if (holding.getCurrentValue() != null && holding.getCurrentValue().compareTo(BigDecimal.ZERO) > 0) {
                 allCashFlows.add(new XIRRCalculator.CashFlow(
-                        LocalDate.now(),
+                        LocalDate.now(MarketCalendar.ZONE),
                         holding.getCurrentValue().doubleValue()));
             }
         }
@@ -149,7 +150,7 @@ public class AnalyticsService {
             return BigDecimal.ZERO;
         }
 
-        long days = java.time.temporal.ChronoUnit.DAYS.between(earliestDate, LocalDate.now());
+        long days = java.time.temporal.ChronoUnit.DAYS.between(earliestDate, LocalDate.now(MarketCalendar.ZONE));
         if (days <= 0) return BigDecimal.ZERO;
 
         double years = days / 365.0;

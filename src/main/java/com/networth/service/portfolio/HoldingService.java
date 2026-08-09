@@ -16,6 +16,7 @@ import com.networth.service.market.PriceService;
 import com.networth.model.entity.Transaction;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.TransactionRepository;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -185,7 +186,7 @@ public class HoldingService {
                 || holding.getAverageBuyPrice() == null) {
             return;
         }
-        java.time.LocalDateTime when = (purchaseDate != null ? purchaseDate : java.time.LocalDate.now())
+        java.time.LocalDateTime when = (purchaseDate != null ? purchaseDate : java.time.LocalDate.now(MarketCalendar.ZONE))
                 .atStartOfDay();
 
         transactionRepository.save(Transaction.builder()

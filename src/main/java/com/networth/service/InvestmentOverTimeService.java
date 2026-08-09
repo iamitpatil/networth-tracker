@@ -8,6 +8,7 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.StockPriceHistoryRepository;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class InvestmentOverTimeService {
     }
 
     public List<Map<String, Object>> getInvestmentOverTime(UUID userId, int days, AssetType assetType) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MarketCalendar.ZONE);
         LocalDate cutoff = today.minusDays(days);
 
         // Get holdings and their pricing symbols

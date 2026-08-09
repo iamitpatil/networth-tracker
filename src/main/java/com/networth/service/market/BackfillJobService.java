@@ -74,7 +74,7 @@ public class BackfillJobService {
             // Step 2: Backfill equity price history
             updateStep("equities", "Backfilling equity price history...");
             try {
-                LocalDate to = LocalDate.now();
+                LocalDate to = LocalDate.now(MarketCalendar.ZONE);
                 LocalDate from = to.minusDays(historyDays);
                 int count = upstoxHistoricalService.backfillAll(from, to, cancelCheck,
                         (processed, total, records, skipped) -> {
@@ -96,7 +96,7 @@ public class BackfillJobService {
             // Step 3: Backfill MF NAV history
             updateStep("mutual_funds", "Backfilling mutual fund NAV history...");
             try {
-                LocalDate to = LocalDate.now();
+                LocalDate to = LocalDate.now(MarketCalendar.ZONE);
                 LocalDate from = to.minusDays(historyDays);
                 int count = amfiHistoricalService.backfillAll(from, to, cancelCheck,
                         (processedDays, totalDaysVal, records) -> {

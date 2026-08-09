@@ -8,13 +8,13 @@ import com.networth.repository.UserRepository;
 import com.networth.service.NetWorthHistoryService;
 import com.networth.service.market.PriceService;
 import com.networth.service.portfolio.HoldingService;
+import com.networth.service.market.MarketCalendar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -29,11 +29,14 @@ public class PriceUpdateScheduler {
     private final PriceService priceService;
     private final NetWorthHistoryService historyService;
     private final UserRepository userRepository;
+    private final MarketCalendar marketCalendar;
 
     @Scheduled(fixedRate = 900000)
     public void updateEquityPrices() {
-        LocalDate today = LocalDate.now();
-        if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        // Trading days are judged on the market's calendar, not the host's. Under a UTC JVM the
+        // early hours of Monday IST are still Sunday, so a host-derived weekday check skipped the
+        // first part of every Monday and ran through part of every Saturday.
+        if (!marketCalendar.isTradingDay(marketCalendar.today())) {
             return;
         }
 

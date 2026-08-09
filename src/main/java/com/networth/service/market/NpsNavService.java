@@ -132,7 +132,7 @@ public class NpsNavService {
             }
 
             acc.setNav(nav);
-            acc.setNavDate(LocalDate.now());
+            acc.setNavDate(LocalDate.now(MarketCalendar.ZONE));
 
             if (acc.getUnits() != null && acc.getUnits().compareTo(BigDecimal.ZERO) > 0) {
                 acc.setCurrentValue(acc.getUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP));
@@ -170,7 +170,7 @@ public class NpsNavService {
             if (nav == null) continue;
 
             acc.setNav(nav);
-            acc.setNavDate(LocalDate.now());
+            acc.setNavDate(LocalDate.now(MarketCalendar.ZONE));
 
             if (acc.getUnits() != null && acc.getUnits().compareTo(BigDecimal.ZERO) > 0) {
                 acc.setCurrentValue(acc.getUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP));

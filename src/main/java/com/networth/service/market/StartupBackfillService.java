@@ -78,7 +78,7 @@ public class StartupBackfillService {
 
             int totalBackfilled = 0;
             int symbolsBackfilled = 0;
-            LocalDate today = LocalDate.now();
+            LocalDate today = LocalDate.now(MarketCalendar.ZONE);
 
             for (Map.Entry<String, String> entry : symbolToIsin.entrySet()) {
                 String symbol = entry.getKey();
@@ -135,7 +135,7 @@ public class StartupBackfillService {
                 return;
             }
 
-            LocalDate today = LocalDate.now();
+            LocalDate today = LocalDate.now(MarketCalendar.ZONE);
             LocalDate oldestGap = today;
             boolean anyMissing = false;
 

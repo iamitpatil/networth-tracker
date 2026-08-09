@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -21,9 +21,15 @@ import {
   Bot,
   ChevronDown,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import FloatingChat from './FloatingChat'
 import AppLogo from './AppLogo'
+import Tooltip from './ui/Tooltip'
+
+/** Remembers the rail choice across sessions — re-collapsing on every load would be a nuisance. */
+const RAIL_KEY = 'sidebarMinimized'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -31,7 +37,12 @@ export default function Layout() {
   const { view, setView, pendingCount, refreshKey } = useFamilyView()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState({})
+  const [minimized, setMinimized] = useState(() => localStorage.getItem(RAIL_KEY) === 'true')
   const navigate = useNavigate()
+
+  useEffect(() => {
+    localStorage.setItem(RAIL_KEY, String(minimized))
+  }, [minimized])
 
   const toggleSection = (label) => {
     setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }))
@@ -69,12 +80,27 @@ export default function Layout() {
     ]},
   ]
 
+  // The rail only applies from lg: up. Below that the sidebar is an off-canvas drawer, where a
+  // 64px strip of icons over a dimmed page would be worse than the full menu it replaces.
+  const rail = minimized && !sidebarOpen
+
   const linkClass = ({ isActive }) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 ${
+    `flex items-center rounded-lg transition-all duration-150 ${
+      rail ? 'lg:justify-center lg:px-0 lg:py-2 gap-3 px-3 py-2.5' : 'gap-3 px-3 py-2.5'
+    } ${
       isActive
         ? 'bg-blue-500/10 text-blue-400 font-medium shadow-sm border-l-2 border-blue-500 ml-0'
         : 'text-theme-muted hover:bg-[var(--hover-bg)] hover:text-theme border-l-2 border-transparent ml-0'
     }`
+
+  /**
+   * Wraps a rail control in a tooltip so the icon is still identifiable when its label is hidden.
+   * Expanded, the label is already on screen, so a tooltip would just be noise.
+   */
+  const withLabel = (label, children) =>
+    rail
+      ? <Tooltip content={label} side="right" className="w-full [&>*]:w-full">{children}</Tooltip>
+      : children
 
   return (
     <div className="flex min-h-screen bg-theme">
@@ -82,20 +108,76 @@ export default function Layout() {
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 sidebar-bg sidebar-border border-r sidebar-shadow transform transition-transform duration-200 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="flex items-center justify-between h-16 px-5 sidebar-border border-b bg-gradient-to-r from-blue-500/5 to-transparent">
-          <AppLogo variant="compact" />
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 sidebar-bg sidebar-border border-r sidebar-shadow transform transition-all duration-200 flex flex-col w-64 overflow-visible ${
+          rail ? 'lg:w-16' : 'lg:w-64'
+        } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+      >
+        <div className={`flex items-center h-16 sidebar-border border-b bg-gradient-to-r from-blue-500/5 to-transparent ${
+          rail ? 'lg:justify-center lg:px-0 justify-between px-5' : 'justify-between px-5'
+        }`}>
+          {/* The rail keeps the blue app mark rather than dropping to a bare strip of nav icons:
+              it holds the brand and anchors the top of the rail. The wordmark is what goes, because
+              that is what needs the width. */}
+          <span className={rail ? 'lg:hidden' : ''}>
+            <AppLogo variant="compact" />
+          </span>
+          {rail && (
+            <span className="hidden lg:flex items-center gap-0.5">
+              <AppLogo variant="icon" />
+              {/* Expanding sits next to the mark rather than on the partition: at 64px wide the
+                  rail's edge is a small target to go hunting for, and the top of the panel is
+                  where the eye already is. */}
+              <button
+                onClick={() => setMinimized(false)}
+                aria-label="Expand sidebar"
+                aria-expanded="false"
+                title="Expand sidebar"
+                className="flex items-center justify-center w-4 h-8 rounded text-theme-muted
+                           hover:text-blue-400 hover:bg-[var(--hover-bg)] transition-colors duration-150"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </span>
+          )}
+
           <button className="lg:hidden text-theme-muted hover:text-theme transition" onClick={() => setSidebarOpen(false)}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="p-4 space-y-5 overflow-y-auto flex-1 min-h-0">
+        {/* Collapsing sits on the partition itself, straddling the border between the panel and the
+            page, which is where this affordance is conventionally looked for and where it reads as
+            acting on the panel rather than as another nav item. Only shown while expanded — the rail
+            has its own control beside the app mark. Hidden below lg:, where the sidebar is an
+            off-canvas drawer with nothing to collapse into. */}
+        {!rail && (
+          <button
+            onClick={() => setMinimized(true)}
+            aria-label="Minimize sidebar"
+            aria-expanded="true"
+            title="Minimize sidebar"
+            className="hidden lg:flex absolute top-1/2 -right-3 -translate-y-1/2 z-10 w-6 h-6 items-center justify-center
+                       rounded-full sidebar-border border bg-[var(--bg-card)] text-theme-muted shadow-md
+                       hover:text-blue-400 hover:border-blue-500/50 transition-colors duration-150"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        <nav className={`space-y-5 overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-4 ${rail ? 'lg:px-2' : ''}`}>
           {sections.map((section) => (
             <div key={section.label}>
+              {/* Collapsed, a section heading has no room and its collapse toggle has no purpose
+                  — the items are already reduced to icons. A divider keeps the grouping legible. */}
+              {rail ? (
+                <div className="hidden lg:block h-px mx-2 mb-2 bg-[var(--border)]" aria-hidden="true" />
+              ) : null}
               <button
                 onClick={() => toggleSection(section.label)}
-                className="flex items-center justify-between w-full text-xs font-semibold text-theme-secondary uppercase tracking-wider mb-1 px-3 py-1.5 hover:text-theme transition rounded-lg hover:bg-[var(--hover-bg)] group"
+                className={`items-center justify-between w-full text-xs font-semibold text-theme-secondary uppercase tracking-wider mb-1 px-3 py-1.5 hover:text-theme transition rounded-lg hover:bg-[var(--hover-bg)] group ${
+                  rail ? 'flex lg:hidden' : 'flex'
+                }`}
               >
                 <span className="flex items-center gap-2">
                   <span className="w-1 h-1 rounded-full bg-blue-500/0 group-hover:bg-blue-500 transition-all duration-200" />
@@ -103,18 +185,23 @@ export default function Layout() {
                 </span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${collapsed[section.label] ? '-rotate-90' : ''}`} />
               </button>
-              {!collapsed[section.label] && (
-                <div className="space-y-1">
+              {/* A section collapsed by the user stays hidden when expanded, but in the rail every
+                  item must remain reachable — there is no heading left to un-collapse it with. */}
+              {(!collapsed[section.label] || rail) && (
+                <div className={`space-y-1 ${collapsed[section.label] ? 'hidden lg:block' : ''}`}>
                   {section.items.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setSidebarOpen(false)}
-                      className={linkClass}
-                    >
-                      <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-[var(--bg-card)]/50">{item.icon}</span>
-                      {item.label}
-                    </NavLink>
+                    <div key={item.to}>
+                      {withLabel(item.label, (
+                        <NavLink
+                          to={item.to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={linkClass}
+                        >
+                          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-[var(--bg-card)]/50">{item.icon}</span>
+                          <span className={rail ? 'lg:hidden' : ''}>{item.label}</span>
+                        </NavLink>
+                      ))}
+                    </div>
                     ))}
                   </div>
                 )}
@@ -122,8 +209,10 @@ export default function Layout() {
             ))}
         </nav>
 
-        <div className="p-4 sidebar-border border-t sidebar-bg bg-gradient-to-t from-blue-500/[0.02] to-transparent flex-shrink-0">
-          <div className="flex items-center gap-1 mb-2 px-1">
+        <div className={`sidebar-border border-t sidebar-bg bg-gradient-to-t from-blue-500/[0.02] to-transparent flex-shrink-0 p-4 ${rail ? 'lg:px-2' : ''}`}>
+          {/* Self/Family is a two-button segmented control expanded; in the rail it becomes one
+              button that toggles, because two 64px-wide buttons do not fit side by side. */}
+          <div className={`items-center gap-1 mb-2 px-1 ${rail ? 'flex lg:hidden' : 'flex'}`}>
             <button
               onClick={() => setView('self')}
               className={`flex-1 text-xs px-3 py-1.5 rounded-lg font-medium transition ${
@@ -146,36 +235,71 @@ export default function Layout() {
               )}
             </button>
           </div>
-          <button
-            onClick={toggleTheme}
-            className="flex items-center gap-3 w-full px-3 py-2 text-theme-muted hover:bg-[var(--hover-bg)] hover:text-theme rounded-lg transition-all duration-150 group"
-          >
-            <span className="group-hover:scale-110 transition-transform duration-150">{fallbackKey === 'dark' ? <Sun className="w-5 h-5" style={{color:'var(--amber)'}} /> : <Moon className="w-5 h-5" style={{color:'var(--primary)'}} />}</span>
-            {fallbackKey === 'dark' ? 'Light Mode' : 'Dark Mode'}
-          </button>
-          <div
-            onClick={() => navigate('/profile')}
-            className="flex items-center gap-3 mb-2 px-3 cursor-pointer hover:bg-[var(--hover-bg)] rounded-lg py-2 transition-all duration-150 group"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-medium text-sm shrink-0 group-hover:scale-105 transition-transform duration-150">
-              {user?.name?.charAt(0).toUpperCase()}
+          {rail && (
+            <div className="hidden lg:block mb-2">
+              {withLabel(view === 'family' ? 'Family view — switch to self' : 'Self view — switch to family', (
+                <button
+                  onClick={() => setView(view === 'family' ? 'self' : 'family')}
+                  aria-label={view === 'family' ? 'Switch to self view' : 'Switch to family view'}
+                  className={`relative flex items-center justify-center w-full py-2 rounded-lg transition ${
+                    view === 'family' ? 'bg-blue-500/20 text-blue-400' : 'text-[var(--text-muted)] hover:bg-[var(--hover-bg)]'
+                  }`}
+                >
+                  <Users className="w-5 h-5" />
+                  {pendingCount > 0 && (
+                    <span className="absolute top-0.5 right-1 bg-red-500 text-white text-[10px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate text-theme">{user?.name}</p>
-              <p className="text-xs text-theme-secondary truncate">{user?.email}</p>
+          )}
+
+          {withLabel(fallbackKey === 'dark' ? 'Light Mode' : 'Dark Mode', (
+            <button
+              onClick={toggleTheme}
+              className={`flex items-center w-full text-theme-muted hover:bg-[var(--hover-bg)] hover:text-theme rounded-lg transition-all duration-150 group ${
+                rail ? 'lg:justify-center lg:px-0 lg:py-2 gap-3 px-3 py-2' : 'gap-3 px-3 py-2'
+              }`}
+            >
+              <span className="group-hover:scale-110 transition-transform duration-150">{fallbackKey === 'dark' ? <Sun className="w-5 h-5" style={{color:'var(--amber)'}} /> : <Moon className="w-5 h-5" style={{color:'var(--primary)'}} />}</span>
+              <span className={rail ? 'lg:hidden' : ''}>{fallbackKey === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+            </button>
+          ))}
+
+          {withLabel(user?.name ? `${user.name} — open profile` : 'Profile', (
+            <div
+              onClick={() => navigate('/profile')}
+              className={`flex items-center mb-2 cursor-pointer hover:bg-[var(--hover-bg)] rounded-lg transition-all duration-150 group ${
+                rail ? 'lg:justify-center lg:px-0 gap-3 px-3 py-2' : 'gap-3 px-3 py-2'
+              }`}
+            >
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-medium text-sm shrink-0 group-hover:scale-105 transition-transform duration-150">
+                {user?.name?.charAt(0).toUpperCase()}
+              </div>
+              <div className={`flex-1 min-w-0 ${rail ? 'lg:hidden' : ''}`}>
+                <p className="text-sm font-medium truncate text-theme">{user?.name}</p>
+                <p className="text-xs text-theme-secondary truncate">{user?.email}</p>
+              </div>
             </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-3 py-2 text-theme-muted hover:text-red-400 hover:bg-[var(--hover-bg)] rounded-lg transition-all duration-150 group"
-          >
-            <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform duration-150" style={{color:'var(--red)'}} />
-            Logout
-          </button>
+          ))}
+
+          {withLabel('Logout', (
+            <button
+              onClick={handleLogout}
+              className={`flex items-center w-full text-theme-muted hover:text-red-400 hover:bg-[var(--hover-bg)] rounded-lg transition-all duration-150 group ${
+                rail ? 'lg:justify-center lg:px-0 lg:py-2 gap-3 px-3 py-2' : 'gap-3 px-3 py-2'
+              }`}
+            >
+              <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform duration-150" style={{color:'var(--red)'}} />
+              <span className={rail ? 'lg:hidden' : ''}>Logout</span>
+            </button>
+          ))}
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 lg:ml-64 h-screen overflow-y-auto">
+      <main className={`flex-1 min-w-0 h-screen overflow-y-auto transition-all duration-200 ${rail ? 'lg:ml-16' : 'lg:ml-64'}`}>
         <header className="h-16 bg-[var(--bg-card)]/50 sidebar-border border-b flex items-center px-4 lg:hidden">
           <button onClick={() => setSidebarOpen(true)} className="p-2">
             <Menu className="w-5 h-5" />
