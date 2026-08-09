@@ -1,6 +1,7 @@
 package com.networth.service.market;
 
 import com.networth.model.dto.PriceData;
+import com.networth.model.entity.MarketPrice;
 import com.networth.model.enums.AssetType;
 import com.networth.service.market.provider.MarketDataResolver;
 import com.networth.service.market.provider.MarketDataType;
@@ -9,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -18,31 +21,94 @@ public class PriceService {
     private final MarketDataResolver resolver;
     private final GoldPriceFetcher goldPriceFetcher;
     private final PriceCache priceCache;
+    private final PriceFreshnessPolicy freshnessPolicy;
 
+    /**
+     * The best available price for a symbol, fetching one only if what is stored is out of date.
+     *
+     * <p>The age check is the point. Without it this method fell through to "the newest row in
+     * {@code market_prices}, whatever its date" and returned it as today's price -- then wrote it back
+     * into Redis, so a six-month-old figure became sticky for as long as anyone kept looking at it. A
+     * price that old is not a cache miss to paper over; it means nobody has asked a provider in six
+     * months.
+     *
+     * @return the price, or {@code null} when nothing is stored and no provider will answer
+     */
     public BigDecimal getCurrentPrice(String symbol, AssetType assetType) {
         BigDecimal cached = priceCache.getCachedPrice(symbol, assetType);
-        if (cached != null) return cached;
+        if (cached != null) {
+            // Redis entries expire inside the policy's window (see PriceCache#cachePrice), so a hit is
+            // fresh by construction and needs no age check of its own.
+            return cached;
+        }
 
-        BigDecimal dbPrice = priceCache.getLatestDbPrice(symbol, assetType);
-        if (dbPrice != null) {
-            priceCache.cachePrice(symbol, assetType, dbPrice);
-            return dbPrice;
+        Optional<MarketPrice> stored = priceCache.getLatestPriceRecord(symbol, assetType);
+        BigDecimal storedPrice = stored.map(MarketPrice::getPrice).orElse(null);
+        Instant confirmedAt = stored.map(MarketPrice::getUpdatedAt).orElse(null);
+
+        // Also covers the types no provider can price: the policy calls those never stale, so an EPF
+        // balance is served from its row and a portfolio of fixed deposits makes no outbound requests.
+        if (!freshnessPolicy.isStale(assetType, confirmedAt)) {
+            if (storedPrice != null) {
+                priceCache.cachePrice(symbol, assetType, storedPrice, confirmedAt);
+            }
+            return storedPrice;
         }
 
         BigDecimal livePrice = fetchWithFallback(symbol, assetType);
         if (livePrice != null) {
-            priceCache.cachePrice(symbol, assetType, livePrice);
+            // Records the confirmation time and writes through to Redis, so the next reader gets a
+            // cache hit rather than a second provider call for the same number.
+            priceCache.savePrice(symbol, assetType, livePrice, resolver.getSourceName(getDataType(assetType)));
+            return livePrice;
         }
 
-        return livePrice;
+        // No provider answered. A stale stored price still beats no price at all for a portfolio
+        // total, but it is deliberately not re-cached: caching it would suppress the next attempt and
+        // pin the old number in place, which is how the original bug survived.
+        if (storedPrice != null) {
+            log.debug("Serving a stale price for {} ({}), last confirmed {}", symbol, assetType, confirmedAt);
+        }
+        return storedPrice;
     }
 
-    public void refreshPrice(String symbol, AssetType assetType) {
+    /**
+     * Fetches and stores a price unconditionally, for the explicit "refresh now" path where the user
+     * has asked for a provider call and is entitled to get one.
+     *
+     * @return whether a provider answered and the price was stored
+     */
+    public boolean refreshPrice(String symbol, AssetType assetType) {
         BigDecimal price = fetchWithFallback(symbol, assetType);
-        if (price != null) {
-            priceCache.savePrice(symbol, assetType, price,
-                    resolver.getSourceName(getDataType(assetType)));
+        if (price == null) {
+            return false;
         }
+        priceCache.savePrice(symbol, assetType, price, resolver.getSourceName(getDataType(assetType)));
+        return true;
+    }
+
+    /**
+     * Fetches a price only if the stored one is out of date.
+     *
+     * <p>What the scheduled sweep and the Holdings page both want. The page previously forced a
+     * provider call for every holding on every load, so a portfolio of thirty holdings sent thirty
+     * requests to be told thirty times what it already knew -- and did so at 03:00 as readily as at
+     * midday.
+     *
+     * @return whether a new price was fetched and stored; {@code false} means either that the stored
+     *         price was still current or that no provider answered
+     */
+    public boolean refreshPriceIfStale(String symbol, AssetType assetType) {
+        Instant confirmedAt = lastConfirmedAt(symbol, assetType).orElse(null);
+        if (!freshnessPolicy.isStale(assetType, confirmedAt)) {
+            return false;
+        }
+        return refreshPrice(symbol, assetType);
+    }
+
+    /** When a provider last confirmed this symbol's price, if one ever has. */
+    public Optional<Instant> lastConfirmedAt(String symbol, AssetType assetType) {
+        return priceCache.getLatestPriceRecord(symbol, assetType).map(MarketPrice::getUpdatedAt);
     }
 
     public BigDecimal getPreviousClose(String symbol, AssetType assetType) {

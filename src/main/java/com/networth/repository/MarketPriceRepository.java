@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -44,4 +45,33 @@ public interface MarketPriceRepository extends JpaRepository<MarketPrice, Market
 
     List<MarketPrice> findBySymbolAndAssetTypeAndPriceDateBetweenOrderByPriceDate(
             String symbol, AssetType assetType, LocalDate startDate, LocalDate endDate);
+
+    /**
+     * When each of these instruments last had a price confirmed, in one query.
+     *
+     * <p>For the "as of" stamp the holdings list shows next to every figure. Asking per holding would
+     * be a query per row on every page load, and the answer has to come from the row rather than from
+     * Redis: a cache miss is not evidence that a price is old, only that nobody has read it lately.
+     *
+     * <p>The subquery restricts each instrument to its newest price date, so this returns exactly what
+     * {@link #findLatestPrice} would have returned one symbol at a time — the badge and the refresh
+     * decision must not be able to disagree about the same figure.
+     */
+    @Query("""
+            SELECT mp.symbol AS symbol, mp.assetType AS assetType, mp.updatedAt AS lastConfirmedAt
+            FROM MarketPrice mp
+            WHERE mp.symbol IN :symbols
+              AND mp.priceDate = (SELECT MAX(newest.priceDate) FROM MarketPrice newest
+                                  WHERE newest.symbol = mp.symbol AND newest.assetType = mp.assetType)
+            """)
+    List<LastConfirmed> findLastConfirmedBySymbolIn(@Param("symbols") Collection<String> symbols);
+
+    /** When one instrument's stored price was last confirmed by a provider. */
+    interface LastConfirmed {
+        String getSymbol();
+
+        AssetType getAssetType();
+
+        Instant getLastConfirmedAt();
+    }
 }

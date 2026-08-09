@@ -61,7 +61,8 @@ public class StartupBackfillService {
 
     private void backfillEquityHistory() {
         try {
-            List<Holding> equityHoldings = holdingRepository.findAll().stream()
+            // findAllActive, not findAll: a sold-out position needs no further candles.
+            List<Holding> equityHoldings = holdingRepository.findAllActive().stream()
                     .filter(h -> h.getAssetType() == AssetType.EQUITY || h.getAssetType() == AssetType.ETF)
                     .filter(h -> h.getIsin() != null && !h.getIsin().isBlank())
                     .toList();
@@ -110,7 +111,8 @@ public class StartupBackfillService {
                         symbolsBackfilled++;
                         log.info("{}: backfilled {} price records", symbol, count);
                     }
-                    Thread.sleep(200);
+                    // No sleep between symbols: backfillSymbol takes a slot from ProviderRateLimiter,
+                    // which paces these at what Upstox actually allows rather than at a guess.
                 } catch (Exception e) {
                     log.warn("Failed to backfill {}: {}", symbol, e.getMessage());
                 }
@@ -125,7 +127,7 @@ public class StartupBackfillService {
 
     private void backfillMutualFundHistory() {
         try {
-            List<Holding> mfHoldings = holdingRepository.findAll().stream()
+            List<Holding> mfHoldings = holdingRepository.findAllActive().stream()
                     .filter(h -> h.getAssetType() == AssetType.MUTUAL_FUND)
                     .filter(h -> h.getSymbol() != null && !h.getSymbol().isBlank())
                     .toList();

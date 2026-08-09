@@ -16,6 +16,7 @@ import com.networth.repository.MarketPriceRepository;
 import com.networth.repository.SymbolRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.market.MarketCalendar;
+import com.networth.service.market.PriceFreshnessPolicy;
 import com.networth.service.market.PriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +24,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -40,14 +44,16 @@ public class HoldingService {
     private final DematAccountRepository dematAccountRepository;
     private final SymbolRepository symbolRepository;
     private final TransactionRepository transactionRepository;
+    private final PriceFreshnessPolicy freshnessPolicy;
 
     @Transactional(readOnly = true)
     public List<HoldingResponse> getUserHoldings(String userId) {
         UUID uid = UUID.fromString(userId);
         List<Holding> holdings = holdingRepository.findByUserId(uid);
-        // Batch-fetch demat accounts to avoid N+1
+        // Batch-fetch demat accounts and price confirmation times to avoid N+1
         Map<UUID, DematAccount> dematMap = batchFetchDematAccounts(holdings);
-        return holdings.stream().map(h -> toResponse(h, dematMap)).toList();
+        Map<PricingTarget, Instant> priceStamps = batchFetchPriceStamps(holdings);
+        return holdings.stream().map(h -> toResponse(h, dematMap, priceStamps)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -163,7 +169,9 @@ public class HoldingService {
         recordOpeningLot(holding, request.getPurchaseDate());
 
         String pricingSymbol = getEffectiveSymbolForPricing(holding);
-        priceService.refreshPrice(pricingSymbol, holding.getAssetType());
+        // Conditional even here: another family member may already hold this instrument and have had it
+        // priced a minute ago, in which case the stored quote is the same one a provider would return.
+        priceService.refreshPriceIfStale(pricingSymbol, holding.getAssetType());
         updateHoldingPrice(holding);
 
         return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
@@ -228,42 +236,172 @@ public class HoldingService {
     public void updateAllHoldingPrices(String userId) {
         UUID uid = UUID.fromString(userId);
         List<Holding> holdings = holdingRepository.findByUserId(uid);
+        // Freshness-gated, not unconditional, because the Holdings page calls this on every load as
+        // well as from the refresh button: thirty holdings meant thirty provider calls per visit, at
+        // 03:00 as readily as at midday. Anything genuinely out of date is still fetched here.
+        for (PricingTarget target : distinctPricingTargets(holdings)) {
+            refreshQuietly(target);
+        }
         for (Holding holding : holdings) {
-            String pricingSymbol = getEffectiveSymbolForPricing(holding);
-            priceService.refreshPrice(pricingSymbol, holding.getAssetType());
             updateHoldingPrice(holding);
         }
     }
 
-    private void updateHoldingPrice(Holding holding) {
+    /**
+     * Refreshes every stale price behind a held instrument, then rewrites the holdings that moved.
+     *
+     * <p>The scheduled sweep's whole body, kept here with the pricing arithmetic rather than in the
+     * scheduler, which is only a trigger. What it replaces did the opposite of its job in both
+     * directions at once: it re-fetched every equity every 15 minutes whether or not the exchange was
+     * open, it covered equities and mutual funds and nothing else — no crypto, no gold, no ETFs — and
+     * having fetched the prices it never wrote them to the holdings, which is why the Holdings page
+     * had to force its own refresh on every load to show a current number.
+     *
+     * <p>No trading-day gate here. {@link PriceFreshnessPolicy} already knows that Friday's close
+     * stands until Monday's open, and it also knows that crypto does not care, so a gate would only
+     * suppress the types the calendar does not govern.
+     *
+     * @return how many instruments a provider gave a new price for
+     */
+    public int refreshStalePrices() {
+        int refreshed = 0;
+        for (HoldingRepository.HeldSymbol held : holdingRepository.findDistinctHeldSymbols()) {
+            if (!freshnessPolicy.isPriceable(held.getAssetType())) {
+                // A provident fund balance or a house has no provider to ask, so asking costs a
+                // request and returns nothing.
+                continue;
+            }
+            if (refreshQuietly(new PricingTarget(pricingSymbol(held), held.getAssetType()))) {
+                refreshed++;
+            }
+        }
+
+        int repriced = 0;
+        for (Holding holding : holdingRepository.findAllActive()) {
+            try {
+                if (updateHoldingPrice(holding)) {
+                    repriced++;
+                }
+            } catch (Exception e) {
+                log.error("Failed to reprice holding {}: {}", holding.getSymbol(), e.getMessage());
+            }
+        }
+
+        if (refreshed > 0 || repriced > 0) {
+            log.info("Price sweep: {} instruments refreshed, {} holdings repriced", refreshed, repriced);
+        }
+        return refreshed;
+    }
+
+    /**
+     * Recomputes a holding's price and the figures derived from it, saving only if something moved.
+     *
+     * @return whether the holding was written
+     */
+    private boolean updateHoldingPrice(Holding holding) {
         String pricingSymbol = getEffectiveSymbolForPricing(holding);
         BigDecimal currentPrice = priceService.getCurrentPrice(pricingSymbol, holding.getAssetType());
 
         // Use fetched price if available, otherwise keep stored price (don't reset to 0)
         BigDecimal priceToUse = currentPrice != null ? currentPrice : holding.getCurrentPrice();
 
-        if (priceToUse != null && priceToUse.compareTo(BigDecimal.ZERO) > 0) {
-            holding.setCurrentPrice(priceToUse);
-            // Always recompute currentValue from quantity × price
-            // Fixes stale data where currentPrice exists but currentValue is 0
-            holding.setCurrentValue(holding.getQuantity().multiply(priceToUse));
-
-            BigDecimal costBasis = holding.getQuantity().multiply(holding.getAverageBuyPrice());
-            holding.setUnrealizedPnl(holding.getCurrentValue().subtract(costBasis));
-
-            // Only update day change if we successfully fetched a new price
-            if (currentPrice != null) {
-                BigDecimal prevClose = priceService.getPreviousClose(pricingSymbol, holding.getAssetType());
-                if (prevClose != null && prevClose.compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal change = currentPrice.subtract(prevClose);
-                    holding.setDayChange(change);
-                    holding.setDayChangePct(change.divide(prevClose, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal("100")));
-                }
-            }
-
-            holdingRepository.save(holding);
-        } else {
+        if (priceToUse == null || priceToUse.compareTo(BigDecimal.ZERO) <= 0) {
             log.debug("Skipping price update for {} - no valid price available", holding.getSymbol());
+            return false;
+        }
+
+        BigDecimal value = holding.getQuantity().multiply(priceToUse);
+        boolean priceMoved = holding.getCurrentPrice() == null
+                || holding.getCurrentPrice().compareTo(priceToUse) != 0;
+        // Recompute the value even when the price held still, because stale rows exist where
+        // currentPrice was set and currentValue was left at zero.
+        boolean valueChanged = holding.getCurrentValue() == null
+                || holding.getCurrentValue().compareTo(value) != 0;
+        if (!priceMoved && !valueChanged) {
+            return false;
+        }
+
+        holding.setCurrentPrice(priceToUse);
+        holding.setCurrentValue(value);
+        if (holding.getAverageBuyPrice() != null) {
+            holding.setUnrealizedPnl(value.subtract(holding.getQuantity().multiply(holding.getAverageBuyPrice())));
+        }
+
+        // getPreviousClose is a live provider call, and it was made for every equity holding on every
+        // pass. Gated on the price having actually moved: if it has not, the day's change cannot have
+        // either, so the stored one is still right.
+        if (currentPrice != null && priceMoved) {
+            BigDecimal prevClose = priceService.getPreviousClose(pricingSymbol, holding.getAssetType());
+            if (prevClose != null && prevClose.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal change = currentPrice.subtract(prevClose);
+                holding.setDayChange(change);
+                holding.setDayChangePct(change.divide(prevClose, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal("100")));
+            }
+        }
+
+        holdingRepository.save(holding);
+        return true;
+    }
+
+    /**
+     * The pricing symbol for a held instrument, without the ISIN resolution
+     * {@link #getEffectiveSymbolForPricing} performs.
+     *
+     * <p>A fund with no ISIN recorded will not price from its symbol, but the reprice pass immediately
+     * after calls the resolving version and persists what it finds, so the next sweep succeeds. Doing
+     * the lookup here would mean writing to holdings from what is meant to be the fetch phase.
+     */
+    private String pricingSymbol(HoldingRepository.HeldSymbol held) {
+        if (held.getAssetType() == AssetType.MUTUAL_FUND
+                && held.getIsin() != null && !held.getIsin().isBlank()) {
+            return held.getIsin();
+        }
+        return held.getSymbol();
+    }
+
+    /**
+     * The same rule for a loaded holding, and the reason there are two of these: the read paths are
+     * {@code @Transactional(readOnly = true)} and {@link #getEffectiveSymbolForPricing} writes.
+     */
+    private String pricingSymbol(Holding holding) {
+        if (holding.getAssetType() == AssetType.MUTUAL_FUND
+                && holding.getIsin() != null && !holding.getIsin().isBlank()) {
+            return holding.getIsin();
+        }
+        return holding.getSymbol();
+    }
+
+    /**
+     * The instruments a set of holdings prices from, deduplicated.
+     *
+     * <p>One stock held in three demat accounts is one quote to fetch, not three.
+     */
+    private Set<PricingTarget> distinctPricingTargets(List<Holding> holdings) {
+        Set<PricingTarget> targets = new LinkedHashSet<>();
+        for (Holding holding : holdings) {
+            if (freshnessPolicy.isPriceable(holding.getAssetType())) {
+                targets.add(new PricingTarget(getEffectiveSymbolForPricing(holding), holding.getAssetType()));
+            }
+        }
+        return targets;
+    }
+
+    /** What a provider is actually asked for: an instrument, once, whoever holds it. */
+    private record PricingTarget(String symbol, AssetType assetType) {
+    }
+
+    /**
+     * Refreshes one instrument if the policy says it is worth it, absorbing whatever the provider does.
+     *
+     * <p>One unreachable symbol must not end a sweep that has forty more to do.
+     */
+    private boolean refreshQuietly(PricingTarget target) {
+        try {
+            return priceService.refreshPriceIfStale(target.symbol(), target.assetType());
+        } catch (Exception e) {
+            log.error("Failed to refresh price for {} ({}): {}",
+                    target.symbol(), target.assetType(), e.getMessage());
+            return false;
         }
     }
 
@@ -281,7 +419,37 @@ public class HoldingService {
                 .collect(Collectors.toMap(DematAccount::getId, da -> da));
     }
 
+    /**
+     * When each of these holdings last had its price confirmed, keyed by the instrument it prices from.
+     *
+     * <p>One query for the whole list, and shared across the holdings that price from the same
+     * instrument. Reading it per row would put a query per holding on every page load, for a column
+     * that is decoration.
+     */
+    private Map<PricingTarget, Instant> batchFetchPriceStamps(List<Holding> holdings) {
+        Set<String> symbols = new LinkedHashSet<>();
+        for (Holding holding : holdings) {
+            String symbol = pricingSymbol(holding);
+            if (symbol != null && !symbol.isBlank()) {
+                symbols.add(symbol);
+            }
+        }
+        if (symbols.isEmpty()) {
+            return Map.of();
+        }
+        Map<PricingTarget, Instant> stamps = new HashMap<>();
+        for (MarketPriceRepository.LastConfirmed row : marketPriceRepository.findLastConfirmedBySymbolIn(symbols)) {
+            stamps.put(new PricingTarget(row.getSymbol(), row.getAssetType()), row.getLastConfirmedAt());
+        }
+        return stamps;
+    }
+
     private HoldingResponse toResponse(Holding holding, Map<UUID, DematAccount> dematMap) {
+        return toResponse(holding, dematMap, batchFetchPriceStamps(List.of(holding)));
+    }
+
+    private HoldingResponse toResponse(Holding holding, Map<UUID, DematAccount> dematMap,
+                                       Map<PricingTarget, Instant> priceStamps) {
         String dematBroker = null;
         String dematAccountNumber = null;
         if (holding.getDematAccountId() != null) {
@@ -308,6 +476,16 @@ public class HoldingService {
             }
         }
 
+        // What the screen needs to say when a figure was last confirmed. Deliberately not updatedAt:
+        // that moves when anything about the holding changes -- a quantity edit, a rename -- so it made
+        // a six-month-old price look as current as today's.
+        Instant priceAsOf = priceStamps.get(new PricingTarget(pricingSymbol(holding), holding.getAssetType()));
+        // Null rather than false for the types no provider prices: a provident fund balance is not
+        // "fresh", it is simply not a market figure, and the badge has nothing to say about it.
+        Boolean priceStale = freshnessPolicy.isPriceable(holding.getAssetType())
+                ? freshnessPolicy.isStale(holding.getAssetType(), priceAsOf)
+                : null;
+
         return HoldingResponse.builder()
                 .id(holding.getId().toString())
                 .assetType(holding.getAssetType())
@@ -330,6 +508,8 @@ public class HoldingService {
                 .dematAccountNumber(dematAccountNumber)
                 .createdAt(holding.getCreatedAt())
                 .updatedAt(holding.getUpdatedAt())
+                .priceAsOf(priceAsOf)
+                .priceStale(priceStale)
                 .build();
     }
 

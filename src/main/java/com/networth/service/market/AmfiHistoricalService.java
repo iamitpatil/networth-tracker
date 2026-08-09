@@ -2,11 +2,9 @@ package com.networth.service.market;
 
 import com.networth.model.entity.Holding;
 import com.networth.model.entity.StockPriceHistory;
-import com.networth.model.entity.Symbol;
 import com.networth.model.enums.AssetType;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.StockPriceHistoryRepository;
-import com.networth.repository.SymbolRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -29,7 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class AmfiHistoricalService {
 
     private final StockPriceHistoryRepository historyRepository;
-    private final SymbolRepository symbolRepository;
     private final HoldingRepository holdingRepository;
     private final RestTemplate restTemplate;
 
@@ -241,29 +238,34 @@ public class AmfiHistoricalService {
         }
     }
 
+    /**
+     * The ISINs whose NAV history is worth storing: the funds somebody holds.
+     *
+     * <p>It used to add every fund in the {@code MUTUAL_FUND} category of the symbols table as well —
+     * tens of thousands of schemes — so each day's AMFI file was parsed into a row per scheme. Nothing
+     * reads those: NAV history is only ever fetched per holding, through
+     * {@code /portfolio/holdings/{id}/price-history}. Newly added funds are picked up the next time
+     * this runs, and the chart dialog triggers a run when it finds no history.
+     */
     private Set<String> collectMfIsins() {
-        Set<String> isins = new HashSet<>();
+        Set<String> isins = new LinkedHashSet<>();
 
-        holdingRepository.findAll().stream()
-                .filter(h -> h.getAssetType() == AssetType.MUTUAL_FUND)
-                .map(Holding::getIsin)
-                .filter(s -> s != null && !s.isBlank())
-                .forEach(isins::add);
-
-        symbolRepository.findByCategory("MUTUAL_FUND")
-                .stream()
-                .map(Symbol::getSymbol)
-                .filter(s -> s != null && s.length() == 12)
-                .forEach(isins::add);
-
-        if (!isins.isEmpty()) {
-            log.info("Collected {} MF ISINs for backfill ({} from holdings, {} from symbols)",
-                    isins.size(),
-                    isins.stream().filter(i -> holdingRepository.findAll().stream()
-                            .anyMatch(h -> i.equals(h.getIsin()))).count(),
-                    isins.size());
+        for (Holding h : holdingRepository.findAllActive()) {
+            if (h.getAssetType() != AssetType.MUTUAL_FUND) {
+                continue;
+            }
+            String isin = h.getIsin();
+            if (isin == null || isin.isBlank()) {
+                // Imports sometimes land the ISIN in the symbol column; a 12-character symbol is one.
+                String symbol = h.getSymbol();
+                isin = symbol != null && symbol.length() == 12 ? symbol : null;
+            }
+            if (isin != null && !isin.isBlank()) {
+                isins.add(isin);
+            }
         }
 
+        log.info("Collected {} held MF ISINs for backfill", isins.size());
         return isins;
     }
 

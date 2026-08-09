@@ -80,6 +80,34 @@ export function formatRelativeDate(dateStr) {
 }
 
 /**
+ * A price confirmation time, as short as it can be while still saying what matters.
+ *
+ * Sits under a figure in a table, so it has one line and no more: a time for something confirmed
+ * today, because a quote from 09:16 and one from 15:32 are different things intraday; a word for
+ * yesterday, since a NAV published last night is the newest one that exists for most of today; a
+ * date for anything older, where the hour has stopped being interesting.
+ *
+ * Not `formatRelativeDate`: that answers in whole days and would call this morning's quote "Today",
+ * which is exactly the distinction the stamp exists to make.
+ */
+export function formatAsOf(instant) {
+  if (!instant) return ''
+  const then = new Date(instant)
+  if (isNaN(then.getTime())) return ''
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (then >= startOfToday) {
+    return then.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  }
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  if (then >= startOfYesterday) return 'yesterday'
+  return then.toLocaleDateString('en-IN', then.getFullYear() === now.getFullYear()
+    ? { day: '2-digit', month: 'short' }
+    : { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+/**
  * A date-time as an `<input type="datetime-local">` value, in the browser's own zone.
  * Defaults to now.
  *

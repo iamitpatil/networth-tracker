@@ -36,4 +36,35 @@ public interface HoldingRepository extends JpaRepository<Holding, UUID> {
     // For finding ALL holdings (including deleted) - use only when needed for audit/reports
     @Query("SELECT h FROM Holding h WHERE h.userId = :userId")
     List<Holding> findAllByUserIdIncludingDeleted(@Param("userId") UUID userId);
+
+    /** Every live holding, across all users. {@code findAll()} would include the soft-deleted ones. */
+    @Query("SELECT h FROM Holding h WHERE h.deletedAt IS NULL")
+    List<Holding> findAllActive();
+
+    /**
+     * The distinct instruments somebody actually holds, for the scheduled price sweep.
+     *
+     * <p>Distinct is the point. The sweep used to walk users and then each user's holdings, so a stock
+     * held in three demat accounts by two family members was fetched five times a pass — the same
+     * quote, five times, against a rate-limited provider. What matters to a price is the instrument,
+     * not who owns it or how many rows mention it.
+     *
+     * <p>{@code isin} comes along because mutual funds are priced by ISIN rather than by symbol, and
+     * loading whole entities to discover that would defeat the purpose of a projection.
+     */
+    @Query("""
+            SELECT DISTINCT h.symbol AS symbol, h.isin AS isin, h.assetType AS assetType
+            FROM Holding h
+            WHERE h.deletedAt IS NULL AND h.symbol IS NOT NULL
+            """)
+    List<HeldSymbol> findDistinctHeldSymbols();
+
+    /** An instrument somebody holds, reduced to what deciding and fetching a price needs. */
+    interface HeldSymbol {
+        String getSymbol();
+
+        String getIsin();
+
+        AssetType getAssetType();
+    }
 }

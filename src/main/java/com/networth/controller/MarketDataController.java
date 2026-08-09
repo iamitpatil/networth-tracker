@@ -33,28 +33,6 @@ public class MarketDataController {
     private final com.networth.service.market.provider.ProviderRateLimits rateLimits;
     private final com.networth.service.market.provider.MarketDataResolver resolver;
 
-    @PostMapping("/backfill-prices")
-    public ResponseEntity<?> backfillPrices(
-            @RequestParam(defaultValue = "2025-01-01") String fromDate,
-            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now().toString()}") String toDate) {
-        try {
-            LocalDate from = LocalDate.parse(fromDate);
-            LocalDate to = LocalDate.parse(toDate);
-            int count = historicalService.backfillAll(from, to);
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "recordsBackfilled", count,
-                    "fromDate", from.toString(),
-                    "toDate", to.toString()
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", e.getMessage()
-            ));
-        }
-    }
-
     /**
      * Backfills price history for one holding's symbol, on demand when its chart is opened.
      *

@@ -22,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,7 +45,7 @@ public class UpstoxHistoricalService {
     private String baseUrl;
 
     /**
-     * Backfill price history for ALL equity symbols in the symbols table.
+     * Backfill price history for every equity or ETF somebody holds.
      */
     @Transactional
     public int backfillAll(LocalDate fromDate, LocalDate toDate) {
@@ -63,6 +64,14 @@ public class UpstoxHistoricalService {
 
     /**
      * Backfill with cancellation + progress reporting.
+     *
+     * <p>The work list is the instruments somebody actually holds. It used to be every EQUITY row in
+     * the symbols table — a couple of thousand instruments, of which a household holds perhaps thirty
+     * — and then the holdings again on top, so a held symbol was fetched twice per run. At the rate
+     * limiter's pace that is hours of requests building history nobody will look at, and the 03:00 job
+     * spent its Upstox budget on unheld symbols before reaching the ones on somebody's screen. History
+     * for an unheld symbol is still fetched on demand, by {@link #backfillSymbol}, when its chart is
+     * opened.
      */
     @Transactional
     public int backfillAll(LocalDate fromDate, LocalDate toDate, java.util.function.Supplier<Boolean> cancelCheck, ProgressCallback progress) {
@@ -81,24 +90,27 @@ public class UpstoxHistoricalService {
         }
         log.info("Equity pre-check: {} symbols already have price history in DB", latestDates.size());
 
-        List<Symbol> equitySymbols = symbolRepository.findByCategory("EQUITY");
+        Collection<Holding> targets = heldEquities();
         int total = 0;
         int processed = 0;
         int skippedNoIsin = 0;
         int skippedFullyCovered = 0;
 
-        for (Symbol sym : equitySymbols) {
+        for (Holding target : targets) {
             if (!cancelCheck.get()) {
-                log.info("Equity backfill cancelled at {}/{} symbols, {} records", processed, equitySymbols.size(), total);
+                log.info("Equity backfill cancelled at {}/{} symbols, {} records", processed, targets.size(), total);
                 return total;
             }
-            String isin = sym.getIsin();
+            // Resolved here rather than filtered on beforehand: a holding imported from a broker often
+            // arrives without an ISIN, and this writes the one it finds back to the row, so the price
+            // sweep and every later backfill can use it.
+            String isin = resolveAndPersistIsin(target);
             if (isin == null || isin.isBlank()) {
                 skippedNoIsin++;
                 continue;
             }
 
-            String symbol = sym.getSymbol();
+            String symbol = target.getSymbol();
             LocalDate earliest = earliestDates.get(symbol);
             LocalDate latest = latestDates.get(symbol);
 
@@ -134,41 +146,43 @@ public class UpstoxHistoricalService {
             }
 
             if (progress != null) {
-                progress.onProgress(processed, equitySymbols.size(), total, skippedFullyCovered);
+                progress.onProgress(processed, targets.size(), total, skippedFullyCovered);
             }
             if (processed % 100 == 0) {
                 log.info("Equity backfill progress: {}/{} processed ({} skipped), {} records",
-                        processed, equitySymbols.size(), skippedFullyCovered, total);
+                        processed, targets.size(), skippedFullyCovered, total);
             }
         }
 
-        // Also backfill holdings not in the symbols table
-        List<Holding> holdings = holdingRepository.findAll();
-        for (Holding h : holdings) {
-            if (!cancelCheck.get()) return total;
-            if (h.getAssetType() == AssetType.EQUITY || h.getAssetType() == AssetType.ETF) {
-                String isin = resolveAndPersistIsin(h);
-                if (isin != null && !isin.isBlank()) {
-                    String symbol = h.getSymbol();
-                    LocalDate earliest = earliestDates.get(symbol);
-                    LocalDate latest = latestDates.get(symbol);
-                    if (earliest == null) {
-                        total += backfillSymbol(symbol, isin, fromDate, toDate);
-                    } else {
-                        if (fromDate.isBefore(earliest)) {
-                            total += backfillSymbol(symbol, isin, fromDate, earliest.minusDays(1));
-                        }
-                        if (toDate.isAfter(latest)) {
-                            total += backfillSymbol(symbol, isin, latest.plusDays(1), toDate);
-                        }
-                    }
-                }
-            }
-        }
-
-        log.info("Backfilled {} equity price records ({} processed, {} fully covered, {} no ISIN)",
-                total, processed, skippedFullyCovered, skippedNoIsin);
+        log.info("Backfilled {} equity price records ({} of {} held instruments processed, {} fully covered, {} no ISIN)",
+                total, processed, targets.size(), skippedFullyCovered, skippedNoIsin);
         return total;
+    }
+
+    /**
+     * One live holding per equity or ETF symbol, preferring a row that already carries an ISIN.
+     *
+     * <p>One row per <em>symbol</em>, not per holding: the same stock in two demat accounts and again
+     * under another family member is one price history. Soft-deleted rows are left out — a sold-out
+     * position needs no further candles.
+     */
+    private Collection<Holding> heldEquities() {
+        Map<String, Holding> bySymbol = new java.util.LinkedHashMap<>();
+        for (Holding h : holdingRepository.findAllActive()) {
+            if (h.getAssetType() != AssetType.EQUITY && h.getAssetType() != AssetType.ETF) {
+                continue;
+            }
+            if (h.getSymbol() == null || h.getSymbol().isBlank()) {
+                continue;
+            }
+            Holding existing = bySymbol.get(h.getSymbol());
+            boolean existingHasIsin = existing != null
+                    && existing.getIsin() != null && !existing.getIsin().isBlank();
+            if (existing == null || !existingHasIsin) {
+                bySymbol.put(h.getSymbol(), h);
+            }
+        }
+        return bySymbol.values();
     }
 
     /**

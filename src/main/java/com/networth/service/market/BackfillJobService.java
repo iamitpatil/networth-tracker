@@ -2,13 +2,13 @@ package com.networth.service.market;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -28,20 +28,42 @@ public class BackfillJobService {
     private final NpsNavService npsNavService;
     private final com.networth.service.SymbolService symbolService;
 
+    /**
+     * The same executor {@code @Async} uses, injected rather than woven in.
+     *
+     * <p>{@code @Async} on the job body did nothing: {@link #tryStart} called it on {@code this}, and
+     * a self-invocation never passes through the proxy that implements the annotation. The whole
+     * backfill therefore ran on the Tomcat worker thread that served the POST — measured at 3.4s
+     * against an empty dev database, and a year of history for a real portfolio takes minutes of
+     * rate-limited provider calls. The caller could not receive the {@code "started"} response until
+     * the work it describes had already finished, which makes the status endpoint it is supposed to
+     * poll pointless and holds an HTTP thread hostage for the duration.
+     *
+     * <p>This is {@code AsyncConfig}'s {@code DelegatingSecurityContextAsyncTaskExecutor}, which
+     * matters: the job's steps run on behalf of the requesting user, and a bare executor would hand
+     * them an anonymous {@code SecurityContext}. It is the only {@code Executor} bean in the context
+     * — declaring one makes Boot's own {@code applicationTaskExecutor} back off — and the field name
+     * matches the bean name, so it still resolves by name if a second one is ever added.
+     */
+    private final Executor asyncExecutor;
+
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Map<String, Object> status = new ConcurrentHashMap<>();
 
     /**
-     * Start a full backfill job in background.
-     * Returns false if a job is already running.
+     * Claim the single job slot and run a full backfill on a background thread.
+     *
+     * @return false if a job is already running, in which case nothing was started
      */
-    @Async
-    public void startFullBackfill(UUID userId, int historyDays) {
+    public boolean tryStart(UUID userId, int historyDays) {
+        // The claim is the check: a plain `running.get()` followed by a start lets two simultaneous
+        // callers both pass the read and both begin.
         if (!running.compareAndSet(false, true)) {
             log.warn("Backfill job already running, skipping");
-            return;
+            return false;
         }
-
+        // Published before returning, so the caller's next poll of /backfill/status sees this run
+        // rather than the previous one's leftovers.
         status.clear();
         status.put("running", true);
         status.put("startedAt", Instant.now().toString());
@@ -50,6 +72,15 @@ public class BackfillJobService {
         status.put("steps", List.of("symbols", "equities", "mutual_funds", "nps"));
         status.put("completedSteps", new ArrayList<String>());
 
+        asyncExecutor.execute(() -> runFullBackfill(historyDays));
+        return true;
+    }
+
+    /**
+     * The job itself. Runs on a background thread with the slot already claimed by
+     * {@link #tryStart}, and is responsible for releasing it.
+     */
+    private void runFullBackfill(int historyDays) {
         try {
             // Step 1: Refresh symbols (equities + MFs + bonds)
             updateStep("symbols", "Refreshing symbol lists (NSE equities, AMFI mutual funds, NSE bonds)...");
@@ -136,15 +167,6 @@ public class BackfillJobService {
             status.put("running", false);
             running.set(false);
         }
-    }
-
-    /**
-     * Try to start a backfill. Returns true if started, false if already running.
-     */
-    public boolean tryStart(UUID userId, int historyDays) {
-        if (running.get()) return false;
-        startFullBackfill(userId, historyDays);
-        return true;
     }
 
     /**

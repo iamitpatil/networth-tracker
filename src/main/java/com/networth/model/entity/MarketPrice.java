@@ -42,6 +42,20 @@ public class MarketPrice {
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
 
+    /**
+     * When a provider last confirmed this price.
+     *
+     * <p>Distinct from {@link #createdAt}, which is the day's <em>first</em> quote and cannot be
+     * anything else. Freshness is measured against this one.
+     *
+     * <p>Deliberately not {@code @UpdateTimestamp}: that only fires when Hibernate finds the row
+     * dirty, and a re-fetch that returns the same number is exactly the case that must still count as
+     * a confirmation. A price that has not moved would otherwise look permanently stale and be
+     * re-fetched on every pass. {@code PriceCache.savePrice} sets it explicitly.
+     */
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     @Getter
     @Setter
     @NoArgsConstructor

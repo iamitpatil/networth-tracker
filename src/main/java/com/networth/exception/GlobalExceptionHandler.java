@@ -10,6 +10,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -83,8 +84,19 @@ public class GlobalExceptionHandler {
                 .body(body);
     }
 
-    @ExceptionHandler(NoHandlerFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleNotFound(NoHandlerFoundException e) {
+    /**
+     * A request for a route that does not exist.
+     *
+     * <p>Both exceptions, because which one Spring raises depends on what else could have served the
+     * path. {@link NoHandlerFoundException} is the classic one; since Spring 6.1 a request that
+     * reaches the static resource handler and finds nothing raises {@link NoResourceFoundException}
+     * instead, which is every unmatched {@code /api/v1/...} path in this application. Only the first
+     * was handled, so a mistyped URL answered {@code 500 An unexpected error occurred} and logged a
+     * stack trace with a correlation ID — telling the caller to retry something that can never work,
+     * and putting client typos in the same log channel as real faults.
+     */
+    @ExceptionHandler({NoHandlerFoundException.class, NoResourceFoundException.class})
+    public ResponseEntity<Map<String, Object>> handleNotFound(Exception e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(errorBody("Not Found", "Endpoint not found"));

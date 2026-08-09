@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Bitcoin, Home, Wallet, BarChart3, GitBranch } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, Clock, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Bitcoin, Home, Wallet, BarChart3, GitBranch } from 'lucide-react'
 import { PieChart, Pie, Cell, Sector, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
 import CorporateActionModal from '../components/CorporateActionModal'
@@ -10,7 +10,7 @@ import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 import { ConfirmDialog } from '../components/ui/Modal'
 import StyledSelect from '../components/ui/StyledSelect'
-import { dateTimeInputValue } from '../utils/format'
+import { dateTimeInputValue, formatAsOf } from '../utils/format'
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#14b8a6', '#f97316']
 
@@ -240,6 +240,8 @@ export default function Holdings() {
         totalInvested: (h.quantity || 0) * (h.averageBuyPrice || 0),
         avgPrice: h.averageBuyPrice || 0,
         currentPrice: h.currentPrice,
+        priceAsOf: h.priceAsOf,
+        priceStale: h.priceStale,
         dayChangePct: h.dayChangePct,
         representative: h,
       }))
@@ -273,6 +275,11 @@ export default function Holdings() {
       // Use first holding's current price (should be same across members for same symbol)
       const currentPrice = g.holdings[0]?.currentPrice
       const dayChangePct = g.holdings[0]?.dayChangePct
+      // From the same row as the price it describes: the members hold the same instrument, so they
+      // share one market_prices row, and taking the stamp from a different row could only ever
+      // disagree with the figure shown beside it.
+      const priceAsOf = g.holdings[0]?.priceAsOf
+      const priceStale = g.holdings[0]?.priceStale
       return {
         ...g,
         owners: Array.from(g.owners),
@@ -283,6 +290,8 @@ export default function Holdings() {
         totalInvested,
         avgPrice,
         currentPrice,
+        priceAsOf,
+        priceStale,
         dayChangePct,
         representative: g.holdings[0],
       }
@@ -1706,6 +1715,20 @@ export default function Holdings() {
                     <td className="px-4 py-3 text-right text-sm">{Number(group.avgPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className="px-4 py-3 text-right text-sm">
                       {group.currentPrice ? Number(group.currentPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                      {/* When a provider last confirmed this figure. Rendered only for the asset types a
+                          provider prices at all -- the server sends priceStale as null for a PPF or EPF
+                          balance, which is not a market price and has no age worth showing. */}
+                      {group.priceStale != null && (
+                        <div
+                          className={`flex items-center justify-end gap-1 text-[10px] ${group.priceStale ? 'text-amber-400' : 'text-[var(--text-muted)]'}`}
+                          title={group.priceAsOf
+                            ? `${group.priceStale ? 'Overdue for a refresh. ' : ''}Last confirmed ${new Date(group.priceAsOf).toLocaleString('en-IN')}`
+                            : 'No provider has ever confirmed a price for this holding'}
+                        >
+                          {group.priceStale && <Clock className="w-2.5 h-2.5 shrink-0" />}
+                          {group.priceAsOf ? formatAsOf(group.priceAsOf) : 'unconfirmed'}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-sm">{Number(group.totalInvested).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                     <td className="px-4 py-3 text-right text-sm font-medium">{Number(group.totalValue).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>

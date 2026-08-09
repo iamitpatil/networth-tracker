@@ -6,12 +6,14 @@ import com.networth.model.entity.Transaction;
 import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.*;
+import com.networth.service.market.MarketCalendar;
+import com.networth.service.market.PriceFreshnessPolicy;
 import com.networth.service.market.PriceService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -43,7 +45,20 @@ class HoldingServiceOpeningLotTest {
     @Mock DematAccountRepository dematAccountRepository;
     @Mock SymbolRepository symbolRepository;
     @Mock TransactionRepository transactionRepository;
-    @InjectMocks HoldingService holdingService;
+
+    /**
+     * The real policy, not a mock: it is pure and calendar-driven, and every response this service
+     * builds now asks it whether the price it carries is stale. A mock would answer "not priceable"
+     * to everything and quietly stop exercising the branch.
+     */
+    private HoldingService holdingService;
+
+    @BeforeEach
+    void setUp() {
+        holdingService = new HoldingService(holdingRepository, marketPriceRepository, priceService,
+                dematAccountRepository, symbolRepository, transactionRepository,
+                new PriceFreshnessPolicy(new MarketCalendar("Asia/Kolkata")));
+    }
 
     private final UUID userId = UUID.randomUUID();
 
