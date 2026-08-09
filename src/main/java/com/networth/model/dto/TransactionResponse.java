@@ -21,6 +21,16 @@ public class TransactionResponse {
     private BigDecimal fees;
     private BigDecimal taxes;
     private LocalDateTime transactionDate;
+
+    /**
+     * Where the holding period starts, when that differs from {@link #transactionDate} --
+     * demerged shares inherit the original acquisition date (s.2(42A)). Null for ordinary rows.
+     */
+    private LocalDateTime acquisitionDate;
+
+    /** Cost adjustment applied to earlier lots by a SPLIT or DEMERGER_OUT. Null otherwise. */
+    private BigDecimal adjustmentFactor;
+
     private String notes;
     private String broker;
     private LocalDateTime createdAt;

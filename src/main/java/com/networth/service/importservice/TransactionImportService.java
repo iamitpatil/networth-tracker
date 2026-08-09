@@ -1,13 +1,16 @@
 package com.networth.service.importservice;
 
+import com.networth.model.dto.CorporateActionRequest;
 import com.networth.model.dto.HoldingRequest;
 import com.networth.model.dto.TransactionRequest;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
 import com.networth.model.enums.AssetType;
+import com.networth.model.enums.CorporateActionType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
+import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
 import com.opencsv.CSVReader;
@@ -48,8 +51,19 @@ public class TransactionImportService {
 
     /** Column order of the template offered by {@link #sampleCsv()}. */
     static final String[] COLUMNS = {
-            "symbol", "assetType", "transactionType", "quantity", "price", "transactionDate", "broker", "notes"
+            "symbol", "assetType", "transactionType", "quantity", "price", "transactionDate",
+            "ratio", "broker", "notes"
     };
+
+    /**
+     * Corporate actions a CSV row can express.
+     *
+     * <p>Demergers are deliberately absent: one writes to two holdings and needs a cost
+     * apportionment percentage from the company's scheme document. Squeezing that into a flat
+     * row invites a silently wrong cost basis, so it is directed to the Holdings form instead.
+     */
+    private static final Set<TransactionType> IMPORTABLE_ACTIONS =
+            Set.of(TransactionType.BONUS, TransactionType.SPLIT);
 
     /** Accepted date forms, tried in order. Time is optional. */
     private static final List<DateTimeFormatter> DATE_FORMATS = List.of(
@@ -62,6 +76,7 @@ public class TransactionImportService {
     private final DematAccountRepository dematAccountRepository;
     private final HoldingService holdingService;
     private final TransactionService transactionService;
+    private final CorporateActionService corporateActionService;
 
     @Getter
     @Builder
@@ -99,14 +114,23 @@ public class TransactionImportService {
         }
     }
 
-    /** The template a user downloads, so the expected columns are never guesswork. */
+    /**
+     * The template a user downloads, so the expected columns are never guesswork.
+     *
+     * <p>{@code ratio} is only read for SPLIT rows, where it is "shares before:shares after".
+     * BONUS rows put the number of free shares allotted in {@code quantity} and leave
+     * {@code price} at 0, matching how a demat statement reports them.
+     */
     public String sampleCsv() {
         String today = LocalDate.now().toString();
         return String.join(",", COLUMNS) + "\n"
-                + "RELIANCE,EQUITY,BUY,10,2850.50," + today + ",Zerodha,Optional note\n"
-                + "RELIANCE,EQUITY,SELL,4,2990.00," + today + ",Zerodha,\n"
-                + "GOLDBEES,ETF,BUY,25,62.40," + today + ",,\n"
-                + "PARAGPARIKHFLEXICAP,MUTUAL_FUND,SIP,12.5,78.20," + today + ",,Monthly SIP\n";
+                + "RELIANCE,EQUITY,BUY,10,2850.50," + today + ",,Zerodha,Optional note\n"
+                + "RELIANCE,EQUITY,SELL,4,2990.00," + today + ",,Zerodha,\n"
+                + "GOLDBEES,ETF,BUY,25,62.40," + today + ",,,\n"
+                + "PARAGPARIKHFLEXICAP,MUTUAL_FUND,SIP,12.5,78.20," + today + ",,,Monthly SIP\n"
+                + "INFY,EQUITY,BUY,20,1580.00," + today + ",,,\n"
+                + "INFY,EQUITY,BONUS,5,0," + today + ",,,Free shares - price stays 0\n"
+                + "INFY,EQUITY,SPLIT,0,0," + today + ",1:2,,Each share becomes two\n";
     }
 
     /**
@@ -171,9 +195,15 @@ public class TransactionImportService {
         AssetType assetType = parseEnum(AssetType.class, require(value(line, index, "assetType"), "assetType"), "assetType");
         TransactionType type = parseEnum(TransactionType.class,
                 require(value(line, index, "transactionType"), "transactionType"), "transactionType");
+        LocalDateTime when = parseDate(require(value(line, index, "transactionDate"), "transactionDate"));
+
+        if (type.isCorporateAction()) {
+            importCorporateAction(userId, line, index, symbol, assetType, type, when, createdHoldings);
+            return;
+        }
+
         BigDecimal quantity = parsePositive(require(value(line, index, "quantity"), "quantity"), "quantity");
         BigDecimal price = parseAmount(require(value(line, index, "price"), "price"), "price");
-        LocalDateTime when = parseDate(require(value(line, index, "transactionDate"), "transactionDate"));
 
         Holding holding = findOrCreateHolding(userId, symbol, assetType, createdHoldings);
 
@@ -186,6 +216,45 @@ public class TransactionImportService {
                 .broker(emptyToNull(value(line, index, "broker")))
                 .notes(emptyToNull(value(line, index, "notes")))
                 .build());
+    }
+
+    /**
+     * A BONUS or SPLIT row, routed through {@link CorporateActionService} so the position and the
+     * ledger are adjusted the same way as they are from the UI.
+     *
+     * <p>An existing holding is required: a bonus or split has to act on shares you already
+     * hold. Creating one here would produce free shares from nothing.
+     */
+    private void importCorporateAction(UUID userId, String[] line, Map<String, Integer> index,
+                                       String symbol, AssetType assetType, TransactionType type,
+                                       LocalDateTime when, Set<String> createdHoldings) {
+        if (!IMPORTABLE_ACTIONS.contains(type)) {
+            throw new IllegalArgumentException(type + " cannot be imported from a CSV because it "
+                    + "affects two holdings and needs the cost apportionment published by the "
+                    + "company. Apply it from the holding's Corporate action form instead.");
+        }
+        Holding holding = holdingRepository.findByUserId(userId).stream()
+                .filter(h -> symbol.equalsIgnoreCase(h.getSymbol()) && h.getAssetType() == assetType)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("You hold no " + symbol
+                        + ", so there is nothing for a " + type + " to apply to. Import the "
+                        + "purchase first — order matters, and rows are applied top to bottom."));
+
+        String notes = emptyToNull(value(line, index, "notes"));
+        CorporateActionRequest.CorporateActionRequestBuilder request = CorporateActionRequest.builder()
+                .actionDate(when.toLocalDate())
+                .notes(notes);
+
+        if (type == TransactionType.BONUS) {
+            request.type(CorporateActionType.BONUS)
+                    // Absolute allotment, as a demat statement reports it.
+                    .sharesReceived(parsePositive(require(value(line, index, "quantity"), "quantity"), "quantity"));
+        } else {
+            BigDecimal[] ratio = parseRatio(require(value(line, index, "ratio"), "ratio"));
+            request.type(CorporateActionType.SPLIT).fromQuantity(ratio[0]).toQuantity(ratio[1]);
+        }
+
+        corporateActionService.apply(userId.toString(), holding.getId().toString(), request.build());
     }
 
     private Holding findOrCreateHolding(UUID userId, String symbol, AssetType assetType, Set<String> created) {
@@ -307,6 +376,24 @@ public class TransactionImportService {
             throw new IllegalArgumentException(column + " must be greater than zero");
         }
         return parsed;
+    }
+
+    /**
+     * A "before:after" split ratio. Accepts "1:2", "1-2" and "1/2", because all three turn up in
+     * statements and the separator is not the interesting part.
+     */
+    private BigDecimal[] parseRatio(String value) {
+        String[] parts = value.trim().split("\\s*[:/\\-]\\s*");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("ratio '" + value + "' should be shares before to "
+                    + "shares after, e.g. 1:2 for a share that splits into two");
+        }
+        BigDecimal from = parsePositive(parts[0], "ratio (shares before)");
+        BigDecimal to = parsePositive(parts[1], "ratio (shares after)");
+        if (from.compareTo(to) == 0) {
+            throw new IllegalArgumentException("ratio '" + value + "' changes nothing");
+        }
+        return new BigDecimal[]{from, to};
     }
 
     private LocalDateTime parseDate(String value) {

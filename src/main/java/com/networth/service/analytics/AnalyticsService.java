@@ -63,17 +63,18 @@ public class AnalyticsService {
             List<Transaction> txns = byHolding.getOrDefault(holding.getId(), List.of());
 
             for (Transaction txn : txns) {
-                if (txn.getTransactionType() == TransactionType.BUY
-                        || txn.getTransactionType() == TransactionType.SIP
-                        || txn.getTransactionType() == TransactionType.LUMPSUM) {
-                    allCashFlows.add(new XIRRCalculator.CashFlow(
-                            txn.getTransactionDate().toLocalDate(),
-                            txn.getAmount().negate().doubleValue()));
-                } else if (txn.getTransactionType() == TransactionType.SELL) {
-                    allCashFlows.add(new XIRRCalculator.CashFlow(
-                            txn.getTransactionDate().toLocalDate(),
-                            txn.getAmount().doubleValue()));
+                // Only rows that actually moved money. Bonus shares, splits and demerger legs
+                // are position changes with no cash behind them, and a demerger leg carries a
+                // non-zero amount — the apportioned cost — so it would read as a real purchase
+                // and depress the return of a portfolio that had simply been reorganised.
+                if (!txn.getTransactionType().isCashFlow() || txn.getAmount() == null) {
+                    continue;
                 }
+                double amount = txn.getTransactionType().isOutflow()
+                        ? txn.getAmount().negate().doubleValue()
+                        : txn.getAmount().doubleValue();
+                allCashFlows.add(new XIRRCalculator.CashFlow(
+                        txn.getTransactionDate().toLocalDate(), amount));
             }
 
             if (holding.getCurrentValue() != null && holding.getCurrentValue().compareTo(BigDecimal.ZERO) > 0) {
@@ -91,6 +92,23 @@ public class AnalyticsService {
         return xirrCalculator.calculateXIRR(allCashFlows).orElse(null);
     }
 
+    /**
+     * Portfolio CAGR: the single annual rate that takes total money invested to today's value.
+     *
+     * <p>{@link #calculateXIRR(UUID)} is the better measure when contributions are irregular,
+     * because CAGR cannot express when each rupee went in. CAGR is kept because it is the figure
+     * people recognise, and it is computed here over the whole invested base rather than a
+     * sample of it.
+     *
+     * <p>Three things were wrong before and are worth naming, because each inflated the number:
+     * <ul>
+     *   <li>only each holding's <em>first</em> transaction counted as invested capital, so every
+     *       later purchase was free growth;</li>
+     *   <li>the end date was the newest holding's first purchase rather than today, shortening
+     *       the period and so raising the implied annual rate;</li>
+     *   <li>sales were ignored, leaving money counted as still invested after it came back.</li>
+     * </ul>
+     */
     @Transactional(readOnly = true)
     public BigDecimal calculateCAGR(UUID userId) {
         List<Holding> holdings = holdingRepository.findByUserId(userId);
@@ -98,42 +116,47 @@ public class AnalyticsService {
         if (holdings.isEmpty()) return BigDecimal.ZERO;
 
         LocalDate earliestDate = null;
-        LocalDate latestDate = null;
-        BigDecimal initialInvestment = BigDecimal.ZERO;
+        BigDecimal netInvested = BigDecimal.ZERO;
         BigDecimal currentValue = BigDecimal.ZERO;
 
         Map<UUID, List<Transaction>> byHolding = transactionsByHolding(userId);
 
         for (Holding holding : holdings) {
-            List<Transaction> txns = byHolding.getOrDefault(holding.getId(), List.of());
-            if (txns.isEmpty()) continue;
+            for (Transaction txn : byHolding.getOrDefault(holding.getId(), List.of())) {
+                TransactionType type = txn.getTransactionType();
+                if (!type.isCashFlow() || txn.getAmount() == null) {
+                    continue;   // corporate actions and transfers move no money
+                }
+                netInvested = type.isOutflow()
+                        ? netInvested.add(txn.getAmount())
+                        : netInvested.subtract(txn.getAmount());
 
-            Transaction firstTxn = txns.getLast();
-            LocalDate txnDate = firstTxn.getTransactionDate().toLocalDate();
-
-            if (earliestDate == null || txnDate.isBefore(earliestDate)) {
-                earliestDate = txnDate;
+                LocalDate txnDate = txn.getTransactionDate().toLocalDate();
+                if (earliestDate == null || txnDate.isBefore(earliestDate)) {
+                    earliestDate = txnDate;
+                }
             }
-
-            if (latestDate == null || txnDate.isAfter(latestDate)) {
-                latestDate = txnDate;
-            }
-
-            initialInvestment = initialInvestment.add(firstTxn.getAmount());
             if (holding.getCurrentValue() != null) {
                 currentValue = currentValue.add(holding.getCurrentValue());
             }
         }
 
-        if (earliestDate == null || initialInvestment.compareTo(BigDecimal.ZERO) == 0) {
+        // Net invested can go to zero or negative once more has been withdrawn than put in.
+        // There is no meaningful growth multiple against a zero or negative base, and raising a
+        // negative ratio to a fractional power gives NaN, so say nothing rather than something
+        // false.
+        if (earliestDate == null || netInvested.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
 
-        long days = java.time.temporal.ChronoUnit.DAYS.between(earliestDate, latestDate);
+        long days = java.time.temporal.ChronoUnit.DAYS.between(earliestDate, LocalDate.now());
         if (days <= 0) return BigDecimal.ZERO;
 
         double years = days / 365.0;
-        double cagr = Math.pow(currentValue.doubleValue() / initialInvestment.doubleValue(), 1.0 / years) - 1;
+        double cagr = Math.pow(currentValue.doubleValue() / netInvested.doubleValue(), 1.0 / years) - 1;
+        if (!Double.isFinite(cagr)) {
+            return BigDecimal.ZERO;
+        }
 
         return BigDecimal.valueOf(cagr).multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP);
     }

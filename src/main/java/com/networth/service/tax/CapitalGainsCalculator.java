@@ -56,97 +56,39 @@ public class CapitalGainsCalculator {
         for (Holding holding : holdings) {
             List<Transaction> txns = txnsByHolding.getOrDefault(holding.getId(), List.of());
 
-            List<Transaction> sells = txns.stream()
-                    .filter(t -> t.getTransactionType() == TransactionType.SELL)
-                    .filter(t -> {
-                        LocalDate txnDate = t.getTransactionDate().toLocalDate();
-                        return !txnDate.isBefore(fyStart) && !txnDate.isAfter(fyEnd);
-                    })
+            // Replay the whole history in date order. Corporate actions change what earlier
+            // lots are worth, and sells made in previous years have already consumed lots, so
+            // neither can be skipped. Filtering sells to this financial year while keeping
+            // every buy ever made -- as this did before -- let lots consumed years ago come
+            // back as available.
+            List<Transaction> timeline = txns.stream()
                     .sorted(Comparator.comparing(Transaction::getTransactionDate))
                     .toList();
 
-            // FIFO requires the buy lots in chronological order, and sells applied in
-            // chronological order, so that earlier sells consume the earliest lots.
-            Deque<Lot> buyLots = txns.stream()
-                    .filter(t -> t.getTransactionType() == TransactionType.BUY
-                            || t.getTransactionType() == TransactionType.SIP
-                            || t.getTransactionType() == TransactionType.LUMPSUM)
-                    .sorted(Comparator.comparing(Transaction::getTransactionDate))
-                    .map(Lot::new)
-                    .collect(Collectors.toCollection(ArrayDeque::new));
+            Deque<Lot> buyLots = new ArrayDeque<>();
 
-            for (Transaction sell : sells) {
-                BigDecimal remainingQty = sell.getQuantity().abs();
+            for (Transaction event : timeline) {
+                switch (event.getTransactionType()) {
+                    case BUY, SIP, LUMPSUM, DEMERGER_IN -> buyLots.add(new Lot(event));
 
-                while (remainingQty.compareTo(BigDecimal.ZERO) > 0 && !buyLots.isEmpty()) {
-                    Lot lot = buyLots.peek();
+                    // Free shares carry nil cost of acquisition (s.55(2)(aa)) and their own
+                    // holding period, which starts at allotment.
+                    case BONUS -> buyLots.add(Lot.nilCost(event));
 
-                    // Match against what is LEFT in this lot. Reading the transaction's
-                    // original quantity here would let a partially consumed lot be drawn
-                    // down more than once, over-reporting cheap early lots.
-                    BigDecimal matchedQty = remainingQty.min(lot.remaining);
-                    if (matchedQty.compareTo(BigDecimal.ZERO) <= 0) {
-                        buyLots.poll();   // defensive: zero/negative-quantity lot
-                        continue;
-                    }
+                    // A split re-denominates existing lots: total cost is unchanged, so each
+                    // lot's per-share cost scales by the factor and its quantity inversely.
+                    // Lots acquired after the split are already in post-split terms.
+                    case SPLIT -> buyLots.forEach(lot -> lot.rescale(event.getAdjustmentFactor()));
 
-                    BigDecimal costBasis = matchedQty.multiply(lot.txn.getPrice());
-                    BigDecimal saleValue = matchedQty.multiply(sell.getPrice());
-                    BigDecimal gain = saleValue.subtract(costBasis);
+                    // A demerger apportions part of the original cost to the resulting company
+                    // (s.49(2C)), so the source lots keep their quantity but carry less cost.
+                    case DEMERGER_OUT -> buyLots.forEach(lot -> lot.reduceCost(event.getAdjustmentFactor()));
 
-                    long holdingDays = ChronoUnit.DAYS.between(
-                            lot.txn.getTransactionDate().toLocalDate(), sell.getTransactionDate().toLocalDate());
+                    case SELL -> consumeLots(holding, event, buyLots, fyStart, fyEnd,
+                            equityGains, debtGains, goldGains, cryptoGains, realEstateGains);
 
-                    CapitalGain capitalGain = CapitalGain.builder()
-                            .holdingId(holding.getId().toString())
-                            .symbol(holding.getSymbol())
-                            .assetType(holding.getAssetType())
-                            .saleDate(sell.getTransactionDate().toLocalDate())
-                            .purchaseDate(lot.txn.getTransactionDate().toLocalDate())
-                            .quantity(matchedQty)
-                            .salePrice(sell.getPrice())
-                            .purchasePrice(lot.txn.getPrice())
-                            .costBasis(costBasis)
-                            .saleProceeds(saleValue)
-                            .gain(gain)
-                            .holdingDays(holdingDays)
-                            .isLongTerm(ruleRegistry.forDate(sell.getTransactionDate().toLocalDate())
-                                    .capitalGains().isLongTerm(holding.getAssetType(), holdingDays))
-                            .build();
-
-                    // Record every disposal, gain OR loss. Dropping losses here understated
-                    // nothing visibly but silently inflated taxable gains, because losses
-                    // are legally available for set-off.
-                    switch (holding.getAssetType()) {
-                        case EQUITY, ETF -> equityGains.add(capitalGain);
-                        case MUTUAL_FUND -> {
-                            if (isEquityOrientedMF(holding)) {
-                                equityGains.add(capitalGain);
-                            } else {
-                                debtGains.add(capitalGain);
-                            }
-                        }
-                        case GOLD, SGB -> goldGains.add(capitalGain);
-                        case CRYPTO -> cryptoGains.add(capitalGain);
-                        case REAL_ESTATE -> realEstateGains.add(capitalGain);
-                        default -> debtGains.add(capitalGain);
-                    }
-
-                    remainingQty = remainingQty.subtract(matchedQty);
-                    lot.remaining = lot.remaining.subtract(matchedQty);
-                    if (lot.remaining.compareTo(BigDecimal.ZERO) <= 0) {
-                        buyLots.poll();
-                    }
-                }
-
-                if (remainingQty.compareTo(BigDecimal.ZERO) > 0) {
-                    // More sold than bought: the buy history is incomplete (e.g. holdings
-                    // imported without their original purchases). Cost basis for the excess
-                    // is unknowable, so it is excluded rather than guessed at zero.
-                    log.warn("Unmatched sell quantity {} for holding {} ({}) on {} - buy history incomplete, "
-                                    + "capital gains for this portion are excluded",
-                            remainingQty, holding.getSymbol(), holding.getId(),
-                            sell.getTransactionDate().toLocalDate());
+                    // Dividends, interest, fees, taxes and transfers do not change cost basis.
+                    default -> { }
                 }
             }
         }
@@ -375,14 +317,136 @@ public class CapitalGainsCalculator {
         return m;
     }
 
-    /** A buy transaction plus how much of it is still unmatched by later sells. */
+    /**
+     * An acquisition lot: quantity still unmatched, the per-share cost it carries, and when its
+     * holding period began.
+     *
+     * <p>Cost and quantity are held on the lot rather than read back from the transaction,
+     * because corporate actions change both. A split halves cost and doubles quantity; a
+     * demerger reduces cost while leaving quantity alone. Reading the transaction each time
+     * would ignore every action that happened since.
+     */
     private static final class Lot {
-        private final Transaction txn;
         private BigDecimal remaining;
+        private BigDecimal costPerUnit;
+        private final LocalDate acquiredOn;
 
         Lot(Transaction txn) {
-            this.txn = txn;
             this.remaining = txn.getQuantity().abs();
+            this.costPerUnit = txn.getPrice() == null ? BigDecimal.ZERO : txn.getPrice();
+            // Demerged shares inherit the original acquisition date (s.2(42A)), so they can be
+            // long-term the moment they are received.
+            this.acquiredOn = (txn.getAcquisitionDate() != null ? txn.getAcquisitionDate() : txn.getTransactionDate())
+                    .toLocalDate();
+        }
+
+        /** A bonus lot: shares at nil cost, holding period starting at allotment. */
+        static Lot nilCost(Transaction txn) {
+            Lot lot = new Lot(txn);
+            lot.costPerUnit = BigDecimal.ZERO;
+            return lot;
+        }
+
+        /** Split or consolidation: cost per share scales by the factor, quantity inversely. */
+        void rescale(BigDecimal factor) {
+            if (factor == null || factor.signum() <= 0) {
+                return;   // nothing usable; leave the lot untouched rather than zero it
+            }
+            this.costPerUnit = this.costPerUnit.multiply(factor);
+            this.remaining = this.remaining.divide(factor, 10, RoundingMode.HALF_UP);
+        }
+
+        /** Demerger: part of the cost moves to the resulting company; quantity is unchanged. */
+        void reduceCost(BigDecimal retainedFraction) {
+            if (retainedFraction == null || retainedFraction.signum() < 0) {
+                return;
+            }
+            this.costPerUnit = this.costPerUnit.multiply(retainedFraction);
+        }
+    }
+
+    /**
+     * Applies a sell against the lot queue, oldest first.
+     *
+     * <p>Gains are only recorded when the sale falls inside the requested financial year.
+     * Earlier sales still consume lots -- they really did happen -- they simply are not
+     * reported here.
+     */
+    private void consumeLots(Holding holding, Transaction sell, Deque<Lot> buyLots,
+                             LocalDate fyStart, LocalDate fyEnd,
+                             List<CapitalGain> equityGains, List<CapitalGain> debtGains,
+                             List<CapitalGain> goldGains, List<CapitalGain> cryptoGains,
+                             List<CapitalGain> realEstateGains) {
+        LocalDate saleDate = sell.getTransactionDate().toLocalDate();
+        boolean reportable = !saleDate.isBefore(fyStart) && !saleDate.isAfter(fyEnd);
+        BigDecimal remainingQty = sell.getQuantity().abs();
+
+        while (remainingQty.compareTo(BigDecimal.ZERO) > 0 && !buyLots.isEmpty()) {
+            Lot lot = buyLots.peek();
+
+            // Match against what is LEFT in this lot. Reading the transaction's original
+            // quantity here would let a partially consumed lot be drawn down more than once,
+            // over-reporting cheap early lots.
+            BigDecimal matchedQty = remainingQty.min(lot.remaining);
+            if (matchedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                buyLots.poll();   // defensive: zero/negative-quantity lot
+                continue;
+            }
+
+            if (reportable) {
+                BigDecimal costBasis = matchedQty.multiply(lot.costPerUnit);
+                BigDecimal saleValue = matchedQty.multiply(sell.getPrice());
+                long holdingDays = ChronoUnit.DAYS.between(lot.acquiredOn, saleDate);
+
+                CapitalGain capitalGain = CapitalGain.builder()
+                        .holdingId(holding.getId().toString())
+                        .symbol(holding.getSymbol())
+                        .assetType(holding.getAssetType())
+                        .saleDate(saleDate)
+                        .purchaseDate(lot.acquiredOn)
+                        .quantity(matchedQty)
+                        .salePrice(sell.getPrice())
+                        .purchasePrice(lot.costPerUnit)
+                        .costBasis(costBasis)
+                        .saleProceeds(saleValue)
+                        .gain(saleValue.subtract(costBasis))
+                        .holdingDays(holdingDays)
+                        .isLongTerm(ruleRegistry.forDate(saleDate).capitalGains()
+                                .isLongTerm(holding.getAssetType(), holdingDays))
+                        .build();
+
+                // Record every disposal, gain OR loss. Dropping losses silently inflated
+                // taxable gains, because losses are legally available for set-off.
+                switch (holding.getAssetType()) {
+                    case EQUITY, ETF -> equityGains.add(capitalGain);
+                    case MUTUAL_FUND -> {
+                        if (isEquityOrientedMF(holding)) {
+                            equityGains.add(capitalGain);
+                        } else {
+                            debtGains.add(capitalGain);
+                        }
+                    }
+                    case GOLD, SGB -> goldGains.add(capitalGain);
+                    case CRYPTO -> cryptoGains.add(capitalGain);
+                    case REAL_ESTATE -> realEstateGains.add(capitalGain);
+                    default -> debtGains.add(capitalGain);
+                }
+            }
+
+            remainingQty = remainingQty.subtract(matchedQty);
+            lot.remaining = lot.remaining.subtract(matchedQty);
+            if (lot.remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                buyLots.poll();
+            }
+        }
+
+        if (remainingQty.compareTo(BigDecimal.ZERO) > 0 && reportable) {
+            // More sold than acquired: the history is incomplete (e.g. holdings imported
+            // without their original purchases). Cost basis for the excess is unknowable, so
+            // it is excluded rather than guessed at zero.
+            log.warn("Unmatched sell quantity {} for holding {} ({}) on {} - acquisition history "
+                            + "incomplete, capital gains for this portion are excluded",
+                    remainingQty, holding.getSymbol(), holding.getId(), saleDate);
         }
     }
 

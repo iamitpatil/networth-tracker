@@ -3,6 +3,7 @@ package com.networth.controller;
 import com.networth.model.dto.*;
 import com.networth.service.FamilyDataService;
 import com.networth.service.InvestmentOverTimeService;
+import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.PortfolioSummaryService;
 import com.networth.service.importservice.TransactionImportService;
@@ -36,6 +37,7 @@ public class PortfolioController {
 
     private final HoldingService holdingService;
     private final TransactionService transactionService;
+    private final CorporateActionService corporateActionService;
     private final TransactionImportService transactionImportService;
     private final PortfolioSummaryService portfolioSummaryService;
     private final FamilyDataService familyDataService;
@@ -141,6 +143,23 @@ public class PortfolioController {
             @Valid @RequestBody TransactionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(transactionService.addTransaction(userDetails.getUsername(), request));
+    }
+
+    /**
+     * Applies a bonus issue, split or demerger to a holding.
+     *
+     * <p>Separate from {@code POST /transactions} because these are not trades: a bonus share
+     * has no price, a split has no quantity of its own, and a demerger writes to two holdings
+     * at once. The response reports the position before and after plus a plain-language summary,
+     * so the user can check the maths did what they expected.
+     */
+    @PostMapping("/holdings/{id}/corporate-actions")
+    public ResponseEntity<Map<String, Object>> applyCorporateAction(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id,
+            @Valid @RequestBody CorporateActionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(corporateActionService.apply(userDetails.getUsername(), id, request));
     }
 
     @GetMapping("/summary")

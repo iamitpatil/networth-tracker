@@ -1,6 +1,7 @@
 package com.networth.service.importservice;
 
 import com.networth.model.dto.HoldingResponse;
+import com.networth.model.dto.CorporateActionRequest;
 import com.networth.model.dto.TransactionRequest;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
@@ -8,6 +9,7 @@ import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
+import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,10 +45,15 @@ class TransactionImportServiceTest {
     @Mock DematAccountRepository dematAccountRepository;
     @Mock HoldingService holdingService;
     @Mock TransactionService transactionService;
+    @Mock CorporateActionService corporateActionService;
     @InjectMocks TransactionImportService service;
 
     private final UUID userId = UUID.randomUUID();
-    private static final String HEADER = "symbol,assetType,transactionType,quantity,price,transactionDate,broker,notes\n";
+    private static final String HEADER =
+            "symbol,assetType,transactionType,quantity,price,transactionDate,ratio,broker,notes\n";
+
+    /** Holdings the import has created, so lookups behave like a real repository. */
+    private final List<Holding> stored = new java.util.ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -57,18 +64,29 @@ class TransactionImportServiceTest {
         when(dematAccountRepository.findByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of(demat));
 
         // createHolding returns a response; the service then reads the holding back by id
+        // Created holdings are remembered and returned by later lookups, as a repository would.
+        // With a repository that always answers "empty", a corporate action row could never find
+        // the holding a preceding row had just created -- and the sample relies on exactly that.
+        stored.clear();
         when(holdingService.createHolding(anyString(), any())).thenAnswer(inv -> {
+            com.networth.model.dto.HoldingRequest request = inv.getArgument(1);
+            Holding h = new Holding();
+            h.setId(UUID.randomUUID());
+            h.setUserId(userId);
+            h.setSymbol(request.getSymbol());
+            h.setAssetType(request.getAssetType());
+            h.setQuantity(request.getQuantity());
+            h.setAverageBuyPrice(request.getAverageBuyPrice());
+            stored.add(h);
+
             HoldingResponse r = new HoldingResponse();
-            r.setId(UUID.randomUUID().toString());
+            r.setId(h.getId().toString());
             return r;
         });
-        when(holdingRepository.findById(any())).thenAnswer(inv -> {
-            Holding h = new Holding();
-            h.setId(inv.getArgument(0));
-            h.setUserId(userId);
-            return Optional.of(h);
-        });
-        when(holdingRepository.findByUserId(userId)).thenReturn(List.of());
+        when(holdingRepository.findById(any())).thenAnswer(inv -> stored.stream()
+                .filter(h -> h.getId().equals(inv.getArgument(0)))
+                .findFirst());
+        when(holdingRepository.findByUserId(userId)).thenAnswer(inv -> List.copyOf(stored));
     }
 
     private TransactionImportService.ImportResult importCsv(String body) {
@@ -258,6 +276,85 @@ class TransactionImportServiceTest {
 
         var result = importCsv(sample);
         assertThat(result.getFailed()).as("sample rows: %s", result.getErrors()).isZero();
-        assertThat(result.getImported()).isEqualTo(4);
+        assertThat(result.getImported()).isEqualTo(7);
+    }
+
+    // ── corporate action rows ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("a BONUS row goes to the corporate action service, not the transaction service")
+    void bonusRowIsRoutedToCorporateActions() {
+        givenHolding("INFY", AssetType.EQUITY);
+
+        var result = importCsv(HEADER + "INFY,EQUITY,BONUS,5,0,2025-04-01,,,free shares\n");
+
+        assertThat(result.getImported()).isEqualTo(1);
+        ArgumentCaptor<CorporateActionRequest> captor = ArgumentCaptor.forClass(CorporateActionRequest.class);
+        verify(corporateActionService).apply(eq(userId.toString()), anyString(), captor.capture());
+        assertThat(captor.getValue().getType()).isEqualTo(
+                com.networth.model.enums.CorporateActionType.BONUS);
+        // Absolute allotment: five shares, not a ratio.
+        assertThat(captor.getValue().getSharesReceived()).isEqualByComparingTo("5");
+        assertThat(captor.getValue().getSharesHeld()).isNull();
+        verify(transactionService, never()).addTransaction(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("a SPLIT row passes its ratio through as before-and-after quantities")
+    void splitRowPassesRatio() {
+        givenHolding("INFY", AssetType.EQUITY);
+
+        var result = importCsv(HEADER + "INFY,EQUITY,SPLIT,0,0,2025-04-01,1:2,,\n");
+
+        assertThat(result.getFailed()).as("%s", result.getErrors()).isZero();
+        ArgumentCaptor<CorporateActionRequest> captor = ArgumentCaptor.forClass(CorporateActionRequest.class);
+        verify(corporateActionService).apply(eq(userId.toString()), anyString(), captor.capture());
+        assertThat(captor.getValue().getFromQuantity()).isEqualByComparingTo("1");
+        assertThat(captor.getValue().getToQuantity()).isEqualByComparingTo("2");
+    }
+
+    @Test
+    @DisplayName("a SPLIT row without a ratio is rejected rather than assumed")
+    void splitRowNeedsARatio() {
+        givenHolding("INFY", AssetType.EQUITY);
+
+        var result = importCsv(HEADER + "INFY,EQUITY,SPLIT,0,0,2025-04-01,,,\n");
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getErrors().get(0).getReason()).contains("ratio");
+    }
+
+    @Test
+    @DisplayName("a corporate action on a symbol not held is rejected: nothing to act on")
+    void corporateActionNeedsAnExistingHolding() {
+        var result = importCsv(HEADER + "UNKNOWN,EQUITY,BONUS,5,0,2025-04-01,,,\n");
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getErrors().get(0).getReason()).contains("hold no UNKNOWN");
+        // No holding is invented for it either: free shares cannot come from nothing.
+        verify(holdingService, never()).createHolding(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("a demerger row explains why it cannot be imported")
+    void demergerRowIsRefusedWithGuidance() {
+        givenHolding("RELIANCE", AssetType.EQUITY);
+
+        var result = importCsv(HEADER + "RELIANCE,EQUITY,DEMERGER_IN,5,40,2025-04-01,,,\n");
+
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getErrors().get(0).getReason()).contains("cost apportionment");
+    }
+
+    /** Puts a holding in the repository, as though a previous import or purchase had created it. */
+    private void givenHolding(String symbol, AssetType assetType) {
+        Holding h = new Holding();
+        h.setId(UUID.randomUUID());
+        h.setUserId(userId);
+        h.setSymbol(symbol);
+        h.setAssetType(assetType);
+        h.setQuantity(new BigDecimal("100"));
+        h.setAverageBuyPrice(new BigDecimal("1000"));
+        stored.add(h);
     }
 }

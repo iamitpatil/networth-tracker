@@ -90,7 +90,25 @@ public class InvestmentOverTimeService {
             BigDecimal txPrice = t.getPrice() != null ? t.getPrice() : BigDecimal.ZERO;
             BigDecimal txAmount = t.getAmount() != null ? t.getAmount() : txPrice.multiply(txQty);
 
-            if (INVEST_TXNS.contains(t.getTransactionType().name())) {
+            if (t.getTransactionType().isCorporateAction()) {
+                // Position changes with no money behind them. The stored quantity is already a
+                // signed delta -- positive for bonus shares and share splits, negative for a
+                // consolidation, zero for the parent leg of a demerger -- so it is applied as
+                // is, without abs(). "invested" is untouched, which is the point: a bonus issue
+                // is not money you put in.
+                BigDecimal delta = t.getQuantity() != null ? t.getQuantity() : BigDecimal.ZERO;
+                holdingQty.merge(holdingId, delta, BigDecimal::add);
+
+                // A split re-denominates the shares, so a remembered pre-split price would value
+                // the new share count at the old price and double the holding overnight. Rescale
+                // it by the same factor the cost was scaled by.
+                if (t.getAdjustmentFactor() != null && t.getAdjustmentFactor().signum() > 0) {
+                    BigDecimal known = holdingLastTxnPrice.get(holdingId);
+                    if (known != null) {
+                        holdingLastTxnPrice.put(holdingId, known.multiply(t.getAdjustmentFactor()));
+                    }
+                }
+            } else if (INVEST_TXNS.contains(t.getTransactionType().name())) {
                 holdingQty.merge(holdingId, txQty, BigDecimal::add);
                 runningInvested = runningInvested.add(txAmount);
             } else if (DIVEST_TXNS.contains(t.getTransactionType().name())) {

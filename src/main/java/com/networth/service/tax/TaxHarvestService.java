@@ -3,7 +3,6 @@ package com.networth.service.tax;
 import com.networth.model.entity.Holding;
 import com.networth.model.entity.Transaction;
 import com.networth.model.enums.AssetType;
-import com.networth.model.enums.TransactionType;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.tax.rules.CapitalGainsRules;
@@ -216,16 +215,21 @@ public class TaxHarvestService {
         }
     }
 
-    /** Earliest purchase date per holding, from one query over the user's transactions. */
+    /** Earliest acquisition date per holding, from one query over the user's transactions. */
     private Map<UUID, LocalDate> earliestBuyDates(UUID userId) {
         return transactionRepository.findByUserId(userId).stream()
                 .filter(t -> t.getHoldingId() != null && t.getTransactionDate() != null)
-                .filter(t -> t.getTransactionType() == TransactionType.BUY
-                        || t.getTransactionType() == TransactionType.SIP
-                        || t.getTransactionType() == TransactionType.LUMPSUM)
+                // Every row that starts a lot, not just purchases. A holding received in a
+                // demerger has no BUY at all: its only acquisition is the DEMERGER_IN, so
+                // filtering to purchases left it with no date and fell back to the row's
+                // creation timestamp, reporting a decade-old position as bought today.
+                .filter(t -> t.getTransactionType().isAcquisition())
                 .collect(Collectors.toMap(
                         Transaction::getHoldingId,
-                        t -> t.getTransactionDate().toLocalDate(),
+                        // acquisitionDate where present: demerged shares inherit the period the
+                        // original shares were held (s.2(42A)), so they can already be long-term.
+                        t -> (t.getAcquisitionDate() != null ? t.getAcquisitionDate() : t.getTransactionDate())
+                                .toLocalDate(),
                         (a, b) -> a.isBefore(b) ? a : b));
     }
 

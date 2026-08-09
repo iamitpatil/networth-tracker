@@ -83,6 +83,146 @@ class CapitalGainsCalculatorTest {
         return (BigDecimal) m.get(key);
     }
 
+    /** A bonus allotment: shares in, no price. */
+    private Transaction bonus(String qty, String date) {
+        return txn(TransactionType.BONUS, qty, "0", date);
+    }
+
+    /**
+     * A split or consolidation. {@code factor} is the multiplier on per-share cost: 0.5 for a
+     * 1:2 split. Quantity carries the change in share count and is not used by the calculator.
+     */
+    private Transaction split(String factor, String quantityDelta, String date) {
+        Transaction t = txn(TransactionType.SPLIT, quantityDelta, "0", date);
+        t.setAdjustmentFactor(new BigDecimal(factor));
+        return t;
+    }
+
+    /** The parent leg of a demerger. {@code retained} is the fraction of cost kept. */
+    private Transaction demergerOut(String retained, String date) {
+        Transaction t = txn(TransactionType.DEMERGER_OUT, "0", "0", date);
+        t.setAdjustmentFactor(new BigDecimal(retained));
+        return t;
+    }
+
+    /** Shares received in a demerger, carrying an inherited acquisition date. */
+    private Transaction demergerIn(String qty, String price, String date, String acquiredOn) {
+        Transaction t = txn(TransactionType.DEMERGER_IN, qty, price, date);
+        t.setAcquisitionDate(LocalDateTime.parse(acquiredOn + "T10:00:00"));
+        return t;
+    }
+
+    // ── corporate actions ───────────────────────────────────────
+
+    @Test
+    @DisplayName("bonus shares are sold at nil cost, so the whole sale price is gain")
+    void bonusSharesCarryNilCost() {
+        // 100 bought at 10, then 100 free. Sell the 100 bought (FIFO) plus the 100 bonus at 50.
+        // Bought lot: (50-10) x 100 = 4000. Bonus lot: (50-0) x 100 = 5000. Total 9000.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                txn(TransactionType.BUY,  "100", "10", "2024-04-01"),
+                bonus("100", "2024-05-01"),
+                txn(TransactionType.SELL, "200", "50", "2024-06-01"))));
+
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("9000");
+    }
+
+    @Test
+    @DisplayName("bonus shares are short-term when sold soon after allotment, even on an old holding")
+    void bonusHoldingPeriodStartsAtAllotment() {
+        // The original shares are years old and long-term. The bonus shares are three months
+        // old, so their gain is short-term: the holding period does not carry over.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                txn(TransactionType.BUY,  "100", "10", "2020-04-01"),
+                bonus("100", "2024-08-01"),
+                txn(TransactionType.SELL, "200", "50", "2024-11-01"))));
+
+        // Original lot long-term: (50-10) x 100 = 4000. Bonus lot short-term: 50 x 100 = 5000.
+        assertThat(num(eq, "ltcg")).isEqualByComparingTo("4000");
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("5000");
+    }
+
+    @Test
+    @DisplayName("a split leaves the gain unchanged: more shares at proportionally less cost")
+    void splitPreservesTotalGain() {
+        // 100 at 10 = 1000 cost. A 1:2 split gives 200 at 5. Selling all 200 at 25 realises
+        // 5000 - 1000 = 4000 -- identical to selling 100 at 50 without the split.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                txn(TransactionType.BUY,  "100", "10", "2024-04-01"),
+                split("0.5", "100", "2024-05-01"),
+                txn(TransactionType.SELL, "200", "25", "2024-06-01"))));
+
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("4000");
+    }
+
+    @Test
+    @DisplayName("a split does not restart the holding period")
+    void splitDoesNotResetHoldingPeriod() {
+        // Bought two years before the split, sold two months after it. Still long-term.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                txn(TransactionType.BUY,  "100", "10", "2022-04-01"),
+                split("0.5", "100", "2024-08-01"),
+                txn(TransactionType.SELL, "200", "25", "2024-10-01"))));
+
+        assertThat(num(eq, "ltcg")).isEqualByComparingTo("4000");
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("a demerger reduces the parent's cost, raising the gain on the parent shares")
+    void demergerReducesParentCost() {
+        // 100 at 100 = 10,000 cost. 20% of cost moves away, leaving 8,000 (80 per share).
+        // Selling all 100 at 150 gives 15,000 - 8,000 = 7,000, not the 5,000 it would be if
+        // the apportionment were ignored.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2024-04-01"),
+                demergerOut("0.8", "2024-05-01"),
+                txn(TransactionType.SELL, "100", "150", "2024-06-01"))));
+
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("7000");
+    }
+
+    @Test
+    @DisplayName("demerged shares are not free: they carry the apportioned cost")
+    void demergedSharesCarryApportionedCost() {
+        // 2,000 of cost apportioned over 50 shares = 40 each. Sold at 100 -> 3,000 gain.
+        // Treating them as zero-cost would report 5,000 and overstate the tax.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                demergerIn("50", "40", "2024-05-01", "2024-04-01"),
+                txn(TransactionType.SELL, "50", "100", "2024-06-01"))));
+
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("3000");
+    }
+
+    @Test
+    @DisplayName("demerged shares inherit the original holding period and can be long-term at once")
+    void demergedSharesInheritHoldingPeriod() {
+        // Received in May 2024 but the original shares were bought in 2019. Sold three months
+        // after receipt, the gain is long-term because s.2(42A) carries the period over.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                demergerIn("50", "40", "2024-05-01", "2019-04-01"),
+                txn(TransactionType.SELL, "50", "100", "2024-08-01"))));
+
+        assertThat(num(eq, "ltcg")).isEqualByComparingTo("3000");
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("a sell in an earlier year still consumes its lots, so they cannot be sold twice")
+    void earlierYearSellConsumesLots() {
+        // 100 bought in FY 2023-24 and sold in that same year. The FY 2024-25 report must not
+        // see that lot as still available -- and must not report the 2023 sale either.
+        Map<String, Object> eq = equity(run(AssetType.EQUITY, List.of(
+                txn(TransactionType.BUY,  "100", "10", "2023-05-01"),
+                txn(TransactionType.SELL, "100", "20", "2023-09-01"),
+                txn(TransactionType.BUY,  "100", "30", "2024-05-01"),
+                txn(TransactionType.SELL, "100", "50", "2024-06-01"))));
+
+        // Only the FY 2024-25 sale: (50-30) x 100 = 2000. Matching against the 2023 lot at
+        // cost 10 would have reported 4000.
+        assertThat(num(eq, "stcg")).isEqualByComparingTo("2000");
+    }
+
     // ── FIFO lot consumption ──────────────────────────────────────────
 
     @Test

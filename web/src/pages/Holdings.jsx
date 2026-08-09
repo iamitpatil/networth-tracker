@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Bitcoin, Home, Wallet, BarChart3 } from 'lucide-react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Search, X, Loader2, Building2, Landmark, Banknote, PiggyBank, ShieldCheck, Gem, FileText, Download, Upload, Eye, Users, ChevronRight, ChevronDown as ChevronDownIcon, Newspaper, IndianRupee, Calendar, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Bitcoin, Home, Wallet, BarChart3, GitBranch } from 'lucide-react'
 import { PieChart, Pie, Cell, Sector, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts'
 import NewsPanel from '../components/NewsPanel'
+import CorporateActionModal from '../components/CorporateActionModal'
 import { useFeature } from '../context/FeatureFlagContext'
 import { createChart, CandlestickSeries, AreaSeries } from 'lightweight-charts'
 import { ConfirmDialog } from '../components/ui/Modal'
@@ -171,6 +172,7 @@ export default function Holdings() {
   const [backfillStatus, setBackfillStatus] = useState(null)
   const [chartMode, setChartMode] = useState('recharts')
   const [newsHolding, setNewsHolding] = useState(null)
+  const [actionHolding, setActionHolding] = useState(null)
   const [dividendSummary, setDividendSummary] = useState(null)
   const [dividendHolding, setDividendHolding] = useState(null)
   const [dividendRecords, setDividendRecords] = useState([])
@@ -1751,6 +1753,14 @@ export default function Holdings() {
                               <FileText className="w-4 h-4" />
                             </button>
                           )}
+                          {(group.assetType === 'EQUITY' || group.assetType === 'ETF' || group.assetType === 'MUTUAL_FUND') && (
+                            <button onClick={() => setActionHolding(group.representative)}
+                              aria-label="Record a corporate action"
+                              className="text-[var(--text-secondary)] hover:text-purple-400 transition p-1"
+                              title="Bonus, split or demerger">
+                              <GitBranch className="w-4 h-4" />
+                            </button>
+                          )}
                           <button onClick={() => handleDelete(group.representative.id)} aria-label="Delete holding" className="text-[var(--text-secondary)] hover:text-red-400 transition p-1"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       )}
@@ -1910,6 +1920,18 @@ export default function Holdings() {
       {newsHolding && (
         <NewsPanel holding={newsHolding} onClose={() => setNewsHolding(null)} />
       )}
+
+      <CorporateActionModal
+        open={!!actionHolding}
+        holding={actionHolding}
+        onClose={() => setActionHolding(null)}
+        // A bonus or split changes quantity and average price, and a demerger adds a whole new
+        // holding, so the list has to be re-read rather than patched locally.
+        onApplied={async () => {
+          const res = await client.get('/portfolio/holdings')
+          setHoldings(res.data)
+        }}
+      />
 
       {chartHolding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={closeChart}>

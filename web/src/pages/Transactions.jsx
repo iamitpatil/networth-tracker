@@ -136,7 +136,16 @@ export default function Transactions() {
     SELL: 'text-red-400 bg-red-400/10',
     SIP: 'text-green-400 bg-green-400/10',
     LUMPSUM: 'text-amber-400 bg-amber-400/10',
+    // Corporate actions share a purple family so they read as one group, visibly apart from
+    // the green/red of money actually moving.
+    BONUS: 'text-purple-400 bg-purple-400/10',
+    SPLIT: 'text-purple-300 bg-purple-300/10',
+    DEMERGER_IN: 'text-indigo-400 bg-indigo-400/10',
+    DEMERGER_OUT: 'text-indigo-300 bg-indigo-300/10',
   }
+
+  /** Types where no money moved, so a price of 0 is correct rather than missing data. */
+  const NON_CASH = new Set(['BONUS', 'SPLIT', 'DEMERGER_IN', 'DEMERGER_OUT'])
 
   const anyFilterActive = dateFrom || dateTo || symbolSearch || assetFilter !== 'ALL'
     || activeFilter !== 'ALL' || brokerFilter !== 'ALL'
@@ -252,13 +261,13 @@ export default function Transactions() {
                     {/* Buttons here rather than a select: the panel has room, and one tap
                         picks a type instead of two to open and choose. */}
                     <div className="grid grid-cols-2 gap-1">
-                      {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM'].map((f) => (
+                      {['ALL', 'BUY', 'SELL', 'SIP', 'LUMPSUM', 'BONUS', 'SPLIT', 'DEMERGER_IN', 'DEMERGER_OUT'].map((f) => (
                         <button key={f} type="button" onClick={() => setActiveFilter(f)}
                           className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                             activeFilter === f
                               ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                               : 'bg-[var(--input-bg)] text-[var(--text-muted)] hover:bg-[var(--hover-bg)] border border-[var(--border)]'
-                          }`}>{f}</button>
+                          }`}>{f.replace('DEMERGER_', 'DEM. ')}</button>
                       ))}
                     </div>
                   </ColumnFilter>
@@ -293,6 +302,13 @@ export default function Transactions() {
                   <td className="px-4 py-3 text-sm">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{holdingsMap[tx.holdingId]?.symbol || tx.holdingId?.substring(0, 8)}</span>
+                      {tx.acquisitionDate && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/15 text-indigo-300 ring-1 ring-inset ring-indigo-500/30"
+                          title={'Holding period counted from ' + new Date(tx.acquisitionDate).toLocaleDateString('en-IN')
+                            + ' — inherited from the original shares, so these may already be long-term'}>
+                          held since {new Date(tx.acquisitionDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
                       {isFamilyView && tx.ownerName && (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 ring-1 ring-inset ring-purple-500/30">
                           <Users className="w-2.5 h-2.5" />
@@ -307,8 +323,23 @@ export default function Transactions() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-sm">{tx.quantity}</td>
-                  <td className="px-4 py-3 text-right text-sm">Rs. {fmt(tx.price)}</td>
-                  <td className="px-4 py-3 text-right text-sm font-medium">Rs. {fmt(tx.amount)}</td>
+                  <td className="px-4 py-3 text-right text-sm">
+                    {NON_CASH.has(tx.transactionType) && Number(tx.price) === 0
+                      // "Rs. 0" reads as a data problem. Bonus shares genuinely cost nothing,
+                      // and a split has no price at all, so say so.
+                      ? <span className="text-[var(--text-secondary)] text-xs"
+                          title={tx.transactionType === 'BONUS'
+                            ? 'Bonus shares carry nil cost of acquisition'
+                            : 'No price: this row only re-denominates existing shares'}>
+                          {tx.transactionType === 'BONUS' ? 'nil cost' : '—'}
+                        </span>
+                      : <>Rs. {fmt(tx.price)}</>}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm font-medium">
+                    {NON_CASH.has(tx.transactionType) && Number(tx.amount) === 0
+                      ? <span className="text-[var(--text-secondary)] text-xs">no cash</span>
+                      : <>Rs. {fmt(tx.amount)}</>}
+                  </td>
                   <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{tx.broker || '-'}</td>
                 </tr>
               ))
@@ -326,8 +357,15 @@ export default function Transactions() {
           <div className="text-xs text-[var(--text-muted)] bg-[var(--input-bg)] border border-[var(--border)] rounded-lg p-3">
             <p className="font-medium text-[var(--text-secondary)] mb-1">Required columns</p>
             <code className="block break-words">symbol, assetType, transactionType, quantity, price, transactionDate</code>
-            <p className="mt-2">Optional: <code>broker</code>, <code>notes</code>. A symbol with no
-            holding yet has one created for it.</p>
+            <p className="mt-2">Optional: <code>ratio</code>, <code>broker</code>, <code>notes</code>. A
+            symbol with no holding yet has one created for it.</p>
+            <p className="mt-2 text-[var(--text-secondary)]">
+              <span className="font-medium">Corporate actions:</span> a <code>BONUS</code> row puts the
+              free shares in <code>quantity</code> with <code>price</code> 0. A <code>SPLIT</code> row
+              needs <code>ratio</code> as before:after, e.g. <code>1:2</code>. Both must come after the
+              purchase they act on. Demergers need the company's cost apportionment, so they are applied
+              from the holding's Corporate action form instead.
+            </p>
             <button onClick={downloadSample} className="mt-2 text-blue-400 hover:text-blue-300">
               Download the sample
             </button>
