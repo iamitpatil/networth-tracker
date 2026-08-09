@@ -5,14 +5,6 @@ import client from '../api/client';
 import { ConfirmDialog } from '../components/ui';
 
 
-const TAX_RULES = [
-  { asset: 'Equity LTCG', rate: '12.5%', threshold: 'Above ₹1.25L', notes: 'Long term (>1 year)' },
-  { asset: 'Equity STCG', rate: '20%', threshold: 'Full amount', notes: 'Short term (≤1 year)' },
-  { asset: 'Debt Funds', rate: 'Slab Rate', threshold: 'Full amount', notes: 'As per income tax slab' },
-  { asset: 'Crypto/NFT', rate: '30%', threshold: 'Full amount', notes: 'Flat rate + 4% cess' },
-  { asset: '80C Deduction', rate: 'Max ₹1.5L', threshold: 'Section 80C', notes: 'ELSS, PPF, EPF, etc.' },
-];
-
 export default function Tax() {
   // Populated from /tax/financial-years so the selector can only offer years the backend
   // has rules for. `unverifiedFYs` are shown with a caveat rather than presented as settled.
@@ -21,6 +13,9 @@ export default function Tax() {
   // Years where more than one regime existed. Before FY 2020-21 there was only the old
   // regime, so a comparison is meaningless and the button is hidden.
   const [comparableFYs, setComparableFYs] = useState([]);
+  // Rates and deductions for the selected year, so nothing on this page hardcodes a figure
+  // that is only correct for one of the 27 years the selector offers.
+  const [yearRules, setYearRules] = useState(null);
   const [selectedFY, setSelectedFY] = useState(null);
   const [summary, setSummary] = useState(null);
   const [harvestingOpps, setHarvestingOpps] = useState([]);
@@ -57,10 +52,11 @@ export default function Tax() {
     if (!selectedFY) return;
     setLoading(true);
     try {
-      const [summaryRes, harvestingRes, util80CRes, regimeRes, form16Res, itrRes] = await Promise.all([
+      const [summaryRes, harvestingRes, util80CRes, rulesRes, regimeRes, form16Res, itrRes] = await Promise.all([
         client.get(`/tax/summary/${selectedFY}`),
-        client.get('/tax/harvesting-opportunities'),
-        client.get('/tax/80c-utilization'),
+        client.get(`/tax/harvesting-opportunities?financialYear=${selectedFY}`),
+        client.get(`/tax/80c-utilization?financialYear=${selectedFY}`),
+        client.get(`/tax/rules/${selectedFY}`),
         client.get('/tax/regime'),
         client.get('/tax/form16'),
         client.get('/tax/itr'),
@@ -69,6 +65,7 @@ export default function Tax() {
       setSummary(summaryRes.data);
       setHarvestingOpps(harvestingRes.data || []);
       setUtil80C(util80CRes.data);
+      setYearRules(rulesRes.data);
       setTaxRegime(regimeRes.data?.regime || 'NEW');
       setForm16s(form16Res.data || []);
       setItrFilings(itrRes.data || []);
@@ -199,6 +196,28 @@ export default function Tax() {
     }
   };
 
+  // Percent from a rate fraction: 0.125 -> "12.5%". Empty rates render as "Exempt", which is
+  // the real position for equity LTCG between FY 2004-05 and FY 2017-18 under s.10(38).
+  const pct = (rate) => {
+    if (rate == null) return '—';
+    const n = Number(rate);
+    return n === 0 ? 'Exempt' : `${+(n * 100).toFixed(4)}%`;
+  };
+
+  const taxRulesForYear = () => {
+    const cg = yearRules?.capitalGains;
+    if (!cg) return [];
+    const lakh = (v) => v == null ? '—' : `₹${(Number(v) / 100000).toFixed(2).replace(/\.00$/, '')}L`;
+    return [
+      { asset: 'Equity LTCG', rate: pct(cg.equityLtcgRate), threshold: Number(cg.equityLtcgExemption) > 0 ? `Above ${lakh(cg.equityLtcgExemption)}` : 'Full amount', notes: 'Long term' },
+      { asset: 'Equity STCG', rate: pct(cg.equityStcgRate), threshold: 'Full amount', notes: 'Short term' },
+      { asset: 'Gold / Property LTCG', rate: pct(cg.otherAssetLtcgRate), threshold: 'Full amount', notes: 'Long term' },
+      { asset: 'Debt Funds', rate: 'Slab Rate', threshold: 'Full amount', notes: 'As per income tax slab' },
+      { asset: 'Crypto / VDA', rate: pct(cg.cryptoRate), threshold: 'Full amount', notes: `Flat rate + ${pct(yearRules.cessRate)} cess` },
+      { asset: '80C Deduction', rate: `Max ${lakh(yearRules.deductions?.limit80C)}`, threshold: 'Section 80C', notes: 'ELSS, PPF, EPF, etc.' },
+    ];
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
   };
@@ -214,17 +233,53 @@ export default function Tax() {
     return '#22c55e';
   };
 
-  const totalLTCG = (summary?.equity?.ltcg || 0) + (summary?.gold?.gains || 0) + (summary?.realEstate?.gains || 0);
-  const totalSTCG = summary?.equity?.stcg || 0;
+  // Long-term totals use each class's own longTermGains where the backend reports it; the
+  // previous version added gold and property *total* gains here, folding short-term gains
+  // into an LTCG figure.
+  const lt = (cls) => Number(cls?.longTermGains ?? cls?.gains ?? 0);
+  const st = (cls) => Number(cls?.shortTermGains ?? 0);
+  const totalLTCG = Number(summary?.equity?.ltcg || 0) + lt(summary?.gold) + lt(summary?.realEstate);
+  const totalSTCG = Number(summary?.equity?.stcg || 0) + st(summary?.gold) + st(summary?.realEstate);
+
+  // Realised losses, which the API now returns. Nothing displayed them before, so a user who
+  // had booked losses saw no sign of them even though they reduce the tax due.
+  // Regimes that existed in the selected year. Falls back to both while the rules load so
+  // the selector does not flicker empty.
+  const availableRegimes = yearRules?.regimes
+    ? ['NEW', 'OLD'].filter((r) => yearRules.regimes[r])
+    : ['NEW', 'OLD'];
+
+  const equityLtcl = Number(summary?.equity?.ltcl || 0);
+  const equityStcl = Number(summary?.equity?.stcl || 0);
+  const totalLosses = equityLtcl + equityStcl
+    + Number(summary?.gold?.losses || 0) + Number(summary?.realEstate?.losses || 0)
+    + Number(summary?.debt?.losses || 0);
+  const unabsorbedLoss = Number(summary?.equity?.unabsorbedShortTermLoss || 0)
+    + Number(summary?.equity?.unabsorbedLongTermLoss || 0);
   const totalTax = summary?.totalTax || 0;
   const remaining80C = 150000 - (util80C?.utilized || 0);
 
   const gainDetails = [];
-  if (summary?.equity?.ltcg > 0) gainDetails.push({ asset: 'Equity LTCG', type: 'LTCG', amount: summary.equity.ltcg, tax: summary.equity.taxOnLTCG || 0 });
-  if (summary?.equity?.stcg > 0) gainDetails.push({ asset: 'Equity STCG', type: 'STCG', amount: summary.equity.stcg, tax: summary.equity.taxOnSTCG || 0 });
-  if (summary?.gold?.gains > 0) gainDetails.push({ asset: 'Gold', type: 'LTCG', amount: summary.gold.gains, tax: 0 });
-  if (summary?.crypto?.gains > 0) gainDetails.push({ asset: 'Crypto', type: 'STCG', amount: summary.crypto.gains, tax: summary.crypto.tax || 0 });
-  if (summary?.realEstate?.gains > 0) gainDetails.push({ asset: 'Real Estate', type: 'LTCG', amount: summary.realEstate.gains, tax: 0 });
+  const push = (asset, type, amount, tax, note) => {
+    if (Number(amount) > 0) gainDetails.push({ asset, type, amount: Number(amount), tax: Number(tax || 0), note });
+  };
+  push('Equity LTCG', 'LTCG', summary?.equity?.ltcg, summary?.equity?.taxOnLTCG);
+  push('Equity STCG', 'STCG', summary?.equity?.stcg, summary?.equity?.taxOnSTCG);
+  // Losses are rows too. They carry no tax, but hiding them made the numbers unexplainable.
+  push('Equity LTCL (loss)', 'LTCG', equityLtcl, 0, 'Offsets long-term gains');
+  push('Equity STCL (loss)', 'STCG', equityStcl, 0, 'Offsets short-term, then long-term gains');
+
+  // Gold, property and debt now carry real tax rather than a hardcoded zero. Where the class
+  // is slab-rated the backend says so instead of inventing a figure.
+  [['Gold / SGB', summary?.gold], ['Real Estate', summary?.realEstate], ['Debt', summary?.debt]]
+    .forEach(([label, cls]) => {
+      const slabNote = cls?.taxAtSlabRate ? 'Short-term portion taxed at your slab rate' : undefined;
+      push(`${label} LTCG`, 'LTCG', cls?.longTermGains, cls?.tax, slabNote);
+      push(`${label} STCG`, 'STCG', cls?.shortTermGains, 0, slabNote || 'Taxed at your slab rate');
+    });
+
+  push('Crypto / VDA', 'STCG', summary?.crypto?.gains, summary?.crypto?.tax,
+    summary?.crypto?.lossSetOffAllowed === false ? 'Losses cannot be set off (s.115BBH)' : undefined);
 
   return (
     <div className="space-y-6">
@@ -264,6 +319,20 @@ export default function Tax() {
         <div className="flex items-center justify-center h-64 text-[var(--text-muted)]">Loading tax data...</div>
       ) : (
         <>
+          {/* Rates for most historical years are best-effort. Saying so where the figures are
+              actually shown matters more than a badge tucked inside the year dropdown. */}
+          {unverifiedFYs.includes(selectedFY) && (
+            <div className="bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-3 flex items-start gap-2">
+              <Shield className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-[var(--text-secondary)]">
+                <span className="text-amber-400 font-medium">Rates for {selectedFY} are unverified.</span>{' '}
+                Slab structures are reliable, but surcharge details and some transition years need
+                confirmation before these figures are used for a filing.
+                {yearRules?.note && <span className="block text-xs text-[var(--text-muted)] mt-1">{yearRules.note}</span>}
+              </p>
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
@@ -279,8 +348,22 @@ export default function Tax() {
               <p className="text-2xl font-bold text-amber-400 mt-1">{formatCurrency(totalTax)}</p>
             </div>
             <div className="bg-[var(--bg-card)] rounded-xl p-5 border border-[var(--border)]">
-              <p className="text-[var(--text-muted)] text-sm">80C Utilized</p>
-              <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(util80C?.utilized)}</p>
+              {totalLosses > 0 ? (
+                <>
+                  <p className="text-[var(--text-muted)] text-sm">Realised Losses</p>
+                  <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(totalLosses)}</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    {unabsorbedLoss > 0
+                      ? `${formatCurrency(unabsorbedLoss)} unabsorbed, carries forward 8 years`
+                      : 'Fully set off against this year\u2019s gains'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[var(--text-muted)] text-sm">80C Utilized</p>
+                  <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(util80C?.utilized)}</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -301,30 +384,59 @@ export default function Tax() {
                 </span>
               )}
             </div>
+            {/* One card per regime that actually existed in the selected year. Rendering both
+                unconditionally showed a NEW Regime card for pre-2020 years with
+                "Std Deduction: ₹0", because the API has no NEW block for those years and
+                formatCurrency turns undefined into zero. The new regime under s.115BAC
+                begins FY 2020-21. */}
             <div className="flex gap-3">
-              <button
-                onClick={() => updateRegime('NEW')}
-                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'NEW' ? 'border-blue-500 bg-blue-500/10' : 'border-[var(--border)] hover:border-[var(--border)]'}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold">NEW Regime</span>
-                  {taxRegime === 'NEW' && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
-                </div>
-                <p className="text-xs text-[var(--text-muted)] text-left">Lower slabs, no 80C/HRA. Default for FY 2023-24+</p>
-                <p className="text-xs text-[var(--text-secondary)] mt-1 text-left">Std Deduction: ₹75,000</p>
-              </button>
-              <button
-                onClick={() => updateRegime('OLD')}
-                className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === 'OLD' ? 'border-blue-500 bg-blue-500/10' : 'border-[var(--border)] hover:border-[var(--border)]'}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold">OLD Regime</span>
-                  {taxRegime === 'OLD' && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
-                </div>
-                <p className="text-xs text-[var(--text-muted)] text-left">Higher slabs but 80C, HRA, etc. allowed</p>
-                <p className="text-xs text-[var(--text-secondary)] mt-1 text-left">Std Deduction: ₹50,000</p>
-              </button>
+              {availableRegimes.map((regime) => {
+                const rules = yearRules?.regimes?.[regime];
+                return (
+                  <button
+                    key={regime}
+                    onClick={() => updateRegime(regime)}
+                    className={`flex-1 p-4 rounded-lg border-2 transition-all ${taxRegime === regime ? 'border-blue-500 bg-blue-500/10' : 'border-[var(--border)] hover:border-[var(--border)]'}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold">{regime} Regime</span>
+                      {taxRegime === regime && <CheckCircle2 className="w-5 h-5 text-blue-400" />}
+                    </div>
+                    {/* Described from the year's own rules rather than a fixed string, so it
+                        cannot contradict the figures beneath it. */}
+                    <p className="text-xs text-[var(--text-muted)] text-left">
+                      {rules?.allowsDeductions
+                        ? 'Higher slabs, but 80C, HRA and other deductions allowed'
+                        : 'Lower slabs, no 80C or HRA'}
+                    </p>
+                    {/* A genuine zero (the old regime had no standard deduction from FY
+                        2005-06 to FY 2017-18) must not read like missing data, which is how
+                        an absent value rendered before. */}
+                    <p className="text-xs text-[var(--text-secondary)] mt-1 text-left">
+                      Std Deduction: {Number(rules?.standardDeduction) > 0
+                        ? formatCurrency(rules.standardDeduction)
+                        : 'none this year'}
+                    </p>
+                    {Number(rules?.maxRebate) > 0 && (
+                      <p className="text-xs text-[var(--text-secondary)] text-left">
+                        Rebate u/s 87A: up to {formatCurrency(rules.maxRebate)} below {formatCurrency(rules.rebateThreshold)}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
             </div>
+            {availableRegimes.length === 1 && (
+              <p className="text-xs text-[var(--text-muted)] mt-3">
+                Only the {availableRegimes[0]} regime existed in {selectedFY}. The new regime
+                under section 115BAC begins FY 2020-2021.
+                {taxRegime !== availableRegimes[0] && (
+                  <span className="text-amber-400">
+                    {' '}Your saved preference ({taxRegime}) does not apply to this year.
+                  </span>
+                )}
+              </p>
+            )}
           </div>
 
           {/* Form 16 Section */}
@@ -479,8 +591,11 @@ export default function Tax() {
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${g.type === 'LTCG' ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>{g.type}</span>
                       </td>
-                      <td className={`px-4 py-3 text-right font-medium text-sm ${g.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(g.amount)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-sm text-amber-400">{formatCurrency(g.tax)}</td>
+                      <td className={`px-4 py-3 text-right font-medium text-sm ${g.asset.includes('loss') ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(g.amount)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-sm text-amber-400">
+                        {formatCurrency(g.tax)}
+                        {g.note && <span className="block text-[10px] text-[var(--text-muted)] font-normal mt-0.5">{g.note}</span>}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -499,28 +614,49 @@ export default function Tax() {
               <p className="text-[var(--text-secondary)] text-center py-8">No harvesting opportunities available</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {harvestingOpps.map((opp, idx) => (
-                  <div key={idx} className="bg-[var(--input-bg)] border border-[var(--border)] rounded-lg p-4 hover:border-blue-500 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-semibold text-sm">{opp.symbol}</span>
-                      <span className="text-xs text-[var(--text-muted)]">{opp.quantity} shares</span>
+                {harvestingOpps.map((opp, idx) => {
+                  // Three distinct kinds, previously conflated under one "Current Loss" label.
+                  const isLoss = opp.type === 'LOSS_HARVEST';
+                  const isWait = opp.type === 'WAIT_FOR_LTCG';
+                  const badge = isLoss ? 'Book loss' : isWait ? 'Wait' : 'Tax-free gain';
+                  const badgeClass = isLoss
+                    ? 'bg-red-400/10 text-red-400'
+                    : isWait
+                      ? 'bg-amber-400/10 text-amber-400'
+                      : 'bg-green-400/10 text-green-400';
+                  return (
+                    <div key={opp.holdingId || idx} className="bg-[var(--input-bg)] border border-[var(--border)] rounded-lg p-4 hover:border-blue-500 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-semibold text-sm">{opp.symbol}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${badgeClass}`}>{badge}</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-[var(--text-muted)]">{Number(opp.quantity ?? 0)} units</span>
+                          <span className="text-[var(--text-muted)] text-xs">{opp.holdingDays}d held</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-[var(--text-muted)]">{isLoss ? 'Unrealised Loss' : 'Unrealised Gain'}</span>
+                          <span className={`font-medium ${isLoss ? 'text-red-400' : 'text-green-400'}`}>
+                            {formatCurrency(isLoss ? opp.currentLoss : opp.unrealizedGain)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-[var(--text-muted)]">{isWait ? 'Tax If Sold Now' : 'Tax Saved'}</span>
+                          <span className={`font-medium ${isWait ? 'text-amber-400' : 'text-green-400'}`}>
+                            {formatCurrency(isWait ? opp.taxIfSoldNow : opp.potentialSavings)}
+                          </span>
+                        </div>
+                        {opp.reason && (
+                          <div className="flex items-start gap-1 text-xs text-blue-400 mt-2">
+                            <ArrowRight className="w-3 h-3 mt-0.5 shrink-0" />
+                            <span>{opp.reason}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-muted)]">Current Loss</span>
-                        <span className="text-red-400 font-medium">{formatCurrency(opp.currentLoss)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-[var(--text-muted)]">Potential Savings</span>
-                        <span className="text-green-400 font-medium">{formatCurrency(opp.potentialSavings)}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-blue-400 mt-2">
-                        <ArrowRight className="w-3 h-3" />
-                        <span>Harvest to offset gains</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -544,7 +680,7 @@ export default function Tax() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {TAX_RULES.map((rule, idx) => (
+                  {taxRulesForYear().map((rule, idx) => (
                     <tr key={idx} className="hover:bg-[var(--hover-bg)]">
                       <td className="px-4 py-3 font-medium text-sm">{rule.asset}</td>
                       <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-400/10 text-blue-400">{rule.rate}</span></td>
@@ -584,18 +720,39 @@ export default function Tax() {
                   <p className="text-sm text-[var(--text-muted)] mb-2">OLD Regime</p>
                   <p className="text-2xl font-bold">{formatCurrency(comparison.oldRegime?.totalTax)}</p>
                   <p className="text-xs text-[var(--text-muted)] mt-1">Taxable: {formatCurrency(comparison.oldRegime?.taxableIncome)}</p>
+                  {Number(comparison.oldRegime?.rebate) > 0 && (
+                    <p className="text-xs text-[var(--text-muted)]">Rebate u/s 87A: {formatCurrency(comparison.oldRegime.rebate)}</p>
+                  )}
+                  {Number(comparison.oldRegime?.marginalRelief) > 0 && (
+                    <p className="text-xs text-blue-400">Marginal relief: {formatCurrency(comparison.oldRegime.marginalRelief)}</p>
+                  )}
+                  {Number(comparison.oldRegime?.surcharge) > 0 && (
+                    <p className="text-xs text-[var(--text-muted)]">Surcharge: {formatCurrency(comparison.oldRegime.surcharge)}</p>
+                  )}
                   {comparison.recommended === 'OLD' && <p className="text-xs text-green-400 mt-2">✓ Recommended</p>}
                 </div>
                 <div className={`p-4 rounded-lg border-2 ${comparison.recommended === 'NEW' ? 'border-green-500 bg-green-500/10' : 'border-[var(--border)]'}`}>
                   <p className="text-sm text-[var(--text-muted)] mb-2">NEW Regime</p>
                   <p className="text-2xl font-bold">{formatCurrency(comparison.newRegime?.totalTax)}</p>
                   <p className="text-xs text-[var(--text-muted)] mt-1">Taxable: {formatCurrency(comparison.newRegime?.taxableIncome)}</p>
+                  {Number(comparison.newRegime?.rebate) > 0 && (
+                    <p className="text-xs text-[var(--text-muted)]">Rebate u/s 87A: {formatCurrency(comparison.newRegime.rebate)}</p>
+                  )}
+                  {/* Relief matters here: without it, income just over the rebate threshold
+                      attracts more tax than the extra income earned. */}
+                  {Number(comparison.newRegime?.marginalRelief) > 0 && (
+                    <p className="text-xs text-blue-400">Marginal relief: {formatCurrency(comparison.newRegime.marginalRelief)}</p>
+                  )}
+                  {Number(comparison.newRegime?.surcharge) > 0 && (
+                    <p className="text-xs text-[var(--text-muted)]">Surcharge: {formatCurrency(comparison.newRegime.surcharge)}</p>
+                  )}
                   {comparison.recommended === 'NEW' && <p className="text-xs text-green-400 mt-2">✓ Recommended</p>}
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
                 <p className="text-sm">
-                  💡 The <span className="font-semibold text-blue-400">{comparison.recommended} Regime</span> saves you
+                  💡 For <span className="font-semibold">{comparison.financialYear || selectedFY}</span>, the{' '}
+                  <span className="font-semibold text-blue-400">{comparison.recommended} Regime</span> saves you
                   <span className="font-semibold text-green-400"> {formatCurrency(comparison.savings)}</span> in this scenario.
                 </p>
               </div>

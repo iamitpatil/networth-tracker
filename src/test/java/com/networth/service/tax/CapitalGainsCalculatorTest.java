@@ -68,7 +68,9 @@ class CapitalGainsCalculatorTest {
 
     private Map<String, Object> run(AssetType type, List<Transaction> txns) {
         when(holdingRepository.findByUserId(userId)).thenReturn(List.of(holding(type)));
-        when(transactionRepository.findByHoldingId(any())).thenReturn(txns);
+        // The calculator fetches the whole portfolio's transactions once and groups by
+        // holding, rather than querying per holding.
+        when(transactionRepository.findByUserId(userId)).thenReturn(txns);
         return calculator.calculateCapitalGains(userId, FY);
     }
 
@@ -225,7 +227,7 @@ class CapitalGainsCalculatorTest {
                 txn(TransactionType.SELL, "100", "50", "2024-06-01"));
 
         when(holdingRepository.findByUserId(userId)).thenReturn(List.of(holding(AssetType.EQUITY)));
-        when(transactionRepository.findByHoldingId(any())).thenReturn(txns);
+        when(transactionRepository.findByUserId(userId)).thenReturn(txns);
 
         BigDecimal fourDigit = num(equity(calculator.calculateCapitalGains(userId, "2024-2025")), "stcg");
         BigDecimal twoDigit  = num(equity(calculator.calculateCapitalGains(userId, "2024-25")),   "stcg");
@@ -256,6 +258,95 @@ class CapitalGainsCalculatorTest {
 
         assertThat(num(eq, "stcg")).isEqualByComparingTo("0");
         assertThat(num(eq, "stcl")).isEqualByComparingTo("0");
+    }
+
+    // ── asset classes beyond equity and crypto ────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> assetClass(Map<String, Object> result, String key) {
+        return (Map<String, Object>) result.get(key);
+    }
+
+    @Test
+    @DisplayName("long-term gold gain is taxed at the fixed rate, not left untaxed")
+    void goldLongTermIsTaxed() {
+        // Gold long-term threshold is 1095 days. Bought at 100, sold at 200 after ~4 years.
+        Map<String, Object> r = run(AssetType.GOLD, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2021-04-01"),
+                txn(TransactionType.SELL, "100", "200", "2024-08-01")));
+        Map<String, Object> gold = assetClass(r, "gold");
+
+        assertThat(num(gold, "gains")).isEqualByComparingTo("10000");
+        assertThat(num(gold, "longTermGains")).isEqualByComparingTo("10000");
+        // Sold after 23 Jul 2024, so 12.5% applies: previously this was reported as zero tax.
+        assertThat(num(gold, "tax")).isEqualByComparingTo("1250.00");
+        assertThat(gold.get("taxAtSlabRate")).isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("short-term gold gain is flagged as slab-rated rather than given a made-up figure")
+    void goldShortTermIsSlabRated() {
+        Map<String, Object> r = run(AssetType.GOLD, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2024-04-01"),
+                txn(TransactionType.SELL, "100", "200", "2024-08-01")));
+        Map<String, Object> gold = assetClass(r, "gold");
+
+        assertThat(num(gold, "shortTermGains")).isEqualByComparingTo("10000");
+        assertThat(num(gold, "tax")).isEqualByComparingTo("0");
+        assertThat(gold.get("taxAtSlabRate")).isEqualTo(true);
+        assertThat((String) gold.get("slabRateNote")).contains("slab rate");
+    }
+
+    @Test
+    @DisplayName("debt fund gains are always slab-rated")
+    void debtIsSlabRated() {
+        Map<String, Object> r = run(AssetType.BOND, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2020-04-01"),
+                txn(TransactionType.SELL, "100", "150", "2024-08-01")));
+        Map<String, Object> debt = assetClass(r, "debt");
+
+        assertThat(num(debt, "gains")).isEqualByComparingTo("5000");
+        assertThat(num(debt, "tax")).isEqualByComparingTo("0");
+        assertThat(debt.get("taxAtSlabRate")).isEqualTo(true);
+    }
+
+    @Test
+    @DisplayName("gold sold before 23 July 2024 uses the older 20% rate")
+    void goldRateFollowsTheBudgetDate() {
+        Map<String, Object> r = run(AssetType.GOLD, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2021-04-01"),
+                txn(TransactionType.SELL, "100", "200", "2024-07-01")));
+        assertThat(num(assetClass(r, "gold"), "tax")).isEqualByComparingTo("2000.00");   // 20%
+    }
+
+    @Test
+    @DisplayName("tax on other asset classes is included in cess and the total")
+    void otherAssetTaxFeedsCessAndTotal() {
+        Map<String, Object> r = run(AssetType.GOLD, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2021-04-01"),
+                txn(TransactionType.SELL, "100", "200", "2024-08-01")));
+
+        assertThat(num(r, "otherAssetTax")).isEqualByComparingTo("1250.00");
+        // 4% cess on the 1250, which the old code omitted entirely for these classes.
+        assertThat(num(r, "cess")).isEqualByComparingTo("50.00");
+        assertThat(num(r, "totalTax")).isEqualByComparingTo("1300.00");
+    }
+
+    @Test
+    @DisplayName("a loss in these classes reduces the tax rather than being ignored")
+    void lossReducesOtherAssetTax() {
+        // One gold lot gains 10,000 long-term, another loses 4,000 long-term -> 6,000 net.
+        Map<String, Object> r = run(AssetType.GOLD, List.of(
+                txn(TransactionType.BUY,  "100", "100", "2021-04-01"),
+                txn(TransactionType.SELL, "100", "200", "2024-08-01"),
+                txn(TransactionType.BUY,  "100", "200", "2021-05-01"),
+                txn(TransactionType.SELL, "100", "160", "2024-09-01")));
+        Map<String, Object> gold = assetClass(r, "gold");
+
+        assertThat(num(gold, "longTermGains")).isEqualByComparingTo("10000");
+        assertThat(num(gold, "losses")).isEqualByComparingTo("4000");
+        assertThat(num(gold, "longTermAfterSetOff")).isEqualByComparingTo("6000");
+        assertThat(num(gold, "tax")).isEqualByComparingTo("750.00");   // 12.5% of 6000
     }
 
     // ── precision ─────────────────────────────────────────────────────

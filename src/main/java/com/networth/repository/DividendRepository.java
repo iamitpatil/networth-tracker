@@ -4,11 +4,15 @@ import com.networth.model.entity.Dividend;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface DividendRepository extends JpaRepository<Dividend, UUID> {
     List<Dividend> findByHoldingId(UUID holdingId);
+
+    /** Dividends for many holdings in one query, so callers iterating holdings avoid an N+1. */
+    List<Dividend> findByHoldingIdIn(Collection<UUID> holdingIds);
     List<Dividend> findBySymbol(String symbol);
 }

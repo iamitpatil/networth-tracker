@@ -35,4 +35,20 @@ public record RegimeRules(
         }
         return rate;
     }
+
+    /**
+     * The income threshold of the surcharge band that applies, or null if none does.
+     *
+     * <p>Needed for marginal relief: surcharge must not push the total tax above the tax at
+     * the threshold plus the income earned over it.
+     */
+    public BigDecimal surchargeThresholdFor(BigDecimal income) {
+        BigDecimal threshold = null;
+        for (SurchargeBand band : surchargeBands) {
+            if (income.compareTo(band.incomeAbove()) > 0) {
+                threshold = band.incomeAbove();
+            }
+        }
+        return threshold;
+    }
 }

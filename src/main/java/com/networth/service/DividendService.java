@@ -30,8 +30,10 @@ public class DividendService {
         Map<String, BigDecimal> dividendsByYear = new TreeMap<>(Collections.reverseOrder());
         Map<String, BigDecimal> dividendsByStock = new LinkedHashMap<>();
 
+        Map<UUID, List<Dividend>> dividendsByHolding = dividendsFor(holdings);
+
         for (Holding holding : holdings) {
-            List<Dividend> dividends = dividendRepository.findByHoldingId(holding.getId());
+            List<Dividend> dividends = dividendsByHolding.getOrDefault(holding.getId(), List.of());
 
             for (Dividend dividend : dividends) {
                 totalDividends = totalDividends.add(dividend.getDividendAmount());
@@ -83,8 +85,10 @@ public class DividendService {
         BigDecimal monthlyInterest = BigDecimal.ZERO;
         BigDecimal monthlyRent = BigDecimal.ZERO;
 
+        Map<UUID, List<Dividend>> dividendsByHolding = dividendsFor(holdings);
+
         for (Holding holding : holdings) {
-            List<Dividend> dividends = dividendRepository.findByHoldingId(holding.getId());
+            List<Dividend> dividends = dividendsByHolding.getOrDefault(holding.getId(), List.of());
             BigDecimal annualDividend = dividends.stream()
                     .map(Dividend::getDividendAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -119,5 +123,20 @@ public class DividendService {
                 ),
                 "annualIncome", totalMonthlyIncome.multiply(BigDecimal.valueOf(12)).setScale(2, RoundingMode.HALF_UP)
         );
+    }
+
+    /**
+     * Dividends for a set of holdings in one query, grouped by holding.
+     *
+     * <p>Replaces a query per holding. The totals are the same; only the round trips collapse.
+     */
+    private Map<UUID, List<Dividend>> dividendsFor(List<Holding> holdings) {
+        if (holdings.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> ids = holdings.stream().map(Holding::getId).toList();
+        return dividendRepository.findByHoldingIdIn(ids).stream()
+                .filter(d -> d.getHoldingId() != null)
+                .collect(Collectors.groupingBy(Dividend::getHoldingId));
     }
 }

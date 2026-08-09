@@ -99,6 +99,96 @@ class TaxRegimeCalculatorTest {
         assertThat(fy2025.getTotalTax()).isEqualByComparingTo("0");
     }
 
+    // ── marginal relief ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("just above the 12L rebate cliff, tax cannot exceed the extra income earned")
+    void rebateMarginalRelief() {
+        // FY 2025-26: 12,00,000 pays nothing. Without relief 12,10,000 would owe 61,500 on
+        // 10,000 of extra income - earning more would leave the taxpayer worse off.
+        var atThreshold = calculator.calculateTax(new BigDecimal("1200000"), TaxRegime.NEW, "2025-2026");
+        assertThat(atThreshold.getTotalTax()).isEqualByComparingTo("0");
+
+        var justOver = calculator.calculateTax(new BigDecimal("1210000"), TaxRegime.NEW, "2025-2026");
+        assertThat(justOver.getTaxBeforeRebate()).isEqualByComparingTo("61500");
+        assertThat(justOver.getMarginalRelief()).isEqualByComparingTo("51500");
+        assertThat(justOver.getTaxAfterRebate()).isEqualByComparingTo("10000");   // capped at the excess
+        // Cess still applies on top of the relieved figure.
+        assertThat(justOver.getTotalTax()).isEqualByComparingTo("10400.00");
+    }
+
+    @Test
+    @DisplayName("relief removes the rebate cliff, leaving only the cess charged on relieved tax")
+    void reliefRemovesTheCliff() {
+        // Marginal relief caps tax at the excess income, but 4% cess still applies on top of
+        // that figure - which is how the published worked example arrives at 10,400 on
+        // 12,10,000. So take-home can still dip, by the cess and no more, rather than by the
+        // tens of thousands an unrelieved cliff would cost.
+        BigDecimal threshold = new BigDecimal("1200000");
+        BigDecimal takeHomeAtThreshold = threshold.subtract(
+                calculator.calculateTax(threshold, TaxRegime.NEW, "2025-2026").getTotalTax());
+
+        for (int income = 1205000; income <= 1290000; income += 5000) {
+            BigDecimal gross = new BigDecimal(income);
+            var tax = calculator.calculateTax(gross, TaxRegime.NEW, "2025-2026");
+            BigDecimal takeHome = gross.subtract(tax.getTotalTax());
+            BigDecimal maxDip = gross.subtract(threshold).multiply(new BigDecimal("0.04"));
+
+            assertThat(takeHome).as("take-home at %d", income)
+                    .isGreaterThanOrEqualTo(takeHomeAtThreshold.subtract(maxDip));
+        }
+    }
+
+    @Test
+    @DisplayName("relieved tax before cess equals exactly the income earned over the threshold")
+    void relievedTaxEqualsTheExcess() {
+        for (int excess : new int[]{5000, 10000, 20000}) {
+            BigDecimal income = new BigDecimal(1200000 + excess);
+            var tax = calculator.calculateTax(income, TaxRegime.NEW, "2025-2026");
+            assertThat(tax.getTaxAfterRebate()).as("relieved tax at excess %d", excess)
+                    .isEqualByComparingTo(new BigDecimal(excess));
+        }
+    }
+
+    @Test
+    @DisplayName("relief stops applying once the excess income exceeds the tax")
+    void reliefIsSelfLimiting() {
+        // Far enough above the threshold, the full tax is due and no relief remains.
+        var wellOver = calculator.calculateTax(new BigDecimal("1400000"), TaxRegime.NEW, "2025-2026");
+        assertThat(wellOver.getMarginalRelief()).isEqualByComparingTo("0");
+        assertThat(wellOver.getTaxAfterRebate()).isEqualByComparingTo("90000");
+    }
+
+    @Test
+    @DisplayName("just above a surcharge threshold, relief caps the jump to the excess plus cess")
+    void surchargeMarginalRelief() {
+        // Crossing 50 lakh adds 10% surcharge to the whole bill. Unrelieved, 10,000 of extra
+        // income would attract a far larger increase in tax.
+        BigDecimal threshold = new BigDecimal("5000000");
+        BigDecimal justOverIncome = new BigDecimal("5010000");
+        var atThreshold = calculator.calculateTax(threshold, TaxRegime.NEW, "2025-2026");
+        var justOver = calculator.calculateTax(justOverIncome, TaxRegime.NEW, "2025-2026");
+
+        assertThat(justOver.getMarginalRelief()).isGreaterThan(BigDecimal.ZERO);
+
+        // The extra tax must not exceed the extra income, give or take the cess on it.
+        BigDecimal extraTax = justOver.getTotalTax().subtract(atThreshold.getTotalTax());
+        BigDecimal extraIncome = justOverIncome.subtract(threshold);
+        assertThat(extraTax).isLessThanOrEqualTo(extraIncome.multiply(new BigDecimal("1.04")));
+
+        // Sanity: without relief the surcharge alone would be about 10% of a large tax bill.
+        assertThat(extraTax).isLessThan(new BigDecimal("50000"));
+    }
+
+    @Test
+    @DisplayName("years with no 87A rebate get no rebate relief")
+    void noReliefWhereNoRebateExisted() {
+        // FY 2010-11 had no section 87A rebate at all.
+        var tax = calculator.calculateTax(new BigDecimal("500000"), TaxRegime.OLD, "2010-2011");
+        assertThat(tax.getRebate()).isEqualByComparingTo("0");
+        assertThat(tax.getMarginalRelief()).isEqualByComparingTo("0");
+    }
+
     // ── surcharge ─────────────────────────────────────────────────────
 
     @Test

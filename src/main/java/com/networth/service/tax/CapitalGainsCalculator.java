@@ -47,10 +47,14 @@ public class CapitalGainsCalculator {
         List<CapitalGain> cryptoGains = new ArrayList<>();
         List<CapitalGain> realEstateGains = new ArrayList<>();
 
+        // One query for the whole portfolio, grouped in memory. This was a query per holding
+        // (originally two), so a 60-holding portfolio issued 60+ queries per tax report.
+        Map<UUID, List<Transaction>> txnsByHolding = transactionRepository.findByUserId(userId).stream()
+                .filter(t -> t.getHoldingId() != null && t.getTransactionDate() != null)
+                .collect(Collectors.groupingBy(Transaction::getHoldingId));
+
         for (Holding holding : holdings) {
-            // One query per holding, then partition in memory. Previously this hit the
-            // repository twice for the same rows.
-            List<Transaction> txns = transactionRepository.findByHoldingId(holding.getId());
+            List<Transaction> txns = txnsByHolding.getOrDefault(holding.getId(), List.of());
 
             List<Transaction> sells = txns.stream()
                     .filter(t -> t.getTransactionType() == TransactionType.SELL)
@@ -202,8 +206,9 @@ public class CapitalGainsCalculator {
         }
         taxOnCrypto = taxOnCrypto.setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal cess = taxOnEquityLTCG.add(taxOnEquitySTCG).add(taxOnCrypto)
-                .multiply(yearEndRules.cessRate()).setScale(2, RoundingMode.HALF_UP);
+        // Cess applies to all of it. It previously skipped debt, gold and real estate because
+        // no tax was computed for them.
+        BigDecimal cessableTax = taxOnEquityLTCG.add(taxOnEquitySTCG).add(taxOnCrypto);
 
         Map<String, Object> equity = new LinkedHashMap<>();
         equity.put("ltcg", grossEquityLTCG);
@@ -228,15 +233,25 @@ public class CapitalGainsCalculator {
                 "stcgRate", b.rules.stcgRate(),
                 "note", b.rulePeriod.note())).toList());
         result.put("equity", equity);
-        result.put("debt", netAndGross(debtGains));
-        result.put("gold", netAndGross(goldGains));
+        Map<String, Object> debt = assetClassSummary(debtGains);
+        Map<String, Object> gold = assetClassSummary(goldGains);
+        Map<String, Object> realEstate = assetClassSummary(realEstateGains);
+        BigDecimal otherClassTax = ((BigDecimal) debt.get("tax"))
+                .add((BigDecimal) gold.get("tax"))
+                .add((BigDecimal) realEstate.get("tax"));
+
+        result.put("debt", debt);
+        result.put("gold", gold);
         result.put("crypto", Map.of(
                 "gains", grossCryptoGains,
                 "losses", cryptoLosses,
                 "tax", taxOnCrypto,
                 "lossSetOffAllowed", false));
-        result.put("realEstate", netAndGross(realEstateGains));
-        result.put("totalTax", taxOnEquityLTCG.add(taxOnEquitySTCG).add(taxOnCrypto).add(cess));
+        result.put("realEstate", realEstate);
+        BigDecimal cess = cessableTax.add(otherClassTax)
+                .multiply(yearEndRules.cessRate()).setScale(2, RoundingMode.HALF_UP);
+        result.put("otherAssetTax", otherClassTax);
+        result.put("totalTax", cessableTax.add(otherClassTax).add(cess));
         result.put("cess", cess);
         return result;
     }
@@ -306,14 +321,57 @@ public class CapitalGainsCalculator {
         }
     }
 
-    /** Gross gains, gross losses and the net for asset classes whose tax is not computed here. */
-    private Map<String, Object> netAndGross(List<CapitalGain> gains) {
-        BigDecimal grossGains = sumGains(gains, true).add(sumGains(gains, false));
-        BigDecimal grossLosses = sumLosses(gains, true).add(sumLosses(gains, false));
+    /**
+     * Gains, losses and tax for an asset class outside equity and crypto.
+     *
+     * <p>Long-term gold and property have a fixed rate, so tax is computed. Debt funds, and
+     * short-term disposals of gold and property, fall into the taxpayer's income slab — which
+     * depends on total income and regime, neither of which this calculator sees. Those are
+     * reported with {@code taxAtSlabRate} true and no tax figure, rather than a guess.
+     */
+    private Map<String, Object> assetClassSummary(List<CapitalGain> gains) {
+        BigDecimal longGains = sumGains(gains, true);
+        BigDecimal shortGains = sumGains(gains, false);
+        BigDecimal longLosses = sumLosses(gains, true);
+        BigDecimal shortLosses = sumLosses(gains, false);
+
+        BigDecimal longAfterSetOff = longGains.subtract(longLosses).max(BigDecimal.ZERO);
+        BigDecimal shortAfterSetOff = shortGains.subtract(shortLosses).max(BigDecimal.ZERO);
+
+        // Long-term tax at the period rate for each disposal; short-term is slab-rated.
+        BigDecimal tax = BigDecimal.ZERO;
+        boolean anySlabRated = false;
+        for (CapitalGain cg : gains) {
+            if (cg.getGain().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            CapitalGainsRules periodRules = ruleRegistry.forDate(cg.getSaleDate()).capitalGains();
+            if (periodRules.isSlabRated(cg.getAssetType(), cg.isLongTerm())) {
+                anySlabRated = true;
+            } else {
+                tax = tax.add(cg.getGain().multiply(periodRules.otherAssetLtcgRate()));
+            }
+        }
+        // Losses relieve the gains they can, so scale the computed tax down proportionally
+        // rather than taxing gross gains that a loss has already absorbed.
+        if (longGains.compareTo(BigDecimal.ZERO) > 0 && longAfterSetOff.compareTo(longGains) < 0) {
+            tax = tax.multiply(longAfterSetOff).divide(longGains, 10, RoundingMode.HALF_UP);
+        }
+
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("gains", grossGains);
-        m.put("losses", grossLosses);
-        m.put("net", grossGains.subtract(grossLosses));
+        m.put("gains", longGains.add(shortGains));
+        m.put("losses", longLosses.add(shortLosses));
+        m.put("net", longGains.add(shortGains).subtract(longLosses).add(shortLosses.negate()));
+        m.put("longTermGains", longGains);
+        m.put("shortTermGains", shortGains);
+        m.put("longTermAfterSetOff", longAfterSetOff);
+        m.put("shortTermAfterSetOff", shortAfterSetOff);
+        m.put("tax", tax.setScale(2, RoundingMode.HALF_UP));
+        m.put("taxAtSlabRate", anySlabRated);
+        if (anySlabRated) {
+            m.put("slabRateNote", "Short-term gains here are taxed at your income slab rate, "
+                    + "which depends on your total income and regime, so no figure is computed");
+        }
         return m;
     }
 

@@ -31,6 +31,13 @@ public class TaxRegimeCalculator {
     /**
      * Income tax for a taxable income under one regime, using the rules in force for the
      * given financial year.
+     *
+     * <p><b>Pass ordinary income only.</b> The section 87A rebate is not available against
+     * income taxed at special rates — capital gains under s.112A, lottery winnings, virtual
+     * digital assets — and this method has no way to tell which part of the figure it is
+     * given is special-rate. Capital gains are computed separately by
+     * {@link CapitalGainsCalculator}, so today nothing folds them in here; adding such a
+     * figure to {@code taxableIncome} would over-credit the rebate.
      */
     public TaxComputation calculateTax(BigDecimal taxableIncome, TaxRegime regime, String financialYear) {
         var ruleSet = ruleRegistry.forFinancialYear(financialYear);
@@ -43,8 +50,14 @@ public class TaxRegimeCalculator {
         BigDecimal rebate = rules.rebate().applicableTo(taxableIncome, tax);
         BigDecimal taxAfterRebate = tax.subtract(rebate).max(BigDecimal.ZERO);
 
+        BigDecimal rebateMarginalRelief = rebateMarginalRelief(taxableIncome, taxAfterRebate, rebate, rules);
+        taxAfterRebate = taxAfterRebate.subtract(rebateMarginalRelief).max(BigDecimal.ZERO);
+
         BigDecimal surchargeRate = rules.surchargeRateFor(taxableIncome);
         BigDecimal surcharge = taxAfterRebate.multiply(surchargeRate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal surchargeMarginalRelief =
+                surchargeMarginalRelief(taxableIncome, taxAfterRebate, surcharge, rules);
+        surcharge = surcharge.subtract(surchargeMarginalRelief).max(BigDecimal.ZERO);
 
         BigDecimal taxWithSurcharge = taxAfterRebate.add(surcharge);
         BigDecimal cess = taxWithSurcharge.multiply(ruleSet.cessRate()).setScale(2, RoundingMode.HALF_UP);
@@ -54,11 +67,57 @@ public class TaxRegimeCalculator {
                 .taxableIncome(taxableIncome)
                 .taxBeforeRebate(tax)
                 .rebate(rebate)
+                .marginalRelief(rebateMarginalRelief.add(surchargeMarginalRelief))
                 .taxAfterRebate(taxAfterRebate)
                 .surcharge(surcharge)
                 .cess(cess)
                 .totalTax(taxWithSurcharge.add(cess))
                 .build();
+    }
+
+    /**
+     * Relief just above the section 87A rebate threshold.
+     *
+     * <p>The rebate is a cliff: at the threshold tax is nil, a rupee over and the whole rebate
+     * vanishes. Under FY 2025-26 rules, income of 12,00,000 pays nothing while 12,10,000 would
+     * pay 61,500 — over six times the extra income earned. Marginal relief caps the tax at the
+     * income earned above the threshold, so earning more can never leave you worse off.
+     *
+     * <p>Self-limiting: as income rises the excess grows and eventually exceeds the tax, at
+     * which point no relief is due.
+     */
+    private BigDecimal rebateMarginalRelief(BigDecimal income, BigDecimal taxAfterRebate,
+                                            BigDecimal rebateGiven, RegimeRules rules) {
+        if (rebateGiven.signum() != 0 || rules.rebate().maxRebate().signum() == 0) {
+            return BigDecimal.ZERO;   // rebate was granted, or this year had none
+        }
+        BigDecimal excessOverThreshold = income.subtract(rules.rebate().incomeThreshold());
+        if (excessOverThreshold.signum() <= 0 || taxAfterRebate.compareTo(excessOverThreshold) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return taxAfterRebate.subtract(excessOverThreshold);
+    }
+
+    /**
+     * Relief just above a surcharge threshold.
+     *
+     * <p>Surcharge is also a cliff — crossing 50 lakh adds 10% to the whole tax bill. Relief
+     * caps tax plus surcharge at the tax due on the threshold income plus the income earned
+     * over it.
+     */
+    private BigDecimal surchargeMarginalRelief(BigDecimal income, BigDecimal taxAfterRebate,
+                                               BigDecimal surcharge, RegimeRules rules) {
+        if (surcharge.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal threshold = rules.surchargeThresholdFor(income);
+        if (threshold == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal taxAtThreshold = applySlabs(threshold, rules.slabs());
+        BigDecimal cap = taxAtThreshold.add(income.subtract(threshold));
+        BigDecimal payable = taxAfterRebate.add(surcharge);
+        return payable.compareTo(cap) > 0 ? payable.subtract(cap) : BigDecimal.ZERO;
     }
 
     /**
@@ -140,6 +199,8 @@ public class TaxRegimeCalculator {
         private BigDecimal taxableIncome;
         private BigDecimal taxBeforeRebate;
         private BigDecimal rebate;
+        /** Relief applied because a rebate or surcharge cliff would otherwise over-tax. */
+        private BigDecimal marginalRelief;
         private BigDecimal taxAfterRebate;
         private BigDecimal surcharge;
         private BigDecimal cess;
@@ -151,6 +212,7 @@ public class TaxRegimeCalculator {
                     .taxableIncome(BigDecimal.ZERO)
                     .taxBeforeRebate(BigDecimal.ZERO)
                     .rebate(BigDecimal.ZERO)
+                    .marginalRelief(BigDecimal.ZERO)
                     .taxAfterRebate(BigDecimal.ZERO)
                     .surcharge(BigDecimal.ZERO)
                     .cess(BigDecimal.ZERO)
@@ -164,6 +226,7 @@ public class TaxRegimeCalculator {
             map.put("taxableIncome", taxableIncome);
             map.put("taxBeforeRebate", taxBeforeRebate);
             map.put("rebate", rebate);
+            map.put("marginalRelief", marginalRelief);
             map.put("taxAfterRebate", taxAfterRebate);
             map.put("surcharge", surcharge);
             map.put("cess", cess);

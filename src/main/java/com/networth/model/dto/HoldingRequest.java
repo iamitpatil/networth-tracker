@@ -41,5 +41,11 @@ public class HoldingRequest {
 
     private LocalDate lockInUntil;
 
+    /**
+     * When the position was originally bought. Used to record the opening lot so cost basis
+     * and holding period are correct. Defaults to today when omitted.
+     */
+    private LocalDate purchaseDate;
+
     private Map<String, Object> metadata;
 }

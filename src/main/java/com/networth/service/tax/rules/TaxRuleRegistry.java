@@ -66,9 +66,24 @@ public class TaxRuleRegistry {
         this(RESOURCE);
     }
 
-    /** Test seam: load an alternative resource, e.g. a deliberately malformed fixture. */
+    /** Test seam: load an alternative classpath resource. */
     TaxRuleRegistry(String resourcePath) {
-        this.byFinancialYear = Collections.unmodifiableMap(load(resourcePath));
+        this.byFinancialYear = Collections.unmodifiableMap(load(readResource(resourcePath), resourcePath));
+    }
+
+    private TaxRuleRegistry(JsonNode root, String label) {
+        this.byFinancialYear = Collections.unmodifiableMap(load(root, label));
+    }
+
+    /**
+     * Test seam: validate an in-memory rules document.
+     *
+     * <p>Lets the validation tests derive a deliberately malformed document from the real
+     * {@code tax-rules.json} at runtime, so they cannot go stale when the schema gains a
+     * field — a hand-written fixture would start failing for the wrong reason.
+     */
+    static TaxRuleRegistry fromJson(JsonNode root, String label) {
+        return new TaxRuleRegistry(root, label);
     }
 
     // ── lookup ────────────────────────────────────────────────────────
@@ -194,14 +209,15 @@ public class TaxRuleRegistry {
 
     // ── loading and validation ────────────────────────────────────────
 
-    private Map<String, List<TaxRuleSet>> load(String resourcePath) {
-        JsonNode root;
+    private static JsonNode readResource(String resourcePath) {
         try (InputStream in = new ClassPathResource(resourcePath).getInputStream()) {
-            root = new ObjectMapper().readTree(in);
+            return new ObjectMapper().readTree(in);
         } catch (IOException e) {
             throw new IllegalStateException("Cannot read tax rules from classpath:" + resourcePath, e);
         }
+    }
 
+    private Map<String, List<TaxRuleSet>> load(JsonNode root, String resourcePath) {
         int version = required(root, "formatVersion", resourcePath).asInt();
         if (version != SUPPORTED_FORMAT_VERSION) {
             throw new IllegalStateException(resourcePath + ": formatVersion " + version
@@ -249,6 +265,7 @@ public class TaxRuleRegistry {
                 rate(cgNode, "stcgRate", where),
                 amount(cgNode, "ltcgExemption", where),
                 rate(cgNode, "cryptoRate", where),
+                rate(cgNode, "otherAssetLtcgRate", where),
                 parseThresholds(cgNode, where),
                 required(cgNode, "defaultLongTermDays", where).asLong());
 

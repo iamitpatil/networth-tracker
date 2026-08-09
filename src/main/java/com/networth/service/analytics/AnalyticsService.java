@@ -33,13 +33,34 @@ public class AnalyticsService {
     private final XIRRCalculator xirrCalculator;
     private final RiskService riskService;
 
+    /**
+     * Portfolio XIRR, or {@code null} when it cannot be determined — no transactions, or
+     * cash flows that no rate can reconcile. Null means "unknown", which is deliberately
+     * distinct from a genuine 0% return.
+     */
+    /**
+     * All of a user's transactions grouped by holding, newest first within each group.
+     *
+     * <p>One query instead of one per holding. The per-holding calls this replaces were an
+     * N+1: a portfolio of 60 holdings issued 61 queries to compute a single figure, which the
+     * Redis cache hid until the first cold read.
+     */
+    private Map<UUID, List<Transaction>> transactionsByHolding(UUID userId) {
+        return transactionRepository.findByUserId(userId).stream()
+                .filter(t -> t.getHoldingId() != null && t.getTransactionDate() != null)
+                .sorted(Comparator.comparing(Transaction::getTransactionDate).reversed())
+                .collect(Collectors.groupingBy(Transaction::getHoldingId));
+    }
+
     @Transactional(readOnly = true)
     public BigDecimal calculateXIRR(UUID userId) {
         List<Holding> holdings = holdingRepository.findByUserId(userId);
         List<XIRRCalculator.CashFlow> allCashFlows = new ArrayList<>();
 
+        Map<UUID, List<Transaction>> byHolding = transactionsByHolding(userId);
+
         for (Holding holding : holdings) {
-            List<Transaction> txns = transactionRepository.findByHoldingIdOrderByTransactionDateDesc(holding.getId());
+            List<Transaction> txns = byHolding.getOrDefault(holding.getId(), List.of());
 
             for (Transaction txn : txns) {
                 if (txn.getTransactionType() == TransactionType.BUY
@@ -63,11 +84,11 @@ public class AnalyticsService {
         }
 
         if (allCashFlows.isEmpty()) {
-            return BigDecimal.ZERO;
+            return null;
         }
 
         allCashFlows.sort(Comparator.comparing(XIRRCalculator.CashFlow::date));
-        return xirrCalculator.calculateXIRR(allCashFlows);
+        return xirrCalculator.calculateXIRR(allCashFlows).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -81,8 +102,10 @@ public class AnalyticsService {
         BigDecimal initialInvestment = BigDecimal.ZERO;
         BigDecimal currentValue = BigDecimal.ZERO;
 
+        Map<UUID, List<Transaction>> byHolding = transactionsByHolding(userId);
+
         for (Holding holding : holdings) {
-            List<Transaction> txns = transactionRepository.findByHoldingIdOrderByTransactionDateDesc(holding.getId());
+            List<Transaction> txns = byHolding.getOrDefault(holding.getId(), List.of());
             if (txns.isEmpty()) continue;
 
             Transaction firstTxn = txns.getLast();
@@ -182,14 +205,25 @@ public class AnalyticsService {
         BigDecimal totalValue = BigDecimal.ZERO;
         List<Double> dailyReturns = new ArrayList<>();
 
+        // One price query for the whole portfolio rather than one per holding.
+        Map<String, String> pricingSymbols = new HashMap<>();
+        for (Holding holding : holdings) {
+            pricingSymbols.put(holding.getId().toString(), holdingService.getEffectiveSymbolForPricing(holding));
+        }
+        Map<String, List<MarketPrice>> pricesBySymbolAndType = pricingSymbols.values().isEmpty()
+                ? Map.of()
+                : marketPriceRepository.findBySymbolInOrderByPriceDateDesc(new HashSet<>(pricingSymbols.values()))
+                        .stream()
+                        .collect(Collectors.groupingBy(mp -> mp.getSymbol() + "|" + mp.getAssetType()));
+
         for (Holding holding : holdings) {
             if (holding.getCurrentValue() != null) {
                 totalValue = totalValue.add(holding.getCurrentValue());
             }
 
-            String pricingSymbol = holdingService.getEffectiveSymbolForPricing(holding);
-            List<MarketPrice> prices = marketPriceRepository
-                    .findBySymbolAndAssetTypeOrderByPriceDateDesc(pricingSymbol, holding.getAssetType());
+            String pricingSymbol = pricingSymbols.get(holding.getId().toString());
+            List<MarketPrice> prices = pricesBySymbolAndType
+                    .getOrDefault(pricingSymbol + "|" + holding.getAssetType(), List.of());
 
             if (prices.size() >= 2) {
                 for (int i = 0; i < prices.size() - 1; i++) {

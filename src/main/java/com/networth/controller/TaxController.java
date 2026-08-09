@@ -63,17 +63,17 @@ public class TaxController {
     @GetMapping("/harvesting-opportunities")
     public ResponseEntity<List<Map<String, Object>>> getHarvestingOpportunities(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam(defaultValue = "2024-2025") String financialYear) {
+            @RequestParam(required = false) String financialYear) {
         return ResponseEntity.ok(taxHarvestService.findHarvestingOpportunities(
-                UUID.fromString(userDetails.getUsername()), financialYear));
+                UUID.fromString(userDetails.getUsername()), resolveFinancialYear(financialYear)));
     }
 
     @GetMapping("/80c-utilization")
     public ResponseEntity<Map<String, Object>> get80CUtilization(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam(defaultValue = "2024-2025") String financialYear) {
+            @RequestParam(required = false) String financialYear) {
         return ResponseEntity.ok(deductionService.get80CUtilization(
-                UUID.fromString(userDetails.getUsername()), financialYear));
+                UUID.fromString(userDetails.getUsername()), resolveFinancialYear(financialYear)));
     }
 
     // ===== Tax Regime =====
@@ -154,6 +154,58 @@ public class TaxController {
                 taxRegimeCalculator.calculateTax(income, regime, financialYear).toMap());
         response.put("financialYear", taxRuleRegistry.canonicalise(financialYear));
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * The headline figures in force for a financial year.
+     *
+     * <p>Exists so the UI can show accurate rates and deductions instead of hardcoding them.
+     * Tax.jsx previously pinned "12.5%", "20%", "Max Rs 1.5L" and "Std Deduction: Rs 75,000"
+     * as literals, which are correct only for one year and silently wrong for the 26 others
+     * the year selector now offers.
+     */
+    @GetMapping("/rules/{financialYear}")
+    public ResponseEntity<Map<String, Object>> getRulesForYear(@PathVariable String financialYear) {
+        var ruleSet = taxRuleRegistry.forFinancialYear(financialYear);
+        var cg = ruleSet.capitalGains();
+
+        Map<String, Object> regimes = new java.util.LinkedHashMap<>();
+        ruleSet.regimes().forEach((regime, rules) -> {
+            Map<String, Object> r = new java.util.LinkedHashMap<>();
+            r.put("standardDeduction", rules.standardDeduction());
+            r.put("rebateThreshold", rules.rebate().incomeThreshold());
+            r.put("maxRebate", rules.rebate().maxRebate());
+            r.put("allowsDeductions", rules.allowsDeductions());
+            r.put("slabs", rules.slabs().stream().map(slab -> {
+                Map<String, Object> sl = new java.util.LinkedHashMap<>();
+                sl.put("upTo", slab.upTo());
+                sl.put("rate", slab.rate());
+                return sl;
+            }).toList());
+            regimes.put(regime.name(), r);
+        });
+
+        Map<String, Object> capitalGains = new java.util.LinkedHashMap<>();
+        capitalGains.put("equityLtcgRate", cg.ltcgRate());
+        capitalGains.put("equityStcgRate", cg.stcgRate());
+        capitalGains.put("equityLtcgExemption", cg.ltcgExemption());
+        capitalGains.put("cryptoRate", cg.cryptoRate());
+        capitalGains.put("otherAssetLtcgRate", cg.otherAssetLtcgRate());
+
+        Map<String, Object> deductions = new java.util.LinkedHashMap<>();
+        deductions.put("limit80C", ruleSet.deductions().limit80C());
+        deductions.put("limit80CCD1B", ruleSet.deductions().limit80CCD1B());
+        deductions.put("limit80DSelf", ruleSet.deductions().limit80DSelf());
+
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("financialYear", ruleSet.financialYear());
+        body.put("verified", ruleSet.verified());
+        body.put("note", ruleSet.note());
+        body.put("cessRate", ruleSet.cessRate());
+        body.put("capitalGains", capitalGains);
+        body.put("deductions", deductions);
+        body.put("regimes", regimes);
+        return ResponseEntity.ok(body);
     }
 
     /**
@@ -327,6 +379,18 @@ public class TaxController {
     private User getUser(UserDetails userDetails) {
         return userRepository.findById(UUID.fromString(userDetails.getUsername()))
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    }
+
+    /**
+     * The requested financial year, defaulting to the one in progress.
+     *
+     * <p>Two endpoints previously hardcoded "2024-2025" as their default, which quietly
+     * became a past year. Resolving it per request means the default cannot rot.
+     */
+    private String resolveFinancialYear(String requested) {
+        return (requested == null || requested.isBlank())
+                ? taxRuleRegistry.currentFinancialYear()
+                : requested;
     }
 
     private BigDecimal toBigDecimal(Object value) {

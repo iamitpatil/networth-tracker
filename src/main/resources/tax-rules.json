@@ -29,7 +29,9 @@
       "regimes.*.rebate": "Section 87A: tax reduced by up to maxRebate when taxable income is at or below incomeThreshold. Both \"0\" where no rebate existed.",
       "regimes.*.surchargeBands": "Ascending by incomeAbove. The highest band whose threshold the income exceeds applies.",
       "regimes.*.surchargeCap": "Maximum surcharge rate, or null for uncapped. The new regime caps at \"0.25\" where the old regime reaches \"0.37\".",
-      "regimes.*.allowsDeductions": "Whether chapter VI-A deductions and HRA may be claimed under this regime."
+      "regimes.*.allowsDeductions": "Whether chapter VI-A deductions and HRA may be claimed under this regime.",
+      "capitalGains.otherAssetLtcgRate": "Long-term rate on gold, SGB and real estate. Indexation is NOT modelled, so for periods where indexation applied (before 23 Jul 2024) the computed tax is an upper bound.",
+      "slab-rated classes": "Debt funds, FDs and bonds, plus short-term gold and property, are taxed at the taxpayer's slab rate. That depends on total income, which the capital gains calculator does not see, so those gains are reported with taxAtSlabRate=true and no fabricated tax figure."
     }
   },
   "financialYears": [
@@ -41,12 +43,13 @@
           "effectiveFrom": "2000-04-01",
           "effectiveTo": "2001-03-31",
           "cessRate": "0",
-          "note": "Pre-STT: equity LTCG 10% without indexation, STCG at slab rates. Salary standard deduction of this era was formula-based and is not modelled",
+          "note": "Pre-STT: equity LTCG 10% without indexation, STCG at slab rates. Salary standard deduction of this era was formula-based and is not modelled. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.3",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -111,12 +114,13 @@
           "effectiveFrom": "2001-04-01",
           "effectiveTo": "2002-03-31",
           "cessRate": "0",
-          "note": "Pre-STT era; 2% surcharge. Salary standard deduction of this era was formula-based and is not modelled",
+          "note": "Pre-STT era; 2% surcharge. Salary standard deduction of this era was formula-based and is not modelled. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.3",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -181,12 +185,13 @@
           "effectiveFrom": "2002-04-01",
           "effectiveTo": "2003-03-31",
           "cessRate": "0",
-          "note": "Pre-STT era; 5% surcharge. Salary standard deduction of this era was formula-based and is not modelled",
+          "note": "Pre-STT era; 5% surcharge. Salary standard deduction of this era was formula-based and is not modelled. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.3",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -251,12 +256,13 @@
           "effectiveFrom": "2003-04-01",
           "effectiveTo": "2004-03-31",
           "cessRate": "0",
-          "note": "Pre-STT era; last year before s.10(38) exemption. Salary standard deduction of this era was formula-based and is not modelled",
+          "note": "Pre-STT era; last year before s.10(38) exemption. Salary standard deduction of this era was formula-based and is not modelled. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.3",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -321,12 +327,13 @@
           "effectiveFrom": "2004-04-01",
           "effectiveTo": "2005-03-31",
           "cessRate": "0.02",
-          "note": "STT introduced Oct 2004; equity LTCG exempt u/s 10(38); STCG 10% u/s 111A",
+          "note": "STT introduced Oct 2004; equity LTCG exempt u/s 10(38); STCG 10% u/s 111A. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.1",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -391,12 +398,13 @@
           "effectiveFrom": "2005-04-01",
           "effectiveTo": "2006-03-31",
           "cessRate": "0.02",
-          "note": "s.80C replaces the s.88 rebate; nil band raised to Rs 1L",
+          "note": "s.80C replaces the s.88 rebate; nil band raised to Rs 1L. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.1",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -461,12 +469,13 @@
           "effectiveFrom": "2006-04-01",
           "effectiveTo": "2007-03-31",
           "cessRate": "0.02",
-          "note": "Slabs unchanged",
+          "note": "Slabs unchanged. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.1",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -531,12 +540,13 @@
           "effectiveFrom": "2007-04-01",
           "effectiveTo": "2008-03-31",
           "cessRate": "0.03",
-          "note": "Secondary and higher education cess added, total 3%",
+          "note": "Secondary and higher education cess added, total 3%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.1",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -601,12 +611,13 @@
           "effectiveFrom": "2008-04-01",
           "effectiveTo": "2009-03-31",
           "cessRate": "0.03",
-          "note": "STCG on equity raised to 15% u/s 111A; nil band raised to Rs 1.5L",
+          "note": "STCG on equity raised to 15% u/s 111A; nil band raised to Rs 1.5L. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -671,12 +682,13 @@
           "effectiveFrom": "2009-04-01",
           "effectiveTo": "2010-03-31",
           "cessRate": "0.03",
-          "note": "Individual surcharge removed",
+          "note": "Individual surcharge removed. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -736,12 +748,13 @@
           "effectiveFrom": "2010-04-01",
           "effectiveTo": "2011-03-31",
           "cessRate": "0.03",
-          "note": "Slabs widened substantially",
+          "note": "Slabs widened substantially. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -801,12 +814,13 @@
           "effectiveFrom": "2011-04-01",
           "effectiveTo": "2012-03-31",
           "cessRate": "0.03",
-          "note": "Nil band raised to Rs 1.8L",
+          "note": "Nil band raised to Rs 1.8L. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -866,12 +880,13 @@
           "effectiveFrom": "2012-04-01",
           "effectiveTo": "2013-03-31",
           "cessRate": "0.03",
-          "note": "Nil band Rs 2L; 20% band extended to Rs 10L",
+          "note": "Nil band Rs 2L; 20% band extended to Rs 10L. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -931,12 +946,13 @@
           "effectiveFrom": "2013-04-01",
           "effectiveTo": "2014-03-31",
           "cessRate": "0.03",
-          "note": "s.87A rebate introduced at Rs 2,000; surcharge on income above Rs 1cr",
+          "note": "s.87A rebate introduced at Rs 2,000; surcharge on income above Rs 1cr. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1001,12 +1017,13 @@
           "effectiveFrom": "2014-04-01",
           "effectiveTo": "2015-03-31",
           "cessRate": "0.03",
-          "note": "Nil band Rs 2.5L; 80C limit raised to Rs 1.5L",
+          "note": "Nil band Rs 2.5L; 80C limit raised to Rs 1.5L. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1071,12 +1088,13 @@
           "effectiveFrom": "2015-04-01",
           "effectiveTo": "2016-03-31",
           "cessRate": "0.03",
-          "note": "Surcharge raised to 12%",
+          "note": "Surcharge raised to 12%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1141,12 +1159,13 @@
           "effectiveFrom": "2016-04-01",
           "effectiveTo": "2017-03-31",
           "cessRate": "0.03",
-          "note": "s.87A rebate Rs 5,000; surcharge 15%",
+          "note": "s.87A rebate Rs 5,000; surcharge 15%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1211,12 +1230,13 @@
           "effectiveFrom": "2017-04-01",
           "effectiveTo": "2018-03-31",
           "cessRate": "0.03",
-          "note": "Lowest band cut from 10% to 5%; surcharge band at Rs 50L added; last year of s.10(38)",
+          "note": "Lowest band cut from 10% to 5%; surcharge band at Rs 50L added; last year of s.10(38). Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0",
             "stcgRate": "0.15",
             "ltcgExemption": "0",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1285,12 +1305,13 @@
           "effectiveFrom": "2018-04-01",
           "effectiveTo": "2019-03-31",
           "cessRate": "0.04",
-          "note": "s.112A reintroduces equity LTCG at 10% over Rs 1L with 31 Jan 2018 grandfathering; standard deduction returns at Rs 40,000; cess 4%",
+          "note": "s.112A reintroduces equity LTCG at 10% over Rs 1L with 31 Jan 2018 grandfathering; standard deduction returns at Rs 40,000; cess 4%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1359,12 +1380,13 @@
           "effectiveFrom": "2019-04-01",
           "effectiveTo": "2020-03-31",
           "cessRate": "0.04",
-          "note": "Standard deduction Rs 50,000; s.87A rebate Rs 12,500 up to Rs 5L; surcharge bands extended to 25% and 37%",
+          "note": "Standard deduction Rs 50,000; s.87A rebate Rs 12,500 up to Rs 5L; surcharge bands extended to 25% and 37%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1441,12 +1463,13 @@
           "effectiveFrom": "2020-04-01",
           "effectiveTo": "2021-03-31",
           "cessRate": "0.04",
-          "note": "s.115BAC introduces the optional new regime: seven bands, no standard deduction",
+          "note": "s.115BAC introduces the optional new regime: seven bands, no standard deduction. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1580,12 +1603,13 @@
           "effectiveFrom": "2021-04-01",
           "effectiveTo": "2022-03-31",
           "cessRate": "0.04",
-          "note": "New regime unchanged from FY 2020-21",
+          "note": "New regime unchanged from FY 2020-21. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1719,12 +1743,13 @@
           "effectiveFrom": "2022-04-01",
           "effectiveTo": "2023-03-31",
           "cessRate": "0.04",
-          "note": "s.115BBH taxes virtual digital assets at a flat 30% with no set-off of losses",
+          "note": "s.115BBH taxes virtual digital assets at a flat 30% with no set-off of losses. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1858,12 +1883,13 @@
           "effectiveFrom": "2023-04-01",
           "effectiveTo": "2024-03-31",
           "cessRate": "0.04",
-          "note": "New regime becomes the default: six bands, Rs 50,000 standard deduction, s.87A rebate Rs 25,000 to Rs 7L, surcharge capped at 25%",
+          "note": "New regime becomes the default: six bands, Rs 50,000 standard deduction, s.87A rebate Rs 25,000 to Rs 7L, surcharge capped at 25%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -1993,12 +2019,13 @@
           "effectiveFrom": "2024-04-01",
           "effectiveTo": "2024-07-22",
           "cessRate": "0.04",
-          "note": "Pre Finance (No. 2) Act 2024: equity LTCG 10% over Rs 1L, STCG 15%",
+          "note": "Pre Finance (No. 2) Act 2024: equity LTCG 10% over Rs 1L, STCG 15%. Gold/property LTCG 20% with indexation; indexation is not modelled so that figure is an upper bound",
           "capitalGains": {
             "ltcgRate": "0.1",
             "stcgRate": "0.15",
             "ltcgExemption": "100000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.20",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -2128,6 +2155,7 @@
             "stcgRate": "0.2",
             "ltcgExemption": "125000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.125",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -2263,6 +2291,7 @@
             "stcgRate": "0.2",
             "ltcgExemption": "125000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.125",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,
@@ -2402,6 +2431,7 @@
             "stcgRate": "0.2",
             "ltcgExemption": "125000",
             "cryptoRate": "0.3",
+            "otherAssetLtcgRate": "0.125",
             "defaultLongTermDays": 730,
             "longTermThresholdDays": {
               "EQUITY": 365,

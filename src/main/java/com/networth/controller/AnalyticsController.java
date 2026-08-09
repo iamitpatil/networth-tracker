@@ -9,6 +9,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,7 +25,12 @@ public class AnalyticsController {
     public ResponseEntity<Map<String, Object>> getXIRR(@AuthenticationPrincipal UserDetails userDetails) {
         UUID uid = UUID.fromString(userDetails.getUsername());
         BigDecimal xirr = analyticsService.calculateXIRR(uid);
-        return ResponseEntity.ok(Map.of("xirr", xirr));
+        // Map.of rejects nulls, and null is meaningful here: it says the rate could not be
+        // determined, as opposed to being zero. `computed` lets a client tell them apart.
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("xirr", xirr);
+        body.put("computed", xirr != null);
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping("/cagr")

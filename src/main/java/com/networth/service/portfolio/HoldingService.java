@@ -13,6 +13,9 @@ import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
 import com.networth.repository.SymbolRepository;
 import com.networth.service.market.PriceService;
+import com.networth.model.entity.Transaction;
+import com.networth.model.enums.TransactionType;
+import com.networth.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +38,7 @@ public class HoldingService {
     private final PriceService priceService;
     private final DematAccountRepository dematAccountRepository;
     private final SymbolRepository symbolRepository;
+    private final TransactionRepository transactionRepository;
 
     @Transactional(readOnly = true)
     public List<HoldingResponse> getUserHoldings(String userId) {
@@ -155,12 +159,45 @@ public class HoldingService {
                 .build();
 
         holding = holdingRepository.save(holding);
+        recordOpeningLot(holding, request.getPurchaseDate());
 
         String pricingSymbol = getEffectiveSymbolForPricing(holding);
         priceService.refreshPrice(pricingSymbol, holding.getAssetType());
         updateHoldingPrice(holding);
 
         return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
+    }
+
+    /**
+     * Records the position a holding is created with as an opening BUY transaction.
+     *
+     * <p>Without this a holding created through the UI has no transactions at all, so anything
+     * that reasons from transaction history — FIFO cost basis, capital gains, holding period,
+     * XIRR — either sees nothing or falls back to the row's creation date. Tax harvesting was
+     * classifying long-held imported positions as short-term for exactly this reason.
+     *
+     * <p>Inserted directly rather than through {@code CostBasisService.updateBuy}, because the
+     * holding's quantity and average price already reflect this lot; running it through the
+     * cost-basis path would double the position.
+     */
+    private void recordOpeningLot(Holding holding, java.time.LocalDate purchaseDate) {
+        if (holding.getQuantity() == null || holding.getQuantity().compareTo(BigDecimal.ZERO) <= 0
+                || holding.getAverageBuyPrice() == null) {
+            return;
+        }
+        java.time.LocalDateTime when = (purchaseDate != null ? purchaseDate : java.time.LocalDate.now())
+                .atStartOfDay();
+
+        transactionRepository.save(Transaction.builder()
+                .userId(holding.getUserId())
+                .holdingId(holding.getId())
+                .transactionType(TransactionType.BUY)
+                .quantity(holding.getQuantity())
+                .price(holding.getAverageBuyPrice())
+                .amount(holding.getQuantity().multiply(holding.getAverageBuyPrice()))
+                .transactionDate(when)
+                .notes("Opening balance recorded when the holding was created")
+                .build());
     }
 
     @Transactional
