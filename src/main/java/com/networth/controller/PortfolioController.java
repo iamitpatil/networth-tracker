@@ -5,10 +5,14 @@ import com.networth.service.FamilyDataService;
 import com.networth.service.InvestmentOverTimeService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.PortfolioSummaryService;
+import com.networth.service.importservice.TransactionImportService;
 import com.networth.service.portfolio.TransactionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -32,6 +36,7 @@ public class PortfolioController {
 
     private final HoldingService holdingService;
     private final TransactionService transactionService;
+    private final TransactionImportService transactionImportService;
     private final PortfolioSummaryService portfolioSummaryService;
     private final FamilyDataService familyDataService;
     private final InvestmentOverTimeService investmentOverTimeService;
@@ -101,6 +106,33 @@ public class PortfolioController {
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id) {
         return ResponseEntity.ok(transactionService.getHoldingTransactions(userDetails.getUsername(), id));
+    }
+
+    /**
+     * Bulk transaction import from a CSV.
+     *
+     * <p>Rows are independent: valid ones are imported and failures come back with their row
+     * number and reason, rather than one bad date costing the whole file.
+     */
+    @PostMapping("/transactions/import")
+    public ResponseEntity<Map<String, Object>> importTransactions(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Choose a CSV file to import"));
+        }
+        return ResponseEntity.ok(transactionImportService
+                .importTransactions(UUID.fromString(userDetails.getUsername()), file)
+                .toMap());
+    }
+
+    /** The CSV template, so the expected columns are never guesswork. */
+    @GetMapping("/transactions/import/sample")
+    public ResponseEntity<String> sampleTransactionCsv() {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transactions-sample.csv\"")
+                .body(transactionImportService.sampleCsv());
     }
 
     @PostMapping("/transactions")

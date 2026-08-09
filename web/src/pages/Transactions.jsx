@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { toast } from 'sonner'
 import client from '../api/client'
 import { useFamilyView } from '../context/FamilyViewContext'
-import { TrendingUp, TrendingDown, Repeat, DollarSign, Users } from 'lucide-react'
-import { PageSkeleton, ColumnFilter } from '../components/ui'
+import { TrendingUp, TrendingDown, Repeat, DollarSign, Users, Upload, Download, Loader2 } from 'lucide-react'
+import { PageSkeleton, ColumnFilter, Modal } from '../components/ui'
 
 export default function Transactions() {
   const { view: familyView } = useFamilyView()
@@ -16,6 +17,10 @@ export default function Transactions() {
   const [assetFilter, setAssetFilter] = useState('ALL')
   const [symbolSearch, setSymbolSearch] = useState('')
   const [brokerFilter, setBrokerFilter] = useState('ALL')
+  const [importOpen, setImportOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+  const fileRef = useRef(null)
 
   useEffect(() => {
     Promise.all([client.get('/portfolio/transactions'), client.get('/portfolio/holdings')])
@@ -26,6 +31,55 @@ export default function Transactions() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
+
+  const reload = () =>
+    Promise.all([client.get('/portfolio/transactions'), client.get('/portfolio/holdings')])
+      .then(([tx, h]) => { setTransactions(tx.data || []); setHoldings(h.data || []) })
+
+  const downloadSample = async () => {
+    try {
+      // Fetched through the API client so the auth header travels with it; a plain link
+      // would hit the endpoint unauthenticated.
+      const { data } = await client.get('/portfolio/transactions/import/sample', { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([data], { type: 'text/csv' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'transactions-sample.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Could not download the sample')
+    }
+  }
+
+  const uploadCsv = async (file) => {
+    if (!file) return
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await client.post('/portfolio/transactions/import', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setImportResult(data)
+      if (data.imported > 0) {
+        toast.success(`Imported ${data.imported} transaction${data.imported === 1 ? '' : 's'}`,
+          { description: data.failed ? `${data.failed} row(s) could not be imported` : undefined })
+        await reload()
+      } else if (data.failed) {
+        toast.error('Nothing imported', { description: `${data.failed} row(s) failed` })
+      }
+    } catch (e) {
+      // A file-level problem (missing columns, unreadable) comes back as a 400 with a message.
+      const msg = e?.response?.data?.message || e?.response?.data?.error || 'Import failed'
+      setImportResult({ fileError: msg })
+      toast.error(msg)
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const holdingsMap = useMemo(() => {
     const map = {}
@@ -101,16 +155,28 @@ export default function Transactions() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div>
-        <h1 className="text-2xl font-bold">Transactions</h1>
-        <p className="text-[var(--text-muted)] text-sm mt-1">
-          {transactions.length} total · {filtered.length} shown
-          {anyFilterActive && (
-            <button onClick={clearFilters} className="ml-3 text-xs text-red-400 hover:text-red-300">
-              Clear filters
-            </button>
-          )}
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Transactions</h1>
+          <p className="text-[var(--text-muted)] text-sm mt-1">
+            {transactions.length} total · {filtered.length} shown
+            {anyFilterActive && (
+              <button onClick={clearFilters} className="ml-3 text-xs text-red-400 hover:text-red-300">
+                Clear filters
+              </button>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={downloadSample}
+            className="px-3 py-2 rounded-lg text-sm flex items-center gap-2 bg-[var(--input-bg)] border border-[var(--border)] hover:bg-[var(--hover-bg)] transition">
+            <Download className="w-4 h-4" /> Sample CSV
+          </button>
+          <button onClick={() => { setImportResult(null); setImportOpen(true) }}
+            className="px-4 py-2 rounded-lg text-sm flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white transition">
+            <Upload className="w-4 h-4" /> Import Transactions
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -251,6 +317,63 @@ export default function Transactions() {
         </table>
         </div>
       </div>
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import transactions">
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-secondary)]">
+            Upload a CSV with one transaction per row. Valid rows are imported even if others
+            fail, and anything rejected is listed below with its row number.
+          </p>
+          <div className="text-xs text-[var(--text-muted)] bg-[var(--input-bg)] border border-[var(--border)] rounded-lg p-3">
+            <p className="font-medium text-[var(--text-secondary)] mb-1">Required columns</p>
+            <code className="block break-words">symbol, assetType, transactionType, quantity, price, transactionDate</code>
+            <p className="mt-2">Optional: <code>broker</code>, <code>notes</code>. A symbol with no
+            holding yet has one created for it.</p>
+            <button onClick={downloadSample} className="mt-2 text-blue-400 hover:text-blue-300">
+              Download the sample
+            </button>
+          </div>
+
+          <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => uploadCsv(e.target.files?.[0])}
+            disabled={importing}
+            className="w-full text-sm text-[var(--text-secondary)] file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-blue-500 file:text-white hover:file:bg-blue-600 file:cursor-pointer disabled:opacity-50" />
+
+          {importing && (
+            <p className="text-sm text-[var(--text-muted)] flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Importing...
+            </p>
+          )}
+
+          {importResult?.fileError && (
+            <p className="text-sm text-red-400">{importResult.fileError}</p>
+          )}
+
+          {importResult && !importResult.fileError && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-4 text-sm">
+                <span className="text-green-400">{importResult.imported} imported</span>
+                {importResult.failed > 0 && <span className="text-red-400">{importResult.failed} failed</span>}
+                <span className="text-[var(--text-muted)]">of {importResult.totalRows} rows</span>
+              </div>
+              {importResult.createdHoldings?.length > 0 && (
+                <p className="text-xs text-[var(--text-muted)]">
+                  New holdings created: {importResult.createdHoldings.join(', ')}
+                </p>
+              )}
+              {importResult.errors?.length > 0 && (
+                <div className="max-h-40 overflow-y-auto border border-[var(--border)] rounded-lg divide-y divide-[var(--border)]">
+                  {importResult.errors.map((err, i) => (
+                    <div key={i} className="px-3 py-2 text-xs">
+                      <span className="text-red-400 font-medium">Row {err.row}</span>
+                      {err.symbol && <span className="text-[var(--text-muted)]"> · {err.symbol}</span>}
+                      <span className="block text-[var(--text-secondary)]">{err.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }
