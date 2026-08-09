@@ -386,8 +386,12 @@ public class ZerodhaIntegrationService {
      * Does NOT call CostBasisService since the holding already has correct qty/avgPrice from sync.
      */
     private boolean createSyntheticTransaction(Holding holding, UUID userId, BigDecimal qty, BigDecimal avgPrice) {
-        List<Transaction> existing = transactionRepository.findByHoldingIdAndBroker(holding.getId(), BROKER_LABEL);
-        if (!existing.isEmpty()) return false;
+        // Skip if the holding already has ANY transaction, not merely one tagged with this
+        // broker. Creating a holding now records an opening BUY of its own, which carries no
+        // broker label; checking only for broker-tagged rows meant the sync added a second
+        // BUY for the same units, leaving the ledger at twice the position the holding shows.
+        // The same guard also stops a synthetic row duplicating a manually entered purchase.
+        if (!transactionRepository.findByHoldingId(holding.getId()).isEmpty()) return false;
 
         Transaction txn = Transaction.builder()
                 .holdingId(holding.getId())
