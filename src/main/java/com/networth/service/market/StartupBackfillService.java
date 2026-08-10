@@ -36,6 +36,7 @@ public class StartupBackfillService {
     private final StockPriceHistoryRepository historyRepository;
     private final UpstoxHistoricalService upstoxHistoricalService;
     private final AmfiHistoricalService amfiHistoricalService;
+    private final NpsHistoricalService npsHistoricalService;
     private final NetWorthHistoryService netWorthHistoryService;
     private final UserRepository userRepository;
 
@@ -51,6 +52,7 @@ public class StartupBackfillService {
 
             backfillEquityHistory();
             backfillMutualFundHistory();
+            backfillNpsHistory();
             backfillNetWorthHistory();
 
             log.info("=== Startup backfill complete ===");
@@ -177,6 +179,26 @@ public class StartupBackfillService {
         }
     }
 
+    /**
+     * Tops up the day-wise NAV history for the NPS schemes somebody actually holds.
+     *
+     * <p>Scoped to held schemes on purpose. The full reference load is 282 schemes and about 1.28M
+     * rows, which is a one-time job behind {@code POST /api/v1/market/backfill}; running it on every
+     * restart would spend five minutes of paced provider calls to re-fetch history that
+     * {@code ON CONFLICT DO NOTHING} then throws away. What a restart does need is the handful of
+     * days that passed while the app was down, and {@link NpsHistoricalService#backfillHeldSchemes()}
+     * already derives that per scheme from {@code findLatest}, using the same gap logic as the two
+     * methods above.
+     */
+    private void backfillNpsHistory() {
+        try {
+            int count = npsHistoricalService.backfillHeldSchemes();
+            log.info("NPS NAV history backfill complete: {} records", count);
+        } catch (Exception e) {
+            log.error("NPS history backfill error: {}", e.getMessage(), e);
+        }
+    }
+
     private void backfillNetWorthHistory() {
         try {
             userRepository.findAll().forEach(user -> {
@@ -199,6 +221,7 @@ public class StartupBackfillService {
         log.info("Manual backfill triggered");
         backfillEquityHistory();
         backfillMutualFundHistory();
+        backfillNpsHistory();
         backfillNetWorthHistory();
     }
 }

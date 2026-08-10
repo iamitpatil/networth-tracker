@@ -50,14 +50,20 @@ class HoldingServiceOpeningLotTest {
      * The real policy, not a mock: it is pure and calendar-driven, and every response this service
      * builds now asks it whether the price it carries is stale. A mock would answer "not priceable"
      * to everything and quietly stop exercising the branch.
+     *
+     * <p>The validator is real for a related reason. These tests use {@code GOLD}, which is not a gated
+     * asset type, so the real validator passes the symbol straight through without touching the
+     * repository — while a mock would return null from {@code requireKnown} and fail on the resolution
+     * rather than on anything this test is about.
      */
     private HoldingService holdingService;
 
     @BeforeEach
     void setUp() {
         holdingService = new HoldingService(holdingRepository, marketPriceRepository, priceService,
-                dematAccountRepository, symbolRepository, transactionRepository,
-                new PriceFreshnessPolicy(new MarketCalendar("Asia/Kolkata")));
+                dematAccountRepository, transactionRepository,
+                new PriceFreshnessPolicy(new MarketCalendar("Asia/Kolkata")),
+                new com.networth.service.SymbolValidator(symbolRepository));
     }
 
     private final UUID userId = UUID.randomUUID();

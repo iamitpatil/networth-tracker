@@ -6,14 +6,12 @@ import com.networth.model.dto.HoldingRequest;
 import com.networth.model.dto.HoldingResponse;
 import com.networth.model.entity.DematAccount;
 import com.networth.model.entity.Holding;
-import com.networth.model.entity.Symbol;
 import com.networth.model.entity.Transaction;
 import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
 import com.networth.repository.MarketPriceRepository;
-import com.networth.repository.SymbolRepository;
 import com.networth.repository.TransactionRepository;
 import com.networth.service.market.MarketCalendar;
 import com.networth.service.market.PriceFreshnessPolicy;
@@ -42,9 +40,17 @@ public class HoldingService {
     private final MarketPriceRepository marketPriceRepository;
     private final PriceService priceService;
     private final DematAccountRepository dematAccountRepository;
-    private final SymbolRepository symbolRepository;
     private final TransactionRepository transactionRepository;
     private final PriceFreshnessPolicy freshnessPolicy;
+
+    /**
+     * The single place that decides whether a ticker exists and what its canonical form is.
+     *
+     * <p>Delegated rather than reimplemented, so that what validation accepts and what ISIN gets stored
+     * can never drift apart: the resolution that used to live in this class's own {@code resolveIsin}
+     * is now the same code path a rejection is decided by.
+     */
+    private final com.networth.service.SymbolValidator symbolValidator;
 
     @Transactional(readOnly = true)
     public List<HoldingResponse> getUserHoldings(String userId) {
@@ -136,19 +142,25 @@ public class HoldingService {
             }
         }
 
-        // Auto-resolve ISIN from symbols table if not provided
-        String isin = request.getIsin();
-        if ((isin == null || isin.isBlank()) && request.getSymbol() != null) {
-            isin = resolveIsin(request.getSymbol());
-            if (isin == null && ASSET_TYPES_REQUIRING_DEMAT.contains(request.getAssetType())) {
-                log.warn("Symbol '{}' not found in symbols table — ISIN could not be resolved", request.getSymbol());
-            }
-        }
+        // Refuse a ticker we cannot price, and canonicalise the one we can.
+        //
+        // This block used to only *try* to resolve an ISIN, log a warning when it could not, and save
+        // the holding regardless. That is how FAKETICKER999 got a 201: the position then sat
+        // permanently unpriced while the five-minute sweep retried it every session, two provider
+        // calls at a time, forever. Rejecting up front is also what makes the canonical symbol
+        // reliable, so RELIANCE and RELIANCE.NS cannot become two holdings of one company.
+        var resolved = symbolValidator.requireKnown(request.getSymbol(), request.getAssetType(), request.getName());
+        String symbol = resolved.symbol();
+        // A caller-supplied ISIN wins: an import that carries one from a broker statement knows the
+        // exact plan, where the reference list only knows the scheme.
+        String isin = (request.getIsin() != null && !request.getIsin().isBlank())
+                ? request.getIsin()
+                : resolved.isin();
 
         Holding holding = Holding.builder()
                 .userId(uid)
                 .assetType(request.getAssetType())
-                .symbol(request.getSymbol())
+                .symbol(symbol)
                 .name(request.getName())
                 .quantity(request.getQuantity())
                 .averageBuyPrice(request.getAverageBuyPrice())
@@ -518,75 +530,28 @@ public class HoldingService {
         return "****" + accountNumber.substring(accountNumber.length() - 4);
     }
 
-    private String resolveIsin(String symbol) {
-        return resolveIsin(symbol, null, null);
-    }
-
-    private String resolveIsin(String symbol, AssetType assetType) {
-        return resolveIsin(symbol, assetType, null);
-    }
-
     /**
-     * Resolve ISIN for a holding symbol.
-     * For equities: direct PK lookup (TCS.NS → ISIN from isin column).
-     * For MFs: the symbols table stores ISIN as PK and scheme name as name,
-     * so we need a fuzzy name search to find the ISIN.
-     * @param holdingName optional — used as fallback for fuzzy search when symbol doesn't match
+     * The ISIN for a symbol, or null if it cannot be resolved.
+     *
+     * <p>Delegated to {@link com.networth.service.SymbolValidator}, which now owns the lookup this
+     * method used to perform inline. Keeping two copies would let "what we accept" and "what ISIN we
+     * store" diverge, which is precisely the kind of drift that leaves a holding validated but
+     * unpriceable.
+     *
+     * @param holdingName optional — lets a fund whose symbol is a scheme name still match
      */
     private String resolveIsin(String symbol, AssetType assetType, String holdingName) {
-        // 1. Direct lookup by PK (works for equities; also works if symbol IS already an ISIN)
-        var found = symbolRepository.findById(symbol);
-        if (found.isPresent()) {
-            Symbol sym = found.get();
-            // For MF symbols, the PK itself is the ISIN
-            if ("MUTUAL_FUND".equals(sym.getCategory())) {
-                return sym.getSymbol(); // PK = ISIN for MFs
-            }
-            if (sym.getIsin() != null && !sym.getIsin().isBlank()) {
-                return sym.getIsin();
-            }
-        }
-
-        // 2. Try with .NS suffix (equities: "TCS" → "TCS.NS")
-        if (!symbol.endsWith(".NS")) {
-            var nsFound = symbolRepository.findById(symbol + ".NS");
-            if (nsFound.isPresent() && nsFound.get().getIsin() != null && !nsFound.get().getIsin().isBlank()) {
-                return nsFound.get().getIsin();
-            }
-        }
-
-        // 3. For MFs: fuzzy name search (symbol is a scheme name like "Axis Bluechip Fund Direct Growth")
-        if (assetType == AssetType.MUTUAL_FUND || (symbol.length() > 15 && !symbol.contains("."))) {
-            // Try searching by symbol first, then by holdingName as fallback
-            String[] searchTerms = holdingName != null && !holdingName.equals(symbol)
-                    ? new String[]{symbol, holdingName}
-                    : new String[]{symbol};
-
-            for (String term : searchTerms) {
-                String keyword = term.split("\\s*[-–]\\s*(Direct|Regular|Growth|IDCW|Plan|Dividend)")[0].trim();
-                if (keyword.length() > 5) {
-                    var matches = symbolRepository.searchByCategoryAndName("MUTUAL_FUND", keyword);
-                    // Prefer Direct Growth variant
-                    var match = matches.stream()
-                            .filter(s -> s.getName().toLowerCase().contains("direct") &&
-                                    s.getName().toLowerCase().contains("growth"))
-                            .findFirst()
-                            .or(() -> matches.stream().filter(s -> s.getName().toLowerCase().contains("direct")).findFirst())
-                            .or(() -> matches.stream().findFirst());
-                    if (match.isPresent()) {
-                        return match.get().getSymbol(); // PK = ISIN for MFs
-                    }
-                }
-            }
-        }
-
-        return null;
+        return symbolValidator.resolveIsin(symbol, assetType, holdingName);
     }
 
     /**
-     * Get the effective symbol to use for price/NAV lookups.
-     * For equities: returns the symbol (e.g. "TCS.NS")
-     * For MFs: returns the ISIN (e.g. "INF846K01EW2") which is what AMFI/Upstox use.
+     * The key a holding's prices are stored and looked up under.
+     *
+     * <p>Three tenants, because the providers disagree about what identifies an instrument: an equity
+     * or ETF by its exchange symbol ({@code TCS.NS}), a fund by ISIN ({@code INF846K01EW2}, which is
+     * what AMFI and Upstox answer to), and an NPS scheme by its scheme code ({@code SM001001}). Both
+     * {@code market_prices} and {@code stock_price_history} are keyed by whatever this returns, so a
+     * change here silently orphans existing history.
      */
     public String getEffectiveSymbolForPricing(Holding holding) {
         if (holding.getAssetType() == AssetType.MUTUAL_FUND) {
@@ -602,6 +567,13 @@ public class HoldingService {
                 holdingRepository.save(holding);
                 return isin;
             }
+        }
+        if (holding.getAssetType() == AssetType.NPS) {
+            // The symbol already *is* the scheme code: validation only accepts an NPS holding whose
+            // symbol resolves to a listed scheme, so this needs no lookup. Spelled out rather than
+            // left to the fall-through because that guarantee is what links the two — an edit that
+            // loosened NPS validation would break pricing here, and silently.
+            return holding.getSymbol();
         }
         return holding.getSymbol();
     }

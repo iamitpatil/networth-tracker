@@ -38,6 +38,21 @@ public class InvestmentOverTimeService {
     private static final Set<String> INVEST_TXNS = Set.of("BUY", "SIP", "LUMPSUM", "DEPOSIT", "CONTRIBUTION", "OPEN");
     private static final Set<String> DIVEST_TXNS = Set.of("SELL", "WITHDRAWAL", "WITHDRAW");
 
+    /**
+     * How far back a date without a published price may look for the last one.
+     *
+     * <p>Markets close for weekends and for holiday runs — Diwali plus a weekend is four days, and NPS
+     * publishes on business days only — so a plain "no row, no price" would fall back to cost on every
+     * such date. Ten days covers the longest gap either feed produces.
+     *
+     * <p>It also has to be the amount of history loaded <em>before</em> the window: a series starting on
+     * a Sunday has nothing to walk back to if the query starts on that same Sunday. That was visible —
+     * a 365-day series over an NPS holding opened its first point at exactly {@code qty × cost} while
+     * every later point was NAV-priced, because the cutoff fell on a Sunday and Friday's NAV was one day
+     * outside the loaded range.
+     */
+    private static final int PRICE_LOOKBACK_DAYS = 10;
+
     public List<Map<String, Object>> getInvestmentOverTime(UUID userId, int days) {
         return getInvestmentOverTime(userId, days, null);
     }
@@ -53,12 +68,20 @@ public class InvestmentOverTimeService {
 
         Set<UUID> holdingIds = holdings.stream().map(Holding::getId).collect(Collectors.toSet());
 
-        // Map holdingId → pricing symbol (ISIN for MFs, symbol for equities)
-        // and track which holdings are market-priced vs non-market (PPF, EPF, FD, NPS, CASH, REAL_ESTATE)
+        // Map holdingId → pricing symbol (ISIN for MFs, scheme code for NPS, symbol for equities)
+        // and track which holdings are market-priced vs non-market (PPF, EPF, FD, CASH, REAL_ESTATE)
         Map<UUID, String> holdingPricingSymbol = new HashMap<>();
         Set<UUID> nonMarketHoldings = new HashSet<>();
+        // NPS is deliberately absent, and that is a change: a pension fund publishes a daily NAV, and
+        // valuing it at the last transaction price drew a flat line at cost for the one asset whose
+        // entire point is compounding. NpsHistoricalService now persists that NAV per day under the
+        // scheme code, which is exactly what getEffectiveSymbolForPricing returns for an NPS holding,
+        // so the market path below finds it. A date with no NAV still falls back to transaction price,
+        // so a scheme whose history has not been backfilled is no worse off than before.
+        // The rest stay non-market because nothing publishes a price for them: PPF and EPF accrue
+        // interest by formula, an FD is a contract, cash is cash, and a flat has no daily quote.
         Set<AssetType> NON_MARKET_TYPES = Set.of(
-                AssetType.PPF, AssetType.EPF, AssetType.NPS, AssetType.FD, AssetType.CASH, AssetType.REAL_ESTATE);
+                AssetType.PPF, AssetType.EPF, AssetType.FD, AssetType.CASH, AssetType.REAL_ESTATE);
         for (Holding h : holdings) {
             holdingPricingSymbol.put(h.getId(), holdingService.getEffectiveSymbolForPricing(h));
             if (NON_MARKET_TYPES.contains(h.getAssetType())) {
@@ -72,9 +95,11 @@ public class InvestmentOverTimeService {
                 .sorted(Comparator.comparing(t -> t.getTransactionDate().toLocalDate()))
                 .toList();
 
-        // Load historical prices for all relevant symbols in the date range
+        // Load historical prices for all relevant symbols in the date range, plus the lookback so the
+        // first point can reach the last price published before the window opened.
         Set<String> pricingSymbols = new HashSet<>(holdingPricingSymbol.values());
-        Map<String, Map<LocalDate, BigDecimal>> priceMap = loadPriceHistory(pricingSymbols, cutoff, today);
+        Map<String, Map<LocalDate, BigDecimal>> priceMap =
+                loadPriceHistory(pricingSymbols, cutoff.minusDays(PRICE_LOOKBACK_DAYS), today);
 
         // Build position timeline: track qty per holding at each transaction date
         Map<UUID, BigDecimal> holdingQty = new HashMap<>();
@@ -189,8 +214,8 @@ public class InvestmentOverTimeService {
 
     /**
      * Compute total portfolio value at a specific date.
-     * Market assets (equity, ETF, MF, gold, crypto, bonds): qty × historical market price
-     * Non-market assets (PPF, EPF, FD, NPS, cash, real estate): qty × last transaction price
+     * Market assets (equity, ETF, MF, NPS, gold, crypto, bonds): qty × historical market price
+     * Non-market assets (PPF, EPF, FD, cash, real estate): qty × last transaction price
      *   (these don't have daily market prices — their value is what you put in)
      */
     private BigDecimal computeValueAtDate(LocalDate date, Map<UUID, BigDecimal> positions,
@@ -215,9 +240,9 @@ public class InvestmentOverTimeService {
                 if (pricingSymbol != null && priceMap.containsKey(pricingSymbol)) {
                     Map<LocalDate, BigDecimal> symbolPrices = priceMap.get(pricingSymbol);
                     price = symbolPrices.get(date);
-                    // If no price on exact date, find closest previous (up to 10 days for holidays)
+                    // If no price on exact date, find closest previous (weekend or holiday run)
                     if (price == null) {
-                        for (int i = 1; i <= 10; i++) {
+                        for (int i = 1; i <= PRICE_LOOKBACK_DAYS; i++) {
                             price = symbolPrices.get(date.minusDays(i));
                             if (price != null) break;
                         }

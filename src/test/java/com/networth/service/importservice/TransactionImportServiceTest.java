@@ -9,6 +9,7 @@ import com.networth.model.enums.AssetType;
 import com.networth.model.enums.TransactionType;
 import com.networth.repository.DematAccountRepository;
 import com.networth.repository.HoldingRepository;
+import com.networth.service.SymbolValidator;
 import com.networth.service.portfolio.CorporateActionService;
 import com.networth.service.portfolio.HoldingService;
 import com.networth.service.portfolio.TransactionService;
@@ -46,6 +47,12 @@ class TransactionImportServiceTest {
     @Mock HoldingService holdingService;
     @Mock TransactionService transactionService;
     @Mock CorporateActionService corporateActionService;
+    /**
+     * Stubbed to accept everything (see {@link #setUp()}). These tests are about CSV parsing, row
+     * errors and corporate-action routing, and the tickers they use are illustrative rather than
+     * listed; rejection itself is covered by {@link TransactionImportValidationTest}.
+     */
+    @Mock SymbolValidator symbolValidator;
     @InjectMocks TransactionImportService service;
 
     private final UUID userId = UUID.randomUUID();
@@ -57,6 +64,11 @@ class TransactionImportServiceTest {
 
     @BeforeEach
     void setUp() {
+        // Pass every ticker through unchanged, so these tests see the parser's behaviour and not the
+        // reference list's.
+        when(symbolValidator.requireKnown(anyString(), any(), any())).thenAnswer(inv ->
+                new SymbolValidator.Resolution(inv.getArgument(0), null));
+
         DematAccount demat = new DematAccount();
         demat.setId(UUID.randomUUID());
         demat.setUserId(userId);

@@ -20,6 +20,7 @@ public class PriceService {
 
     private final MarketDataResolver resolver;
     private final GoldPriceFetcher goldPriceFetcher;
+    private final NpsNavService npsNavService;
     private final PriceCache priceCache;
     private final PriceFreshnessPolicy freshnessPolicy;
 
@@ -59,7 +60,7 @@ public class PriceService {
         if (livePrice != null) {
             // Records the confirmation time and writes through to Redis, so the next reader gets a
             // cache hit rather than a second provider call for the same number.
-            priceCache.savePrice(symbol, assetType, livePrice, resolver.getSourceName(getDataType(assetType)));
+            priceCache.savePrice(symbol, assetType, livePrice, sourceFor(assetType));
             return livePrice;
         }
 
@@ -83,7 +84,7 @@ public class PriceService {
         if (price == null) {
             return false;
         }
-        priceCache.savePrice(symbol, assetType, price, resolver.getSourceName(getDataType(assetType)));
+        priceCache.savePrice(symbol, assetType, price, sourceFor(assetType));
         return true;
     }
 
@@ -128,7 +129,33 @@ public class PriceService {
         if (assetType == AssetType.GOLD || assetType == AssetType.SGB) {
             return goldPriceFetcher.fetchGoldPricePerGram();
         }
+        if (assetType == AssetType.NPS) {
+            // A pension fund has exactly one price source, and it is not the equity chain. NPS used to
+            // fall through to the line below, where Upstox, Yahoo and Alpha Vantage were each asked for
+            // a quote on a symbol like SM001001 and each failed — three provider calls per sweep, per
+            // holding, forever, to produce nothing. PriceFreshnessPolicy already declares NPS as DAILY,
+            // so the freshness machinery has always expected this to be priceable.
+            //
+            // The symbol is the scheme code: SymbolValidator only accepts an NPS holding whose symbol is
+            // a listed scheme, and getEffectiveSymbolForPricing returns it unchanged. Loosening either
+            // would break this silently.
+            return npsNavService.getLatestNav(symbol);
+        }
         return resolver.getPrice(symbol, assetType);
+    }
+
+    /**
+     * What to record as the price's origin.
+     *
+     * <p>NPS is named explicitly because {@link #getDataType} maps it to {@code PRICE}, and the source
+     * name for {@code PRICE} is the head of the equity chain — which would stamp an NPS NAV as having
+     * come from Upstox.
+     */
+    private String sourceFor(AssetType assetType) {
+        if (assetType == AssetType.NPS) {
+            return "NPSNAV";
+        }
+        return resolver.getSourceName(getDataType(assetType));
     }
 
     private MarketDataType getDataType(AssetType assetType) {

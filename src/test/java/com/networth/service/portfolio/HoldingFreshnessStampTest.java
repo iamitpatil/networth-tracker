@@ -61,7 +61,8 @@ class HoldingFreshnessStampTest {
 
     private HoldingService service() {
         return new HoldingService(holdingRepository, marketPriceRepository, priceService,
-                dematAccountRepository, symbolRepository, transactionRepository, freshnessPolicy);
+                dematAccountRepository, transactionRepository, freshnessPolicy,
+                new com.networth.service.SymbolValidator(symbolRepository));
     }
 
     @Test

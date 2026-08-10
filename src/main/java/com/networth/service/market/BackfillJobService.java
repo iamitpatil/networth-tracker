@@ -15,8 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Manages background backfill jobs for all market data types.
  * Only one job can run at a time (singleton lock via AtomicBoolean).
  *
- * Covers: equity price history (Upstox), MF NAV history (AMFI), NPS NAV (npsnav.in),
- * and symbol refresh (NSE equities, AMFI MFs, NSE bonds).
+ * Covers: equity price history (Upstox), MF NAV history (AMFI), NPS NAV + day-wise NPS NAV history
+ * (npsnav.in), and symbol refresh (NSE equities, NSE ETFs, AMFI MFs, NSE bonds, NPS schemes).
  */
 @Service
 @RequiredArgsConstructor
@@ -26,6 +26,7 @@ public class BackfillJobService {
     private final UpstoxHistoricalService upstoxHistoricalService;
     private final AmfiHistoricalService amfiHistoricalService;
     private final NpsNavService npsNavService;
+    private final NpsHistoricalService npsHistoricalService;
     private final com.networth.service.SymbolService symbolService;
 
     /**
@@ -69,7 +70,7 @@ public class BackfillJobService {
         status.put("startedAt", Instant.now().toString());
         status.put("startedBy", userId.toString());
         status.put("currentStep", "symbols");
-        status.put("steps", List.of("symbols", "equities", "mutual_funds", "nps"));
+        status.put("steps", List.of("symbols", "equities", "mutual_funds", "nps", "nps_history"));
         status.put("completedSteps", new ArrayList<String>());
 
         asyncExecutor.execute(() -> runFullBackfill(historyDays));
@@ -155,6 +156,32 @@ public class BackfillJobService {
             } catch (Exception e) {
                 log.error("NPS refresh failed: {}", e.getMessage());
                 stepError("nps", "NPS refresh failed: " + e.getMessage());
+            }
+
+            if (!running.get()) { cancelled(); return; }
+
+            // Step 5: Backfill day-wise NPS NAV history.
+            //
+            // Last on purpose, and it is the longest step by far: one request per scheme for every
+            // listed scheme, paced at the npsnav budget of 1/s. Everything ahead of it finishes
+            // first, so a user who cancels mid-way keeps the equity and MF history already written.
+            // Step 4 above only stamps today's NAV onto each account; this is what gives a pension
+            // fund a value on a past date, which is the whole reason the chart was flat at cost.
+            updateStep("nps_history", "Backfilling NPS NAV history (one request per scheme, paced)...");
+            try {
+                int count = npsHistoricalService.backfillAll(cancelCheck,
+                        (processedSchemes, totalSchemes, records) -> {
+                            status.put("currentStepProgress",
+                                    String.format("%d/%d schemes · %d records", processedSchemes, totalSchemes, records));
+                        });
+                if (!running.get()) { cancelled(); return; }
+                status.remove("currentStepProgress");
+                completeStep("nps_history", count + " NPS NAV history records backfilled");
+                status.put("npsHistoryRecords", count);
+            } catch (Exception e) {
+                if (!running.get()) { cancelled(); return; }
+                log.error("NPS history backfill failed: {}", e.getMessage());
+                stepError("nps_history", "NPS history backfill failed: " + e.getMessage());
             }
 
             status.put("completedAt", Instant.now().toString());

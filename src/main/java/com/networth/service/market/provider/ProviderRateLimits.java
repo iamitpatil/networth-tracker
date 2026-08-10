@@ -34,6 +34,9 @@ import java.util.Map;
  *   <li><b>Yahoo, NSE, gold and news</b> publish nothing. Yahoo's chart endpoint is an unofficial
  *       API and NSE actively discourages scripted access, so these get deliberately small budgets
  *       — being throttled by us is cheaper than being IP-banned by them.</li>
+ *   <li><b>npsnav.in</b> publishes nothing either, and is a free community API. Its budget is sized
+ *       from the job that uses it rather than from a published figure: the NPS history load is one
+ *       request per scheme for 282 schemes, and 1/s walks through that in about five minutes.</li>
  *   <li><b>AMFI</b> is not per-symbol at all: one request downloads every NAV in the country as a
  *       text file. A handful of fetches a day is the right volume; hammering it would be both rude
  *       and pointless.</li>
@@ -155,6 +158,15 @@ public class ProviderRateLimits {
                 "undocumented — deliberately small"));
 
         map.put("gold", new Limit(1, 10, null, null, "not published", "undocumented"));
+
+        // One request returns a whole scheme's NAV history, and the full historical load is 282 of
+        // them. 1/s sustained paces that at about five minutes, which is unhurried for a background
+        // job and gentle on a free API that publishes no limit at all. The per-minute figure is set
+        // to exactly 60 so it never binds tighter than the per-second one — a lower ceiling would
+        // stall the backfill in bursts rather than pace it evenly.
+        map.put("npsnav", new Limit(1, 60, null, null,
+                "not published; a free community API",
+                "undocumented — 1/s paces the 282-scheme historical load at about five minutes"));
 
         map.put("google", new Limit(1, 20, null, null, "not published (news RSS)", "undocumented"));
 

@@ -79,6 +79,14 @@ public class TransactionImportService {
     private final TransactionService transactionService;
     private final CorporateActionService corporateActionService;
 
+    /**
+     * Checks each row's ticker before anything is written.
+     *
+     * <p>Called from {@code importRow}, deliberately not from inside {@code findOrCreateHolding} —
+     * see the note there about rollback-only transactions.
+     */
+    private final com.networth.service.SymbolValidator symbolValidator;
+
     @Getter
     @Builder
     public static class ImportResult {
@@ -197,6 +205,14 @@ public class TransactionImportService {
         TransactionType type = parseEnum(TransactionType.class,
                 require(value(line, index, "transactionType"), "transactionType"), "transactionType");
         LocalDateTime when = parseDate(require(value(line, index, "transactionDate"), "transactionDate"));
+
+        // Validated here, before anything transactional is touched, and that placement is load-bearing.
+        // HoldingService.createHolding is @Transactional and joins this method's transaction, so a
+        // rejection thrown from inside it would mark the shared transaction rollback-only — the caller
+        // would still catch it and record a row error, then fail its own commit with
+        // UnexpectedRollbackException. One bad row would take the whole file down, which is the opposite
+        // of the per-row reporting this importer is built around.
+        symbol = symbolValidator.requireKnown(symbol, assetType, null).symbol();
 
         if (type.isCorporateAction()) {
             importCorporateAction(userId, line, index, symbol, assetType, type, when, createdHoldings);

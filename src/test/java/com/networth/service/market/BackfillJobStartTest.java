@@ -36,6 +36,7 @@ class BackfillJobStartTest {
     @Mock UpstoxHistoricalService upstoxHistoricalService;
     @Mock AmfiHistoricalService amfiHistoricalService;
     @Mock NpsNavService npsNavService;
+    @Mock NpsHistoricalService npsHistoricalService;
     @Mock SymbolService symbolService;
 
     private final List<Runnable> submitted = new ArrayList<>();
@@ -43,7 +44,7 @@ class BackfillJobStartTest {
 
     private BackfillJobService service() {
         return new BackfillJobService(upstoxHistoricalService, amfiHistoricalService, npsNavService,
-                symbolService, recordingExecutor);
+                npsHistoricalService, symbolService, recordingExecutor);
     }
 
     @Test
@@ -56,7 +57,8 @@ class BackfillJobStartTest {
         assertThat(submitted).as("exactly one task handed to the background executor").hasSize(1);
         // Nothing has touched a provider: tryStart returned before any step ran, which is the whole
         // point. If @Async were silently not firing again, these would already have been called.
-        verifyNoInteractions(symbolService, upstoxHistoricalService, amfiHistoricalService, npsNavService);
+        verifyNoInteractions(symbolService, upstoxHistoricalService, amfiHistoricalService, npsNavService,
+                npsHistoricalService);
     }
 
     @Test
