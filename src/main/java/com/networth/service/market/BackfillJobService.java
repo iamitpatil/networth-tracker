@@ -27,7 +27,39 @@ public class BackfillJobService {
     private final AmfiHistoricalService amfiHistoricalService;
     private final NpsNavService npsNavService;
     private final NpsHistoricalService npsHistoricalService;
+    private final SymbolEventService symbolEventService;
     private final com.networth.service.SymbolService symbolService;
+
+    /**
+     * Where a full history load starts, for {@code days=0}.
+     *
+     * <p>Upstox's NSE daily candles begin 2000-01-03, and a window starting before a stock listed comes
+     * back empty rather than failing — so one date serves every symbol and no per-symbol listing date is
+     * needed.
+     *
+     * <p>Held as a String and parsed on use rather than injected as a {@code LocalDate}: binding a date
+     * through {@code @Value} depends on the conversion service having an ISO converter registered, and a
+     * mistyped property would then fail at context startup rather than where it is read.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.market.history-inception:2000-01-03}")
+    private String historyInception;
+
+    /**
+     * How far back {@code days=0} reaches for <em>mutual fund</em> NAVs, in days.
+     *
+     * <p>Separate from the equity inception date, and much shorter, because the two providers are not
+     * comparable. Upstox serves ten years of daily candles in one request, so a full equity history is
+     * three calls per symbol and finishes in seconds. AMFI's historical endpoint returns
+     * <em>one day</em> per request ({@code AmfiHistoricalService.MAX_DAYS_PER_REQUEST = 1}) and that
+     * service takes no rate-limiter slot, so reaching 2000 means 9,130 unthrottled HTTP requests against
+     * a free public endpoint and about two and a half hours during which no later step runs. Measured:
+     * a {@code days=0} run sat on "Day 201/9131" after two minutes.
+     *
+     * <p>Five years is a deliberate compromise, not a limitation of the data. Raise it if you need more,
+     * knowing the cost is one request per extra day.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.market.mf-history-days:1825}")
+    private int mfHistoryDays;
 
     /**
      * The same executor {@code @Async} uses, injected rather than woven in.
@@ -70,7 +102,8 @@ public class BackfillJobService {
         status.put("startedAt", Instant.now().toString());
         status.put("startedBy", userId.toString());
         status.put("currentStep", "symbols");
-        status.put("steps", List.of("symbols", "equities", "mutual_funds", "nps", "nps_history"));
+        status.put("steps", List.of("symbols", "equities", "mutual_funds", "nps", "nps_history",
+                "dividend_events"));
         status.put("completedSteps", new ArrayList<String>());
 
         asyncExecutor.execute(() -> runFullBackfill(historyDays));
@@ -81,8 +114,7 @@ public class BackfillJobService {
      * The job itself. Runs on a background thread with the slot already claimed by
      * {@link #tryStart}, and is responsible for releasing it.
      */
-    private void runFullBackfill(int historyDays) {
-        try {
+    private void runFullBackfill(int historyDays) {        try {
             // Step 1: Refresh symbols (equities + MFs + bonds)
             updateStep("symbols", "Refreshing symbol lists (NSE equities, AMFI mutual funds, NSE bonds)...");
             try {
@@ -107,7 +139,7 @@ public class BackfillJobService {
             updateStep("equities", "Backfilling equity price history...");
             try {
                 LocalDate to = LocalDate.now(MarketCalendar.ZONE);
-                LocalDate from = to.minusDays(historyDays);
+                LocalDate from = startDate(historyDays, to);
                 int count = upstoxHistoricalService.backfillAll(from, to, cancelCheck,
                         (processed, total, records, skipped) -> {
                             status.put("currentStepProgress",
@@ -129,7 +161,9 @@ public class BackfillJobService {
             updateStep("mutual_funds", "Backfilling mutual fund NAV history...");
             try {
                 LocalDate to = LocalDate.now(MarketCalendar.ZONE);
-                LocalDate from = to.minusDays(historyDays);
+                // Not startDate(): AMFI costs one request per day, so days=0 gets a bounded window
+                // rather than the equity inception date. See mfHistoryDays.
+                LocalDate from = historyDays > 0 ? to.minusDays(historyDays) : to.minusDays(mfHistoryDays);
                 int count = amfiHistoricalService.backfillAll(from, to, cancelCheck,
                         (processedDays, totalDaysVal, records) -> {
                             status.put("currentStepProgress",
@@ -184,6 +218,37 @@ public class BackfillJobService {
                 stepError("nps_history", "NPS history backfill failed: " + e.getMessage());
             }
 
+            if (!running.get()) { cancelled(); return; }
+
+            // Step 6: Fetch and store corporate-action events.
+            //
+            // Last, and at the default app.events.scope=all it is now the longest step: one NSE request
+            // per listed equity and ETF, paced at NSE's 10/min, so roughly four hours for ~2,428 symbols.
+            // It earns that once. symbols.events_synced_at means a completed symbol is never re-fetched,
+            // and the work list puts held symbols first, so cancelling part-way still leaves everything
+            // anybody is looking at covered.
+            //
+            // This is what makes dividends calculable at all. They previously called the provider once
+            // per holding through the resolver's non-waiting path, which skips a throttled provider; nse
+            // allows 1/s and yahoo 5/s, so a 24-holding loop drained both buckets in 165ms and most
+            // holdings got no request at all -- silently, at debug level.
+            updateStep("dividend_events", "Fetching corporate-action events (one request per symbol, paced)...");
+            try {
+                int count = symbolEventService.syncAll(cancelCheck,
+                        (processedSymbols, totalSymbols, events) -> {
+                            status.put("currentStepProgress",
+                                    String.format("%d/%d symbols · %d events", processedSymbols, totalSymbols, events));
+                        });
+                if (!running.get()) { cancelled(); return; }
+                status.remove("currentStepProgress");
+                completeStep("dividend_events", count + " corporate-action events stored");
+                status.put("dividendEvents", count);
+            } catch (Exception e) {
+                if (!running.get()) { cancelled(); return; }
+                log.error("Dividend event sync failed: {}", e.getMessage());
+                stepError("dividend_events", "Dividend event sync failed: " + e.getMessage());
+            }
+
             status.put("completedAt", Instant.now().toString());
             status.put("currentStep", "done");
             log.info("Full backfill job completed");
@@ -217,6 +282,27 @@ public class BackfillJobService {
 
     public boolean isRunning() {
         return running.get();
+    }
+
+    /**
+     * Where a history load starts, given the requested number of days.
+     *
+     * <p>{@code days=0} means "from inception" rather than "from today", which is the only way to ask for
+     * a stock's whole series. Before this, the smallest start the API could express was one day ago and
+     * the default 365 pinned every symbol to a rolling year.
+     */
+    private LocalDate startDate(int historyDays, LocalDate to) {
+        if (historyDays > 0) {
+            return to.minusDays(historyDays);
+        }
+        try {
+            return LocalDate.parse(historyInception.trim());
+        } catch (Exception e) {
+            // A mistyped property must not silently become "today" and quietly fetch nothing.
+            log.warn("app.market.history-inception is not an ISO date ('{}'); falling back to 2000-01-03",
+                    historyInception);
+            return LocalDate.of(2000, 1, 3);
+        }
     }
 
     private void updateStep(String step, String message) {

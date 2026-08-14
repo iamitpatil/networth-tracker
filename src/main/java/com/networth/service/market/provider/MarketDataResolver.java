@@ -116,8 +116,29 @@ public class MarketDataResolver {
     private <T> T firstResult(MarketDataType type, String what,
                               java.util.function.Function<MarketDataProvider, T> call,
                               java.util.function.Predicate<T> usable) {
+        return firstResult(type, what, call, usable, java.time.Duration.ZERO);
+    }
+
+    /**
+     * As above, but willing to wait up to {@code maxWait} for a provider's slot.
+     *
+     * <p>{@code Duration.ZERO} is the live-path behaviour and what every caller above passes: skip a
+     * throttled provider and try the next. A longer wait is for batch callers that have no alternative
+     * provider and are not serving a user.
+     *
+     * <p>Waiting is opt-in per call site rather than resolver policy on purpose. A single loop that
+     * asked for 24 symbols through the non-waiting path is what broke dividend calculation: nse allows
+     * 1/s and 10/min, yahoo 5/s, so the loop drained both per-second buckets in its first 165ms and
+     * about eighteen symbols were skipped without a request ever being issued — silently, at debug
+     * level. Making the resolver wait for everyone would have fixed that and broken the five-minute
+     * price sweep instead, which shares this method and must keep falling through.
+     */
+    private <T> T firstResult(MarketDataType type, String what,
+                              java.util.function.Function<MarketDataProvider, T> call,
+                              java.util.function.Predicate<T> usable,
+                              java.time.Duration maxWait) {
         for (MarketDataProvider provider : getProviders(type)) {
-            if (!rateLimiter.tryAcquire(provider.getName())) {
+            if (!rateLimiter.acquire(provider.getName(), maxWait)) {
                 log.debug("Skipping {} for {} {}: at its rate limit", provider.getName(), type, what);
                 continue;
             }
@@ -153,6 +174,39 @@ public class MarketDataResolver {
         List<DividendEvent> events = firstResult(MarketDataType.DIVIDEND, symbol,
                 p -> p.fetchDividends(symbol), list -> list != null && !list.isEmpty());
         return events != null ? events : List.of();
+    }
+
+    /**
+     * Dividend events for one symbol, waiting for a provider slot instead of skipping.
+     *
+     * <p>For the event sync only, which fetches each symbol once into {@code symbol_events} and has no
+     * alternative provider worth falling through to — Yahoo answers every request with an IP-level
+     * {@code 429 Edge: Too Many Requests}, so NSE's 1/s and 10/min is the real budget and a skip means
+     * that symbol simply gets no dividends. Pausing for a slot is what makes the sync complete.
+     *
+     * <p>Never call this from a request thread serving a page: at 10/min the eleventh symbol waits the
+     * better part of a minute.
+     *
+     * <p>Unlike {@link #getDividends}, an <b>empty list and null mean different things</b>, and the
+     * caller depends on the difference:
+     *
+     * <ul>
+     *   <li>a list, possibly empty — a provider answered, so an empty list means this company has
+     *       announced no dividends and the sync can mark it done and never ask again</li>
+     *   <li>{@code null} — no provider could be reached at all, so the sync must leave the symbol
+     *       unmarked and retry it next run</li>
+     * </ul>
+     *
+     * Conflating the two is how a provider outage would masquerade as "this stock pays nothing" and
+     * leave the store permanently empty. It is also why the usability test here accepts an empty list
+     * rather than falling through on one: NSE is the authoritative source for Indian corporate actions,
+     * so its considered "nothing" is an answer, and trying a blocked Yahoo afterwards only wastes a call.
+     *
+     * @return the events, an empty list if a provider reported none, or null if none was reachable
+     */
+    public List<DividendEvent> getDividendsWaiting(String symbol, java.time.Duration maxWait) {
+        return firstResult(MarketDataType.DIVIDEND, symbol,
+                p -> p.fetchDividends(symbol), Objects::nonNull, maxWait);
     }
 
     public List<NewsItem> getNews(String query, int limit) {

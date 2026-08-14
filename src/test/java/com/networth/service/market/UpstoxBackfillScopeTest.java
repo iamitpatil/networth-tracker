@@ -52,6 +52,7 @@ class UpstoxBackfillScopeTest {
     @Mock HoldingRepository holdingRepository;
     @Mock StockPriceHistoryRepository historyRepository;
     @Mock SymbolRepository symbolRepository;
+    @Mock org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     private UpstoxHistoricalService service;
 
@@ -61,7 +62,7 @@ class UpstoxBackfillScopeTest {
     @BeforeEach
     void setUp() {
         service = new UpstoxHistoricalService(restTemplate, rateLimiter, holdingRepository,
-                historyRepository, symbolRepository);
+                historyRepository, symbolRepository, jdbcTemplate);
         ReflectionTestUtils.setField(service, "accessToken", "test-token");
         ReflectionTestUtils.setField(service, "baseUrl", "https://api.upstox.test/v3");
         when(historyRepository.findDateRangePerSymbol()).thenReturn(List.of());

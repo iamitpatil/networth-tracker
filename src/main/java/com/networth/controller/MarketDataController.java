@@ -157,8 +157,11 @@ public class MarketDataController {
         }
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("status", "started");
-        body.put("message", "Full backfill started (symbols + equity prices + MF NAVs + NPS)");
+        body.put("message", "Full backfill started (symbols + equity prices + MF NAVs + NPS + dividend events)");
+        // days=0 means "from inception" rather than "from today", which is the only way to ask for a
+        // stock's whole series; reported back so the caller can see which reading was taken.
         body.put("days", days);
+        body.put("historyFrom", days <= 0 ? "inception" : days + " days ago");
         return ResponseEntity.ok(body);
     }
 

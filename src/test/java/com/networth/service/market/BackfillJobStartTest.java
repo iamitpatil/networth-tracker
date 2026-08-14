@@ -37,6 +37,7 @@ class BackfillJobStartTest {
     @Mock AmfiHistoricalService amfiHistoricalService;
     @Mock NpsNavService npsNavService;
     @Mock NpsHistoricalService npsHistoricalService;
+    @Mock SymbolEventService symbolEventService;
     @Mock SymbolService symbolService;
 
     private final List<Runnable> submitted = new ArrayList<>();
@@ -44,7 +45,7 @@ class BackfillJobStartTest {
 
     private BackfillJobService service() {
         return new BackfillJobService(upstoxHistoricalService, amfiHistoricalService, npsNavService,
-                npsHistoricalService, symbolService, recordingExecutor);
+                npsHistoricalService, symbolEventService, symbolService, recordingExecutor);
     }
 
     @Test
@@ -58,7 +59,7 @@ class BackfillJobStartTest {
         // Nothing has touched a provider: tryStart returned before any step ran, which is the whole
         // point. If @Async were silently not firing again, these would already have been called.
         verifyNoInteractions(symbolService, upstoxHistoricalService, amfiHistoricalService, npsNavService,
-                npsHistoricalService);
+                npsHistoricalService, symbolEventService);
     }
 
     @Test
