@@ -1,7 +1,7 @@
 package com.networth.service.market;
 
 import com.networth.repository.SymbolRepository;
-import com.networth.service.market.provider.DividendEvent;
+import com.networth.service.market.provider.CorporateActionEvent;
 import com.networth.service.market.provider.MarketDataResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,16 +70,24 @@ class SymbolEventServiceTest {
                 .thenReturn(0L, 2L);
     }
 
-    private DividendEvent event(String amount, LocalDate exDate, String type) {
-        return DividendEvent.builder()
+    private CorporateActionEvent event(String amount, LocalDate exDate, String subtype) {
+        return CorporateActionEvent.builder()
                 .symbol(SYMBOL)
+                .eventType("DIVIDEND")
+                .eventSubtype(subtype)
                 .amountPerShare(new BigDecimal(amount))
                 .exDate(exDate)
                 .recordDate(exDate)
-                .dividendType(type)
-                .description(type + " Dividend - Rs " + amount + " Per Share")
+                .description(subtype + " Dividend - Rs " + amount + " Per Share")
                 .source("NSE")
                 .build();
+    }
+
+    private CorporateActionEvent bonus(String ratio, LocalDate exDate) {
+        return CorporateActionEvent.builder()
+                .symbol(SYMBOL).eventType("BONUS").eventSubtype("")
+                .ratio(new BigDecimal(ratio)).exDate(exDate).recordDate(exDate)
+                .description("Bonus issue").source("NSE").build();
     }
 
     /** The rows the batch would actually write, read back out of the captured setter. */
@@ -110,7 +118,7 @@ class SymbolEventServiceTest {
     void sameDateDifferentSubtypeBothSurvive() throws SQLException {
         // HDFCBANK really does this, and ITC pays an interim and a final in the same year. Keying only on
         // (symbol, ex_date) would silently discard one of the pair and understate the year.
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class)))
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class)))
                 .thenReturn(List.of(event("22", EX, "Final"), event("5", EX, "Special")));
 
         service.syncSymbol(SYMBOL);
@@ -127,7 +135,7 @@ class SymbolEventServiceTest {
     void duplicateConflictKeysAreCollapsed() throws SQLException {
         // Not tidiness: PostgreSQL aborts an ON CONFLICT DO UPDATE statement that would affect a row
         // twice, so leaving both in would lose the whole batch for this symbol.
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class)))
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class)))
                 .thenReturn(List.of(event("22", EX, "Final"), event("23", EX, "Final")));
 
         service.syncSymbol(SYMBOL);
@@ -136,16 +144,21 @@ class SymbolEventServiceTest {
     }
 
     @Test
-    @DisplayName("Yahoo's untyped 'Dividend' becomes an empty subtype, not a third variant")
-    void flatDividendTypeCollapsesToEmpty() throws SQLException {
-        // Otherwise the same payout arriving from NSE as 'Final' and from Yahoo as 'Dividend' would be
-        // stored twice for one date.
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class)))
-                .thenReturn(List.of(event("22", EX, "Dividend")));
+    @DisplayName("a bonus is stored alongside dividends, with its ratio")
+    void bonusesAreStoredToo() throws SQLException {
+        // The store used to hold dividends only, because the NSE URL filtered to subject=Dividend. That is
+        // why twelve live transactions sat typed BUY at a price of zero where a bonus belonged, with no
+        // record anywhere of whether the ratio was 1:1 or 1:2.
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class)))
+                .thenReturn(List.of(event("22", EX, "Final"), bonus("2.0", EX.minusDays(60))));
 
         service.syncSymbol(SYMBOL);
 
-        assertThat(capturedRows().get(0)[3]).isEqualTo("");
+        List<Object[]> rows = capturedRows();
+        assertThat(rows).hasSize(2);
+        // Column 2 is event_type.
+        assertThat(List.of(rows.get(0)[2], rows.get(1)[2]))
+                .containsExactlyInAnyOrder("DIVIDEND", "BONUS");
     }
 
     @Test
@@ -153,7 +166,7 @@ class SymbolEventServiceTest {
     void unreachableProviderIsNotStamped() {
         // null means nobody answered. Stamping here is what would turn an NSE outage into a permanent
         // "this company pays no dividend".
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class))).thenReturn(null);
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class))).thenReturn(null);
 
         assertThat(service.syncSymbol(SYMBOL)).isZero();
 
@@ -166,7 +179,7 @@ class SymbolEventServiceTest {
     void emptyAnswerIsStamped() {
         // Plenty of listed companies have never declared one. At scope=all, re-asking several hundred of
         // them on every run would cost hours at ten requests a minute.
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class))).thenReturn(List.of());
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class))).thenReturn(List.of());
 
         assertThat(service.syncSymbol(SYMBOL)).isZero();
 
@@ -177,7 +190,7 @@ class SymbolEventServiceTest {
     @Test
     @DisplayName("a stored symbol is stamped, so a re-run has nothing to fetch")
     void aStoredSymbolIsStamped() {
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class)))
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class)))
                 .thenReturn(List.of(event("22", EX, "Final")));
 
         service.syncSymbol(SYMBOL);
@@ -189,15 +202,20 @@ class SymbolEventServiceTest {
     @Test
     @DisplayName("an event with no usable amount or no date is dropped rather than written")
     void unusableEventsAreDropped() {
-        when(marketDataResolver.getDividendsWaiting(eq(SYMBOL), any(Duration.class))).thenReturn(List.of(
-                DividendEvent.builder().symbol(SYMBOL).exDate(EX)
-                        .amountPerShare(BigDecimal.ZERO).source("NSE").build(),          // ex_date ok, no amount
-                DividendEvent.builder().symbol(SYMBOL)
-                        .amountPerShare(new BigDecimal("5")).source("NSE").build()));    // amount ok, no date
+        when(marketDataResolver.getCorporateActionsWaiting(eq(SYMBOL), any(Duration.class))).thenReturn(List.of(
+                // ex_date fine, but a zero payout is meaningless
+                CorporateActionEvent.builder().symbol(SYMBOL).eventType("DIVIDEND").eventSubtype("Final")
+                        .exDate(EX).amountPerShare(BigDecimal.ZERO).source("NSE").build(),
+                // amount fine, but no date at all
+                CorporateActionEvent.builder().symbol(SYMBOL).eventType("DIVIDEND").eventSubtype("Final")
+                        .amountPerShare(new BigDecimal("5")).source("NSE").build(),
+                // a bonus with no ratio: nothing downstream could apply it
+                CorporateActionEvent.builder().symbol(SYMBOL).eventType("BONUS").eventSubtype("")
+                        .exDate(EX).source("NSE").build()));
 
         service.syncSymbol(SYMBOL);
 
-        // ex_date is NOT NULL and a zero payout is meaningless, so neither can be stored.
+        // ex_date is NOT NULL, a zero payout is meaningless, and a ratio-less bonus is unusable.
         verify(jdbcTemplate, never()).batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
     }
 
@@ -225,6 +243,6 @@ class SymbolEventServiceTest {
 
         service.syncAll(() -> false, null);
 
-        verify(marketDataResolver, never()).getDividendsWaiting(anyString(), any(Duration.class));
+        verify(marketDataResolver, never()).getCorporateActionsWaiting(anyString(), any(Duration.class));
     }
 }

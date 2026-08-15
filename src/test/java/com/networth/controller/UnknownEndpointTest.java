@@ -48,6 +48,8 @@ class UnknownEndpointTest {
     @MockBean ProviderRateLimiter rateLimiter;
     @MockBean ProviderRateLimits rateLimits;
     @MockBean MarketDataResolver resolver;
+    @MockBean com.networth.service.market.SymbolEventService symbolEventService;
+    @MockBean java.util.concurrent.Executor asyncExecutor;
 
     // The security beans the slice would otherwise try to build for real. addFilters = false keeps the
     // chain out of the request, but the filter is still a bean and still wants its collaborators.

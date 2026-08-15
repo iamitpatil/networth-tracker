@@ -53,6 +53,7 @@ class HoldingFreshnessStampTest {
     @Mock DematAccountRepository dematAccountRepository;
     @Mock SymbolRepository symbolRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock com.networth.repository.DividendRepository dividendRepository;
 
     private final PriceFreshnessPolicy freshnessPolicy =
             new PriceFreshnessPolicy(new MarketCalendar("Asia/Kolkata"));
@@ -61,7 +62,7 @@ class HoldingFreshnessStampTest {
 
     private HoldingService service() {
         return new HoldingService(holdingRepository, marketPriceRepository, priceService,
-                dematAccountRepository, transactionRepository, freshnessPolicy,
+                dematAccountRepository, transactionRepository, dividendRepository, freshnessPolicy,
                 new com.networth.service.SymbolValidator(symbolRepository));
     }
 

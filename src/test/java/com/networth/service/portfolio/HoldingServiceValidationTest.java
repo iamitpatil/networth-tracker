@@ -53,6 +53,7 @@ class HoldingServiceValidationTest {
     @Mock DematAccountRepository dematAccountRepository;
     @Mock SymbolRepository symbolRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock com.networth.repository.DividendRepository dividendRepository;
 
     private HoldingService holdingService;
 
@@ -64,7 +65,7 @@ class HoldingServiceValidationTest {
         // The validator is real, over a mocked repository: what is under test is the decision it makes
         // and whether this service acts on it, not the lookup itself (SymbolValidatorTest covers that).
         holdingService = new HoldingService(holdingRepository, marketPriceRepository, priceService,
-                dematAccountRepository, transactionRepository,
+                dematAccountRepository, transactionRepository, dividendRepository,
                 new PriceFreshnessPolicy(new MarketCalendar("Asia/Kolkata")),
                 new SymbolValidator(symbolRepository));
 

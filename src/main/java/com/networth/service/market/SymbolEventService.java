@@ -1,7 +1,7 @@
 package com.networth.service.market;
 
 import com.networth.repository.SymbolRepository;
-import com.networth.service.market.provider.DividendEvent;
+import com.networth.service.market.provider.CorporateActionEvent;
 import com.networth.service.market.provider.MarketDataResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -121,6 +121,63 @@ public class SymbolEventService {
         void onProgress(int processedSymbols, int totalSymbols, int events);
     }
 
+    /**
+     * One sync at a time, so two callers cannot both spend the NSE budget on the same work list.
+     *
+     * <p>Claimed by {@link #startAsync} and released when the run ends.
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean running =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** Live status for the endpoint to poll, in the shape {@code BackfillJobService} already publishes. */
+    private final Map<String, Object> status = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Run a sync on a background thread and return immediately.
+     *
+     * <p>Exists because the sync was only reachable as the last step of the full backfill, behind the NPS
+     * history step — which re-fetches all 282 schemes on every run and took six hours to write zero rows.
+     * Waiting six hours to pick up a newly announced bonus is not a usable way to reach this, and the two
+     * pieces of work have nothing to do with each other.
+     *
+     * @return false if a sync is already running, in which case nothing was started
+     */
+    public boolean startAsync(java.util.concurrent.Executor executor) {
+        if (!running.compareAndSet(false, true)) {
+            return false;
+        }
+        status.clear();
+        status.put("running", true);
+        status.put("startedAt", Instant.now().toString());
+        executor.execute(() -> {
+            try {
+                int stored = syncAll(running::get, (processed, total, events) -> {
+                    status.put("progress", processed + "/" + total + " symbols · " + events + " events");
+                    status.put("processed", processed);
+                    status.put("total", total);
+                });
+                status.put("eventsStored", stored);
+            } catch (Exception e) {
+                log.error("Event sync failed: {}", e.getMessage());
+                status.put("error", e.getMessage());
+            } finally {
+                running.set(false);
+                status.put("running", false);
+                status.put("finishedAt", Instant.now().toString());
+            }
+        });
+        return true;
+    }
+
+    /** Ask a running sync to stop at the next symbol. */
+    public boolean cancel() {
+        return running.compareAndSet(true, false);
+    }
+
+    public Map<String, Object> status() {
+        return new LinkedHashMap<>(status);
+    }
+
     // ── one symbol ────────────────────────────────────────────────────────────
 
     /**
@@ -135,9 +192,9 @@ public class SymbolEventService {
         }
         String key = symbol.trim();
 
-        List<DividendEvent> events;
+        List<CorporateActionEvent> events;
         try {
-            events = marketDataResolver.getDividendsWaiting(key, providerWait);
+            events = marketDataResolver.getCorporateActionsWaiting(key, providerWait);
         } catch (Exception e) {
             // Never fatal. One dead symbol must not take down the sync, and the watermark is left
             // unstamped below so the next run retries it.
@@ -160,7 +217,7 @@ public class SymbolEventService {
             // until max-age. At scope=all this matters: without the distinction above, several hundred
             // dividend-less symbols would be re-fetched on every run and, at ten a minute, eat hours.
             stampSynced(key);
-            log.debug("{} has no announced dividends; marked synced", key);
+            log.debug("{} has no announced corporate actions; marked synced", key);
             return 0;
         }
 
@@ -242,25 +299,38 @@ public class SymbolEventService {
      * sharing a symbol, ex-date, type and subtype would abort the whole batch, taking every other event
      * for that symbol with them. Last one wins, which matches the upsert's intent that a correction
      * supersedes.
+     *
+     * <p>A dividend must carry a positive amount and a bonus or split a ratio; anything else is dropped
+     * rather than stored as an event nobody can act on.
      */
-    private List<Object[]> toRows(String symbol, List<DividendEvent> events) {
+    private List<Object[]> toRows(String symbol, List<CorporateActionEvent> events) {
         Map<String, Object[]> byKey = new LinkedHashMap<>();
-        for (DividendEvent e : events) {
+        for (CorporateActionEvent e : events) {
             LocalDate exDate = e.getExDate() != null ? e.getExDate() : e.getRecordDate();
             if (exDate == null) {
                 continue; // ex_date is NOT NULL, and an event with neither date cannot be placed in time
             }
-            BigDecimal amount = e.getAmountPerShare();
-            if (amount == null || amount.signum() <= 0) {
+            String type = e.getEventType();
+            if (type == null || type.isBlank()) {
                 continue;
             }
-            String subtype = subtypeOf(e.getDividendType());
-            byKey.put(exDate + "|" + TYPE_DIVIDEND + "|" + subtype, new Object[]{
+            BigDecimal amount = e.getAmountPerShare();
+            BigDecimal ratio = e.getRatio();
+            boolean usable = TYPE_DIVIDEND.equals(type)
+                    ? amount != null && amount.signum() > 0
+                    // A demerger legitimately has no ratio: its entitlement relates two companies, and the
+                    // multiplier belongs to that pairing rather than to this row.
+                    : ratio != null || "DEMERGER".equals(type);
+            if (!usable) {
+                continue;
+            }
+            String subtype = e.getEventSubtype() == null ? "" : truncate(e.getEventSubtype(), 20);
+            byKey.put(exDate + "|" + type + "|" + subtype, new Object[]{
                     symbol,
-                    TYPE_DIVIDEND,
+                    truncate(type, 20),
                     subtype,
                     amount,
-                    null, // ratio: dividends carry an amount instead
+                    ratio,
                     exDate,
                     e.getRecordDate(),
                     truncate(e.getDescription(), 500),
@@ -268,22 +338,6 @@ public class SymbolEventService {
             });
         }
         return new ArrayList<>(byKey.values());
-    }
-
-    /**
-     * Interim / Final / Special, or empty.
-     *
-     * <p>Never null, because it is part of {@code uq_symbol_events} and PostgreSQL treats NULLs as
-     * distinct: a null subtype would let the same event insert repeatedly and stop {@code ON CONFLICT}
-     * from ever matching. Yahoo's flat {@code "Dividend"} collapses to empty so that an NSE row for the
-     * same date, which knows whether it was interim or final, is recognised as the same event rather
-     * than duplicated alongside it.
-     */
-    private String subtypeOf(String dividendType) {
-        if (dividendType == null || dividendType.isBlank() || "Dividend".equalsIgnoreCase(dividendType.trim())) {
-            return "";
-        }
-        return truncate(dividendType.trim(), 20);
     }
 
     private String truncate(String value, int max) {

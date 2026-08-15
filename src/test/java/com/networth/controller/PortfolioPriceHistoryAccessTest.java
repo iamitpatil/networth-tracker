@@ -44,6 +44,7 @@ class PortfolioPriceHistoryAccessTest {
     @MockBean com.networth.service.portfolio.HoldingService holdingService;
     @MockBean com.networth.service.portfolio.TransactionService transactionService;
     @MockBean com.networth.service.portfolio.CorporateActionService corporateActionService;
+    @MockBean com.networth.service.portfolio.CorporateActionReclassifier corporateActionReclassifier;
     @MockBean com.networth.service.importservice.TransactionImportService transactionImportService;
     @MockBean com.networth.service.portfolio.PortfolioSummaryService portfolioSummaryService;
     @MockBean com.networth.service.FamilyDataService familyDataService;

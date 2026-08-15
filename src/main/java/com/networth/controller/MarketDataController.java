@@ -31,6 +31,9 @@ public class MarketDataController {
     private final com.networth.service.FamilyService familyService;
     private final com.networth.service.market.provider.ProviderRateLimiter rateLimiter;
     private final com.networth.service.market.provider.ProviderRateLimits rateLimits;
+    private final com.networth.service.market.SymbolEventService symbolEventService;
+    /** {@code AsyncConfig}'s security-propagating executor, the same one the backfill job uses. */
+    private final java.util.concurrent.Executor asyncExecutor;
     private final com.networth.service.market.provider.MarketDataResolver resolver;
 
     /**
@@ -142,6 +145,36 @@ public class MarketDataController {
     }
 
     // ── Full Backfill Job (async, singleton) ──
+
+    /**
+     * Fetch and store corporate-action events on their own, without a full backfill.
+     *
+     * <p>The sync used to be reachable only as the last step of {@code POST /market/backfill}, behind an NPS
+     * history step that re-fetches all 282 schemes every run and was measured at six hours to write zero
+     * rows. Picking up a newly announced bonus should not require waiting that out.
+     */
+    @PostMapping("/events/sync")
+    public ResponseEntity<Map<String, Object>> syncEvents() {
+        boolean started = symbolEventService.startAsync(asyncExecutor);
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("status", started ? "started" : "already_running");
+        body.put("message", started
+                ? "Corporate-action sync started. NSE allows ten requests a minute, so a full run over every "
+                  + "listed symbol takes hours; held symbols are done first. Poll /market/events/status."
+                : "A corporate-action sync is already running.");
+        return ResponseEntity.status(started ? 200 : 409).body(body);
+    }
+
+    @GetMapping("/events/status")
+    public ResponseEntity<Map<String, Object>> eventSyncStatus() {
+        return ResponseEntity.ok(symbolEventService.status());
+    }
+
+    @PostMapping("/events/cancel")
+    public ResponseEntity<Map<String, Object>> cancelEventSync() {
+        boolean cancelled = symbolEventService.cancel();
+        return ResponseEntity.ok(Map.of("cancelled", cancelled));
+    }
 
     @PostMapping("/backfill")
     public ResponseEntity<Map<String, Object>> startBackfill(

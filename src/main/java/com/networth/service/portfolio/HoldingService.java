@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,8 @@ public class HoldingService {
     private final PriceService priceService;
     private final DematAccountRepository dematAccountRepository;
     private final TransactionRepository transactionRepository;
+    /** Only for counting what a delete takes with it; dividends cascade at the database level (V44). */
+    private final com.networth.repository.DividendRepository dividendRepository;
     private final PriceFreshnessPolicy freshnessPolicy;
 
     /**
@@ -212,6 +215,8 @@ public class HoldingService {
         transactionRepository.save(Transaction.builder()
                 .userId(holding.getUserId())
                 .holdingId(holding.getId())
+                // Stamped from the holding so the trade can be attributed to an account on its own.
+                .dematAccountId(holding.getDematAccountId())
                 .transactionType(TransactionType.BUY)
                 .quantity(holding.getQuantity())
                 .price(holding.getAverageBuyPrice())
@@ -235,13 +240,49 @@ public class HoldingService {
         return toResponse(holding, batchFetchDematAccounts(List.of(holding)));
     }
 
+    /**
+     * Delete a holding and everything that belonged to it.
+     *
+     * <p>A real delete, not the soft delete this used to do. Soft-deleting only the holding row left its
+     * transactions untouched and fully visible, because {@code transactions.deleted_at} had no writer and
+     * no reader: 1,638 of 1,894 rows in the live database belonged to positions their owner had already
+     * removed, and every one still showed in the ledger.
+     *
+     * <p>The transactions go through {@code fk_transactions_holding}'s {@code ON DELETE CASCADE} rather
+     * than an application loop, and so do {@code goal_mappings}, {@code goal_holdings} and
+     * {@code documents}. {@code fk_dividends_holding} was changed to cascade in V44 for the same reason —
+     * at {@code SET NULL} a deleted holding's dividends survived carrying a null {@code holding_id},
+     * unreachable by any user and removable through no part of the UI.
+     *
+     * <p>What is knowingly given up: {@code tax_records} keeps {@code ON DELETE SET NULL}, so a filed
+     * year's capital-gains records outlive the position but lose the link back to it. That is the cost of
+     * deleting rather than hiding, and it is why the counts below are returned instead of a bare 204 —
+     * three of these consequences are invisible at the call site otherwise.
+     *
+     * @return what was removed along with the holding, so the caller can see the size of it
+     */
     @Transactional
-    public void deleteHolding(String userId, String holdingId) {
+    public Map<String, Object> deleteHolding(String userId, String holdingId) {
         Holding holding = findOwnedHolding(userId, holdingId);
-        // Soft delete: preserve for tax/audit history
-        holding.setDeletedAt(java.time.Instant.now());
-        holdingRepository.save(holding);
-        log.info("Soft-deleted holding {} for user {}", holdingId, userId);
+        UUID id = holding.getId();
+
+        // Counted before the delete, because afterwards there is nothing left to count. The transaction
+        // count deliberately includes rows marked deleted: the cascade removes those too, and a report
+        // that understates a destructive operation is worse than none.
+        long transactions = transactionRepository.countAllByHoldingIdIncludingDeleted(id);
+        long dividends = dividendRepository.countByHoldingId(id);
+
+        holdingRepository.delete(holding);
+
+        log.info("Deleted holding {} ({}) for user {}: {} transactions, {} dividends removed",
+                holdingId, holding.getSymbol(), userId, transactions, dividends);
+
+        Map<String, Object> removed = new LinkedHashMap<>();
+        removed.put("holdingId", holdingId);
+        removed.put("symbol", holding.getSymbol());
+        removed.put("transactionsRemoved", transactions);
+        removed.put("dividendsRemoved", dividends);
+        return removed;
     }
 
     @Transactional

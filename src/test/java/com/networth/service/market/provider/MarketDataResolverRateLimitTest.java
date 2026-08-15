@@ -142,19 +142,19 @@ class MarketDataResolverRateLimitTest {
     // ── the waiting variant, for batch callers ────────────────────────────────
 
     /** A dividend provider that counts calls and returns whatever it was given. */
-    private static class CountingDividendProvider implements MarketDataProvider {
+    private static class CountingActionProvider implements MarketDataProvider {
         private final String name;
-        private final List<DividendEvent> events;
+        private final List<CorporateActionEvent> events;
         final AtomicInteger calls = new AtomicInteger();
 
-        CountingDividendProvider(String name, List<DividendEvent> events) {
+        CountingActionProvider(String name, List<CorporateActionEvent> events) {
             this.name = name;
             this.events = events;
         }
 
         @Override public String getName() { return name; }
         @Override public Set<MarketDataType> supportedTypes() { return Set.of(MarketDataType.DIVIDEND); }
-        @Override public List<DividendEvent> fetchDividends(String symbol) {
+        @Override public List<CorporateActionEvent> fetchCorporateActions(String symbol) {
             calls.incrementAndGet();
             return events;
         }
@@ -175,10 +175,11 @@ class MarketDataResolverRateLimitTest {
         return r;
     }
 
-    private static DividendEvent event(String amount) {
-        return DividendEvent.builder()
-                .symbol("ITC.NS").amountPerShare(new BigDecimal(amount))
-                .exDate(java.time.LocalDate.of(2026, 5, 27)).dividendType("Final").source("NSE").build();
+    private static CorporateActionEvent event(String amount) {
+        return CorporateActionEvent.builder()
+                .symbol("ITC.NS").eventType("DIVIDEND").eventSubtype("Final")
+                .amountPerShare(new BigDecimal(amount))
+                .exDate(java.time.LocalDate.of(2026, 5, 27)).source("NSE").build();
     }
 
     @Test
@@ -186,12 +187,12 @@ class MarketDataResolverRateLimitTest {
     void waitingAcquiresRatherThanSkips() {
         // This is the whole fix. The non-waiting path drained nse's 1/s bucket on the first symbol and
         // silently skipped the rest, which is how 24 holdings produced 5 HTTP calls and no dividends.
-        CountingDividendProvider only = new CountingDividendProvider("solo", List.of(event("8")));
+        CountingActionProvider only = new CountingActionProvider("solo", List.of(event("8")));
         budget("solo", 1);
         MarketDataResolver r = dividendResolver(only);
 
-        r.getDividendsWaiting("ITC.NS", java.time.Duration.ofSeconds(5));   // takes the 1/s slot
-        List<DividendEvent> second = r.getDividendsWaiting("ITC.NS", java.time.Duration.ofSeconds(5));
+        r.getCorporateActionsWaiting("ITC.NS", java.time.Duration.ofSeconds(5));   // takes the 1/s slot
+        List<CorporateActionEvent> second = r.getCorporateActionsWaiting("ITC.NS", java.time.Duration.ofSeconds(5));
 
         // Without waiting this second call is skipped and comes back empty, as getDividends would.
         assertThat(second).hasSize(1);
@@ -205,15 +206,15 @@ class MarketDataResolverRateLimitTest {
         // dividend" and the symbol can be marked done forever; null means nobody answered and it must be
         // retried. Conflating them would let a provider outage masquerade as "pays nothing" and leave the
         // store permanently empty -- the same silent-success failure this work exists to remove.
-        CountingDividendProvider silent = new CountingDividendProvider("silent", List.of());
+        CountingActionProvider silent = new CountingActionProvider("silent", List.of());
         budget("silent", 1);
         MarketDataResolver r = dividendResolver(silent);
 
-        assertThat(r.getDividendsWaiting("ITC.NS", java.time.Duration.ZERO))
+        assertThat(r.getCorporateActionsWaiting("ITC.NS", java.time.Duration.ZERO))
                 .as("a provider answered with nothing").isNotNull().isEmpty();
 
         // Budget now spent, and ZERO wait means no second chance: nobody answered at all.
-        assertThat(r.getDividendsWaiting("ITC.NS", java.time.Duration.ZERO))
+        assertThat(r.getCorporateActionsWaiting("ITC.NS", java.time.Duration.ZERO))
                 .as("no provider reachable").isNull();
     }
 

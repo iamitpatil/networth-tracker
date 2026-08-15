@@ -39,6 +39,7 @@ public class PortfolioController {
     private final HoldingService holdingService;
     private final TransactionService transactionService;
     private final CorporateActionService corporateActionService;
+    private final com.networth.service.portfolio.CorporateActionReclassifier corporateActionReclassifier;
     private final TransactionImportService transactionImportService;
     private final PortfolioSummaryService portfolioSummaryService;
     private final FamilyDataService familyDataService;
@@ -83,12 +84,41 @@ public class PortfolioController {
         return ResponseEntity.ok(holdingService.updateHolding(userDetails.getUsername(), id, request));
     }
 
+    /**
+     * Delete a holding and everything belonging to it.
+     *
+     * <p>Returns what was removed rather than a bare 204. Deletion is physical now, and it takes the
+     * holding's transactions, dividends and attached documents with it through database cascades — none of
+     * which is visible from the call site otherwise.
+     */
     @DeleteMapping("/holdings/{id}")
-    public ResponseEntity<Void> deleteHolding(
+    public ResponseEntity<Map<String, Object>> deleteHolding(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String id) {
-        holdingService.deleteHolding(userDetails.getUsername(), id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(holdingService.deleteHolding(userDetails.getUsername(), id));
+    }
+
+    /**
+     * What the reclassifier would change, without changing anything.
+     *
+     * <p>Reports every transaction recorded as a purchase at zero rupees — each is really a bonus, a split
+     * or a demerger — with the exchange event it matches and the tax fields that would be set. Separate
+     * from {@code apply} because a wrong adjustment factor silently corrupts every later capital-gains
+     * figure for that symbol, so the change is reviewable before it happens.
+     */
+    @GetMapping("/corporate-actions/proposed")
+    public ResponseEntity<Map<String, Object>> proposedCorporateActions(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                corporateActionReclassifier.propose(UUID.fromString(userDetails.getUsername())));
+    }
+
+    /** Apply the actionable proposals from the report above. Quantities are never touched. */
+    @PostMapping("/corporate-actions/apply")
+    public ResponseEntity<Map<String, Object>> applyCorporateActions(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                corporateActionReclassifier.apply(UUID.fromString(userDetails.getUsername())));
     }
 
     @PostMapping("/refresh-prices")

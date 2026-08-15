@@ -177,36 +177,36 @@ public class MarketDataResolver {
     }
 
     /**
-     * Dividend events for one symbol, waiting for a provider slot instead of skipping.
+     * Every corporate action for one symbol, waiting for a provider slot instead of skipping.
      *
      * <p>For the event sync only, which fetches each symbol once into {@code symbol_events} and has no
      * alternative provider worth falling through to — Yahoo answers every request with an IP-level
-     * {@code 429 Edge: Too Many Requests}, so NSE's 1/s and 10/min is the real budget and a skip means
-     * that symbol simply gets no dividends. Pausing for a slot is what makes the sync complete.
+     * {@code 429 Edge: Too Many Requests} and supplies no bonus or split ratios at all, so NSE's 1/s and
+     * 10/min is the real budget and a skip means that symbol simply gets nothing. Pausing for a slot is
+     * what makes the sync complete.
      *
      * <p>Never call this from a request thread serving a page: at 10/min the eleventh symbol waits the
      * better part of a minute.
      *
-     * <p>Unlike {@link #getDividends}, an <b>empty list and null mean different things</b>, and the
-     * caller depends on the difference:
+     * <p><b>An empty list and null mean different things</b>, and the caller depends on the difference:
      *
      * <ul>
      *   <li>a list, possibly empty — a provider answered, so an empty list means this company has
-     *       announced no dividends and the sync can mark it done and never ask again</li>
+     *       announced nothing and the sync can mark it done and never ask again</li>
      *   <li>{@code null} — no provider could be reached at all, so the sync must leave the symbol
      *       unmarked and retry it next run</li>
      * </ul>
      *
-     * Conflating the two is how a provider outage would masquerade as "this stock pays nothing" and
-     * leave the store permanently empty. It is also why the usability test here accepts an empty list
-     * rather than falling through on one: NSE is the authoritative source for Indian corporate actions,
-     * so its considered "nothing" is an answer, and trying a blocked Yahoo afterwards only wastes a call.
+     * Conflating the two is how a provider outage would masquerade as "this company pays nothing" and
+     * leave the store permanently empty. It is also why the usability test accepts an empty list rather
+     * than falling through on one: NSE is the authoritative source for Indian corporate actions, so its
+     * considered "nothing" is an answer, and trying a blocked Yahoo afterwards only wastes a call.
      *
      * @return the events, an empty list if a provider reported none, or null if none was reachable
      */
-    public List<DividendEvent> getDividendsWaiting(String symbol, java.time.Duration maxWait) {
+    public List<CorporateActionEvent> getCorporateActionsWaiting(String symbol, java.time.Duration maxWait) {
         return firstResult(MarketDataType.DIVIDEND, symbol,
-                p -> p.fetchDividends(symbol), Objects::nonNull, maxWait);
+                p -> p.fetchCorporateActions(symbol), Objects::nonNull, maxWait);
     }
 
     public List<NewsItem> getNews(String query, int limit) {

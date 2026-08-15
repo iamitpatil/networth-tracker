@@ -35,6 +35,14 @@ public class TransactionResponse {
     private String notes;
     private String broker;
     /**
+     * The demat account this trade went through.
+     *
+     * <p>Comes from the transaction's own column rather than being looked up through the holding, so a
+     * ledger row is self-describing. Null only for asset types that have no demat account (NPS, PPF, FD,
+     * cash, property); for equity, ETF and mutual funds it is always present.
+     */
+    private String dematAccountId;
+    /**
      * When this row was recorded. An instant, so it serialises with an offset and the browser
      * renders it in the viewer's own zone -- unlike {@link #transactionDate}, which is a calendar
      * date and must never be shifted by a client's timezone.

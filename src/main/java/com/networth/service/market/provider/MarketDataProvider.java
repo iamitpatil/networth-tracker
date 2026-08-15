@@ -42,6 +42,19 @@ public interface MarketDataProvider {
         return List.of();
     }
 
+    /**
+     * Fetch every corporate action for a symbol — dividends, bonuses, splits, demergers.
+     *
+     * <p>Null by default, which for this method means "no answer from me". That is the same signal a failed
+     * request gives, and the resolver relies on it: a provider that cannot supply corporate actions falls
+     * through to the next, and only when none answers does the caller see null and know to retry. An empty
+     * list is reserved for a provider that did answer and reported nothing, which lets the event sync mark
+     * the symbol done instead of asking again forever.
+     */
+    default List<CorporateActionEvent> fetchCorporateActions(String symbol) {
+        return null;
+    }
+
     /** Fetch news articles */
     default List<NewsItem> fetchNews(String query, int limit) {
         return List.of();

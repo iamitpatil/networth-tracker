@@ -64,6 +64,10 @@ public class TransactionService {
                 .transactionDate(request.getTransactionDate())
                 .notes(request.getNotes())
                 .broker(request.getBroker())
+                // Taken from the holding that was just ownership-checked, so no extra query and no way for
+                // the two to disagree. chk_holdings_demat_required (V42) guarantees this is non-null for
+                // EQUITY, ETF and MUTUAL_FUND; it is legitimately null for NPS, PPF, FD and the rest.
+                .dematAccountId(holding.getDematAccountId())
                 .build();
 
         transaction = transactionRepository.save(transaction);
@@ -137,6 +141,8 @@ public class TransactionService {
                 .adjustmentFactor(transaction.getAdjustmentFactor())
                 .notes(transaction.getNotes())
                 .broker(transaction.getBroker())
+                .dematAccountId(transaction.getDematAccountId() != null
+                        ? transaction.getDematAccountId().toString() : null)
                 .createdAt(transaction.getCreatedAt())
                 .build();
     }

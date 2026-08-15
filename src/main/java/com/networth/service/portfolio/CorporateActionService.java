@@ -124,6 +124,8 @@ public class CorporateActionService {
         transactionRepository.save(Transaction.builder()
                 .userId(holding.getUserId())
                 .holdingId(holding.getId())
+                // Stamped from the holding so the trade can be attributed to an account on its own.
+                .dematAccountId(holding.getDematAccountId())
                 .transactionType(TransactionType.BONUS)
                 .quantity(bonusQuantity)
                 .price(BigDecimal.ZERO)     // s.55(2)(aa): nil cost of acquisition
@@ -170,6 +172,8 @@ public class CorporateActionService {
         transactionRepository.save(Transaction.builder()
                 .userId(holding.getUserId())
                 .holdingId(holding.getId())
+                // Stamped from the holding so the trade can be attributed to an account on its own.
+                .dematAccountId(holding.getDematAccountId())
                 .transactionType(TransactionType.SPLIT)
                 // The change in share count, so the ledger reads as "+100 shares". Positive for
                 // a sub-division, negative for a consolidation. The gains calculator ignores
@@ -227,6 +231,8 @@ public class CorporateActionService {
         transactionRepository.save(Transaction.builder()
                 .userId(holding.getUserId())
                 .holdingId(holding.getId())
+                // Stamped from the holding so the trade can be attributed to an account on its own.
+                .dematAccountId(holding.getDematAccountId())
                 .transactionType(TransactionType.DEMERGER_OUT)
                 .quantity(BigDecimal.ZERO)   // no shares leave the parent holding
                 .price(BigDecimal.ZERO)
@@ -246,6 +252,8 @@ public class CorporateActionService {
         transactionRepository.save(Transaction.builder()
                 .userId(holding.getUserId())
                 .holdingId(resulting.getId())
+                // Stamped from the holding so the trade can be attributed to an account on its own.
+                .dematAccountId(resulting.getDematAccountId())
                 .transactionType(TransactionType.DEMERGER_IN)
                 .quantity(resultingQuantity)
                 .price(resultingCostPerShare)

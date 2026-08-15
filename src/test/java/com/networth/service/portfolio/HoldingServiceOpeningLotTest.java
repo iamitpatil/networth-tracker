@@ -45,6 +45,7 @@ class HoldingServiceOpeningLotTest {
     @Mock DematAccountRepository dematAccountRepository;
     @Mock SymbolRepository symbolRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock com.networth.repository.DividendRepository dividendRepository;
 
     /**
      * The real policy, not a mock: it is pure and calendar-driven, and every response this service
@@ -61,7 +62,7 @@ class HoldingServiceOpeningLotTest {
     @BeforeEach
     void setUp() {
         holdingService = new HoldingService(holdingRepository, marketPriceRepository, priceService,
-                dematAccountRepository, transactionRepository,
+                dematAccountRepository, transactionRepository, dividendRepository,
                 new PriceFreshnessPolicy(new MarketCalendar("Asia/Kolkata")),
                 new com.networth.service.SymbolValidator(symbolRepository));
     }

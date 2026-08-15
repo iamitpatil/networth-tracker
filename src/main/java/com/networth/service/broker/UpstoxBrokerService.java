@@ -345,6 +345,8 @@ public class UpstoxBrokerService {
 
         Transaction txn = Transaction.builder()
                 .holdingId(holding.getId())
+                // Stamped from the holding so the trade can be attributed to an account on its own.
+                .dematAccountId(holding.getDematAccountId())
                 .userId(userId)
                 .transactionType(TransactionType.BUY)
                 .quantity(qty)
@@ -447,6 +449,8 @@ public class UpstoxBrokerService {
 
                         Transaction txn = Transaction.builder()
                                 .holdingId(holding.getId())
+                                // Stamped from the holding so the trade can be attributed to an account on its own.
+                                .dematAccountId(holding.getDematAccountId())
                                 .userId(userId)
                                 .transactionType(type)
                                 .quantity(txnQty)

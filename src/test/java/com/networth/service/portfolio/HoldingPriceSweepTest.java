@@ -50,6 +50,7 @@ class HoldingPriceSweepTest {
     @Mock DematAccountRepository dematAccountRepository;
     @Mock SymbolRepository symbolRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock com.networth.repository.DividendRepository dividendRepository;
 
     /** The real policy: which types are priceable at all is exactly what the sweep must respect. */
     private final PriceFreshnessPolicy freshnessPolicy =
@@ -57,7 +58,7 @@ class HoldingPriceSweepTest {
 
     private HoldingService service() {
         return new HoldingService(holdingRepository, marketPriceRepository, priceService,
-                dematAccountRepository, transactionRepository, freshnessPolicy,
+                dematAccountRepository, transactionRepository, dividendRepository, freshnessPolicy,
                 new com.networth.service.SymbolValidator(symbolRepository));
     }
 
